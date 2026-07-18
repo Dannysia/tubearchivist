@@ -175,7 +175,7 @@ class NotificationView(ApiBaseView):
     filter query to filter messages by group
     """
 
-    valid_filters = ["download", "settings", "channel"]
+    valid_filters = ["download", "settings", "channel", "downscale"]
 
     @extend_schema(
         responses={

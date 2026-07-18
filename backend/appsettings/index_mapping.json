@@ -221,6 +221,22 @@
                 "description": {
                     "type": "text"
                 },
+                "downscale": {
+                    "properties": {
+                        "original_height": {
+                            "type": "integer"
+                        },
+                        "original_size": {
+                            "type": "long"
+                        },
+                        "new_height": {
+                            "type": "integer"
+                        },
+                        "new_size": {
+                            "type": "long"
+                        }
+                    }
+                },
                 "media_size": {
                     "type": "long"
                 },
@@ -481,6 +497,89 @@
                 },
                 "vid_type": {
                     "type": "keyword"
+                },
+                "youtube_id": {
+                    "type": "keyword"
+                }
+            },
+            "expected_set": {
+                "analysis": {
+                    "normalizer": {
+                        "to_lower": {
+                            "type": "custom",
+                            "filter": ["lowercase"]
+                        }
+                    }
+                },
+                "number_of_replicas": "0"
+            }
+        },
+        {
+            "index_name": "downscale",
+            "expected_map": {
+                "channel_id": {
+                    "type": "keyword"
+                },
+                "channel_name": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256,
+                            "normalizer": "to_lower"
+                        }
+                    }
+                },
+                "current_height": {
+                    "type": "integer"
+                },
+                "media_url": {
+                    "type": "keyword",
+                    "index": false
+                },
+                "message": {
+                    "type": "text"
+                },
+                "new_size": {
+                    "type": "long"
+                },
+                "original_size": {
+                    "type": "long"
+                },
+                "status": {
+                    "type": "keyword"
+                },
+                "target_height": {
+                    "type": "integer"
+                },
+                "task_id": {
+                    "type": "keyword"
+                },
+                "timestamp": {
+                    "type": "date",
+                    "format": "epoch_second"
+                },
+                "title": {
+                    "type": "text",
+                    "fields": {
+                        "keyword": {
+                            "type": "keyword",
+                            "ignore_above": 256,
+                            "normalizer": "to_lower"
+                        }
+                    }
+                },
+                "tmp_file_path": {
+                    "type": "keyword",
+                    "index": false
+                },
+                "updated": {
+                    "type": "date",
+                    "format": "epoch_second"
+                },
+                "vid_thumb_url": {
+                    "type": "keyword",
+                    "index": false
                 },
                 "youtube_id": {
                     "type": "keyword"

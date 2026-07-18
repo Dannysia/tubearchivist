@@ -24,6 +24,7 @@ urlpatterns = [
     path("api/channel/", include("channel.urls")),
     path("api/playlist/", include("playlist.urls")),
     path("api/download/", include("download.urls")),
+    path("api/downscale/", include("downscale.urls")),
     path("api/task/", include("task.urls")),
     path("api/appsettings/", include("appsettings.urls")),
     path("api/stats/", include("stats.urls")),

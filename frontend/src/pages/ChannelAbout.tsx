@@ -15,6 +15,11 @@ import InputConfig from '../components/InputConfig';
 import ToggleConfig from '../components/ToggleConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import { ApiResponseType } from '../functions/APIClient';
+import startChannelDownscale, {
+  ChannelDownscaleResponseType,
+} from '../api/actions/startChannelDownscale';
+
+const DOWNSCALE_LADDER = [1080, 720, 480, 360];
 
 export type ChannelBaseOutletContextType = {
   currentPage: number;
@@ -43,6 +48,11 @@ const ChannelAbout = () => {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [reindex, setReindex] = useState(false);
   const [refresh, setRefresh] = useState(true);
+  const [showDownscaleForm, setShowDownscaleForm] = useState(false);
+  const [downscaleTargetHeight, setDownscaleTargetHeight] = useState(DOWNSCALE_LADDER[0]);
+  const [downscaleResult, setDownscaleResult] = useState<ChannelDownscaleResponseType | null>(
+    null,
+  );
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
 
@@ -205,6 +215,60 @@ const ChannelAbout = () => {
                       />
                     </div>
                   )}
+                  <br></br>
+                  <div id="batch-downscale-button" className="button-box">
+                    {!showDownscaleForm && !downscaleResult && (
+                      <Button
+                        label="Batch Downscale"
+                        title={`Downscale all videos of ${channel.channel_name}`}
+                        onClick={() => setShowDownscaleForm(true)}
+                      />
+                    )}
+
+                    {showDownscaleForm && (
+                      <div className="delete-confirm">
+                        <span>Downscale all videos above: </span>
+                        <select
+                          value={downscaleTargetHeight}
+                          onChange={event =>
+                            setDownscaleTargetHeight(Number(event.currentTarget.value))
+                          }
+                        >
+                          {DOWNSCALE_LADDER.map(height => (
+                            <option key={height} value={height}>
+                              {height}p
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          label="Start"
+                          onClick={async () => {
+                            const response = await startChannelDownscale(
+                              channelId,
+                              downscaleTargetHeight,
+                            );
+                            setDownscaleResult(response.data ?? { queued: [], skipped: [] });
+                            setShowDownscaleForm(false);
+                            setStartNotification(true);
+                          }}
+                        />
+                        <Button label="Cancel" onClick={() => setShowDownscaleForm(false)} />
+                      </div>
+                    )}
+
+                    {downscaleResult && (
+                      <p>
+                        Queued {downscaleResult.queued.length} video(s) for downscale.
+                        {downscaleResult.skipped.length > 0 && (
+                          <> {downscaleResult.skipped.length} already in progress, skipped.</>
+                        )}{' '}
+                        <Button
+                          label="View Downscale Queue"
+                          onClick={() => navigate(Routes.Downscale)}
+                        />
+                      </p>
+                    )}
+                  </div>
                 </>
               )}
             </div>

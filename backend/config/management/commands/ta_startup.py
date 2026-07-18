@@ -49,6 +49,7 @@ class Command(BaseCommand):
         self._clear_dl_cache()
         self._version_check()
         self._index_setup()
+        self._clear_downscale_leftovers()
         self._snapshot_check()
         self._create_default_schedules()
         self._update_schedule_tz()
@@ -102,6 +103,7 @@ class Command(BaseCommand):
             "backup",
             "channels",
             "download",
+            "downscale",
             "import",
             "playlists",
             "videos",
@@ -161,6 +163,42 @@ class Command(BaseCommand):
         """clear leftover files from dl cache"""
         self.stdout.write("[4] clear leftover files from dl cache")
         leftover_files = clear_dl_cache(EnvironmentSettings.CACHE_DIR)
+        if leftover_files:
+            self.stdout.write(
+                self.style.SUCCESS(f"    ✓ cleared {leftover_files} files")
+            )
+        else:
+            self.stdout.write(self.style.SUCCESS("    no files found"))
+
+    def _clear_downscale_leftovers(self):
+        """
+        fail any downscale job still marked running (interrupted by a hard
+        restart) and clear its leftover tmp cache files
+        """
+        self.stdout.write("[4b] clear leftover downscale jobs")
+        data = {
+            "query": {"term": {"status": {"value": "running"}}},
+            "script": {
+                "source": (
+                    "ctx._source.status = 'failed';"
+                    "ctx._source.message = 'interrupted by restart';"
+                ),
+                "lang": "painless",
+            },
+        }
+        path = "ta_downscale/_update_by_query?refresh=true"
+        response, status_code = ElasticWrap(path).post(data)
+        if status_code in [200, 201] and response.get("updated"):
+            updated = response["updated"]
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"    ✓ marked {updated} stuck job(s) as failed"
+                )
+            )
+
+        leftover_files = clear_dl_cache(
+            EnvironmentSettings.CACHE_DIR, subfolder="downscale"
+        )
         if leftover_files:
             self.stdout.write(
                 self.style.SUCCESS(f"    ✓ cleared {leftover_files} files")

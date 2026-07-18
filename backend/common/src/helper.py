@@ -148,13 +148,13 @@ def deep_merge(target: dict, source: dict) -> None:
             target[key] = value
 
 
-def clear_dl_cache(cache_dir: str) -> int:
-    """clear leftover files from dl cache"""
-    print("clear download cache")
-    download_cache_dir = os.path.join(cache_dir, "download")
-    leftover_files = ignore_filelist(os.listdir(download_cache_dir))
+def clear_dl_cache(cache_dir: str, subfolder: str = "download") -> int:
+    """clear leftover files from cache subfolder"""
+    print(f"clear {subfolder} cache")
+    sub_cache_dir = os.path.join(cache_dir, subfolder)
+    leftover_files = ignore_filelist(os.listdir(sub_cache_dir))
     for cached in leftover_files:
-        to_delete = os.path.join(download_cache_dir, cached)
+        to_delete = os.path.join(sub_cache_dir, cached)
         os.remove(to_delete)
 
     return len(leftover_files)

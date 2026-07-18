@@ -28,6 +28,7 @@ const Navigation = () => {
           <NavigationItem label="playlists" navigateTo={Routes.Playlists} />
 
           {isAdmin && <NavigationItem label="downloads" navigateTo={Routes.Downloads} />}
+          {isAdmin && <NavigationItem label="downscale" navigateTo={Routes.Downscale} />}
         </div>
         <div className="nav-icons">
           <Link to={Routes.Search}>

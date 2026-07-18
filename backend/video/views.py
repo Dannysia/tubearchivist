@@ -1,17 +1,23 @@
 """all API views for video endpoints"""
 
-from common.serializers import ErrorResponseSerializer
+from common.serializers import (
+    AsyncTaskResponseSerializer,
+    ErrorResponseSerializer,
+)
 from common.src.helper import calc_is_watched
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
-from common.views_base import AdminWriteOnly, ApiBaseView
+from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
+from downscale.src.queue_interact import DownscaleInteract
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
+from task.src.task_manager import TaskCommand
 from video.serializers import (
     CommentItemSerializer,
     PlayerSerializer,
     PlaylistNavItemSerializer,
+    VideoDownscaleSerializer,
     VideoListQuerySerializer,
     VideoListSerializer,
     VideoProgressUpdateSerializer,
@@ -108,6 +114,71 @@ class VideoApiView(ApiBaseView):
             return Response(error.data, status=404)
 
         return Response(status=204)
+
+
+class VideoDownscaleView(ApiBaseView):
+    """resolves to /api/video/<video_id>/downscale/
+    POST: start a downscale task for this video
+    """
+
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        request=VideoDownscaleSerializer(),
+        responses={
+            200: OpenApiResponse(AsyncTaskResponseSerializer()),
+            400: OpenApiResponse(
+                ErrorResponseSerializer(), description="bad request"
+            ),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(), description="video not found"
+            ),
+            409: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="a downscale job is already in progress",
+            ),
+        },
+    )
+    def post(self, request, video_id):
+        """start downscale task"""
+        data_serializer = VideoDownscaleSerializer(data=request.data)
+        data_serializer.is_valid(raise_exception=True)
+        target_height = data_serializer.validated_data["target_height"]
+
+        video = YoutubeVideo(video_id)
+        video.get_from_es()
+        if not video.json_data:
+            error = ErrorResponseSerializer({"error": "video not found"})
+            return Response(error.data, status=404)
+
+        streams = video.json_data.get("streams") or []
+        heights = [s["height"] for s in streams if s["type"] == "video"]
+        current_height = max(heights) if heights else None
+        if not current_height or target_height >= current_height:
+            error = ErrorResponseSerializer(
+                {
+                    "error": "target height must be below the "
+                    "video's current height"
+                }
+            )
+            return Response(error.data, status=400)
+
+        if DownscaleInteract.get_active_for_video(video_id):
+            error = ErrorResponseSerializer(
+                {
+                    "error": "a downscale job is already in "
+                    "progress for this video"
+                }
+            )
+            return Response(error.data, status=409)
+
+        message = TaskCommand().start(
+            "downscale_video",
+            {"youtube_id": video_id, "target_height": target_height},
+        )
+        serializer = AsyncTaskResponseSerializer(message)
+
+        return Response(serializer.data)
 
 
 class VideoCommentView(ApiBaseView):

@@ -76,7 +76,8 @@ class NotificationQueryFilterSerializer(serializers.Serializer):
     """serialize notification query filter"""
 
     filter = serializers.ChoiceField(
-        choices=["download", "settings", "channel"], required=False
+        choices=["download", "settings", "channel", "downscale"],
+        required=False,
     )
 
 

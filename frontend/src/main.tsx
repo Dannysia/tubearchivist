@@ -25,6 +25,7 @@ import ChannelVideo from './pages/ChannelVideo';
 import ChannelPlaylist from './pages/ChannelPlaylist';
 import ChannelAbout from './pages/ChannelAbout';
 import Download from './pages/Download';
+import Downscale from './pages/Downscale';
 import loadUserAccount from './api/loader/loadUserAccount';
 import loadAppsettingsConfig from './api/loader/loadAppsettingsConfig';
 import NotFound from './pages/NotFound';
@@ -110,6 +111,10 @@ const router = createBrowserRouter(
         {
           path: Routes.Downloads,
           element: <Download />,
+        },
+        {
+          path: Routes.Downscale,
+          element: <Downscale />,
         },
         {
           path: Routes.Search,

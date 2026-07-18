@@ -94,6 +94,13 @@ INDEX_PLAYLISTS: TaskItemConfig = {
     "api_stop": False,
 }
 
+DOWNSCALE_VIDEO: TaskItemConfig = {
+    "title": "Downscale Video",
+    "group": "downscale:run",
+    "api_start": False,
+    "api_stop": True,
+}
+
 SUBSCRIBE_TO: TaskItemConfig = {
     "title": "Add Subscription",
     "group": "subscription:add",
@@ -122,4 +129,5 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "index_playlists": INDEX_PLAYLISTS,
     "subscribe_to": SUBSCRIBE_TO,
     "version_check": VERSION_CHECK,
+    "downscale_video": DOWNSCALE_VIDEO,
 }

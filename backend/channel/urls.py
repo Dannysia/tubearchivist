@@ -1,7 +1,8 @@
 """all channel API urls"""
 
-from channel import views
 from django.urls import path
+
+from channel import views
 
 urlpatterns = [
     path(
@@ -28,5 +29,10 @@ urlpatterns = [
         "<slug:channel_id>/nav/",
         views.ChannelNavApiView.as_view(),
         name="api-channel-nav",
+    ),
+    path(
+        "<slug:channel_id>/downscale/",
+        views.ChannelDownscaleView.as_view(),
+        name="api-channel-downscale",
     ),
 ]

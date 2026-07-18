@@ -15,6 +15,7 @@ import Linkify from '../components/Linkify';
 import loadSimilarVideosById from '../api/loader/loadSimilarVideosById';
 import VideoList from '../components/VideoList';
 import updateWatchedState from '../api/actions/updateWatchedState';
+import startDownscale from '../api/actions/startDownscale';
 import humanFileSize from '../functions/humanFileSize';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import ChannelOverview from '../components/ChannelOverview';
@@ -118,6 +119,8 @@ const Video = () => {
   );
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showDownscaleForm, setShowDownscaleForm] = useState(false);
+  const [downscaleTargetHeight, setDownscaleTargetHeight] = useState(0);
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [refreshVideoList, setRefreshVideoList] = useState(false);
   const [reindex, setReindex] = useState(false);
@@ -197,6 +200,13 @@ const Video = () => {
   const starRating = convertStarRating(video?.stats?.average_rating);
   const comments = commentsResponseData;
   const useSiUnits = userConfig.file_size_unit === FileSizeUnits.Metric;
+
+  const currentHeight = video.streams
+    ?.filter(stream => stream.type === 'video')
+    .reduce((max, stream) => Math.max(max, stream.height ?? 0), 0);
+  const downscaleLadder = [1080, 720, 480, 360].filter(
+    height => currentHeight && height < currentHeight,
+  );
 
   console.log('playlistNav', playlistNav);
 
@@ -391,6 +401,45 @@ const Video = () => {
                   )}
                 </>
               )}{' '}
+            </div>
+
+            <div className="button-box">
+              {isAdmin && downscaleLadder.length > 0 && (
+                <>
+                  {!showDownscaleForm && (
+                    <Button label="Downscale" onClick={() => setShowDownscaleForm(true)} />
+                  )}
+
+                  {showDownscaleForm && (
+                    <div className="delete-confirm">
+                      <span>Downscale to: </span>
+                      <select
+                        value={downscaleTargetHeight || downscaleLadder[0]}
+                        onChange={event =>
+                          setDownscaleTargetHeight(Number(event.currentTarget.value))
+                        }
+                      >
+                        {downscaleLadder.map(height => (
+                          <option key={height} value={height}>
+                            {height}p
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        label="Start"
+                        onClick={async () => {
+                          await startDownscale(
+                            videoId,
+                            downscaleTargetHeight || downscaleLadder[0],
+                          );
+                          navigate(Routes.Downscale);
+                        }}
+                      />
+                      <Button label="Cancel" onClick={() => setShowDownscaleForm(false)} />
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="button-box">

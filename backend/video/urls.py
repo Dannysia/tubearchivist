@@ -16,6 +16,11 @@ urlpatterns = [
         name="api-video-nav",
     ),
     path(
+        "<slug:video_id>/downscale/",
+        views.VideoDownscaleView.as_view(),
+        name="api-video-downscale",
+    ),
+    path(
         "<slug:video_id>/progress/",
         views.VideoProgressView.as_view(),
         name="api-video-progress",

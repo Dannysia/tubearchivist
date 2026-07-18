@@ -1,6 +1,6 @@
 import APIClient from '../../functions/APIClient';
 
-export type NotificationPages = 'download' | 'settings' | 'channel' | 'all';
+export type NotificationPages = 'download' | 'settings' | 'channel' | 'downscale' | 'all';
 
 type NotificationType = {
   title: string;

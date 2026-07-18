@@ -64,6 +64,10 @@ class SearchProcess:
             processed = self._process_playlist(result["_source"])
         if index.startswith("ta_download"):
             processed = self._process_download(result["_source"])
+        if index.startswith("ta_downscale"):
+            processed = self._process_downscale(
+                result["_id"], result["_source"]
+            )
         if index.startswith("ta_comment"):
             processed = self._process_comment(result["_source"])
         if index.startswith("ta_subtitle"):
@@ -195,6 +199,18 @@ class SearchProcess:
             }
         )
         return dict(sorted(download_dict.items()))
+
+    def _process_downscale(self, doc_id, downscale_dict):
+        """run on single downscale queue item"""
+        vid_thumb_url = None
+        if downscale_dict.get("vid_thumb_url"):
+            video_id = downscale_dict["youtube_id"]
+            cache_root = EnvironmentSettings().get_cache_root()
+            relative_path = ThumbManager(video_id).vid_thumb_path()
+            vid_thumb_url = f"{cache_root}/{relative_path}"
+
+        downscale_dict.update({"id": doc_id, "vid_thumb_url": vid_thumb_url})
+        return dict(sorted(downscale_dict.items()))
 
     def _process_comment(self, comment_dict):
         """run on all comments, create reply thread"""

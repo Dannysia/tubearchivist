@@ -9,10 +9,11 @@ from time import sleep
 from typing import Literal, TypedDict
 
 import requests
+from django.conf import settings
+
 from appsettings.src.snapshot import ElasticSnapshot
 from common.src.es_connect import ElasticWrap
 from common.src.ta_redis import RedisArchivist
-from django.conf import settings
 
 
 class SubscriptionsConfigType(TypedDict):
@@ -53,6 +54,9 @@ class ApplicationConfigType(TypedDict):
 
     enable_snapshot: bool
     enable_cast: bool
+    downscale_max_concurrent: int | None
+    downscale_encoder: Literal["h264", "h265", "av1"]
+    downscale_crf: int | None
 
 
 class AppConfigType(TypedDict):
@@ -99,6 +103,9 @@ class AppConfig:
         "application": {
             "enable_snapshot": True,
             "enable_cast": False,
+            "downscale_max_concurrent": None,
+            "downscale_encoder": "h264",
+            "downscale_crf": 23,
         },
     }
 

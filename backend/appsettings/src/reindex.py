@@ -306,6 +306,28 @@ class Reindex(ReindexBase):
         progress = idx / total
         self.task.send_progress(message, progress=progress)
 
+    @staticmethod
+    def _get_media_path(youtube_id: str, es_meta: dict) -> str | bool:
+        """
+        find the file to probe for a reindex: prefer a fresh download still
+        sitting in the cache dir over the archived file, so a force-redownload
+        that hasn't been moved to the archive yet doesn't get reindexed
+        against the stale, about-to-be-replaced file
+        """
+        cache_path = os.path.join(
+            EnvironmentSettings.CACHE_DIR, "download", f"{youtube_id}.mp4"
+        )
+        if os.path.exists(cache_path):
+            return cache_path
+
+        archive_path = os.path.join(
+            EnvironmentSettings.MEDIA_DIR, es_meta["media_url"]
+        )
+        if os.path.exists(archive_path):
+            return archive_path
+
+        return False
+
     def reindex_single_video(self, youtube_id: str) -> YoutubeVideo | None:
         """refresh data for single video"""
         video = YoutubeVideo(youtube_id)
@@ -318,12 +340,7 @@ class Reindex(ReindexBase):
         es_meta = video.json_data.copy()
 
         # get new
-        media_url: str | bool = os.path.join(
-            EnvironmentSettings.MEDIA_DIR, es_meta["media_url"]
-        )
-        if not os.path.exists(media_url):
-            # fallback to cache path
-            media_url = False
+        media_url: str | bool = self._get_media_path(youtube_id, es_meta)
 
         video.build_json(media_path=media_url)
         if not video.youtube_meta:

@@ -6,14 +6,15 @@ Functionality:
 - handle task locking
 """
 
+from celery import Task, shared_task
+from celery.exceptions import Retry
+
 from appsettings.src.backup import ElasticBackup
 from appsettings.src.config import ReleaseVersion
 from appsettings.src.filesystem import Scanner
 from appsettings.src.index_setup import ElasticIndexWrap
 from appsettings.src.manual import ImportFolderScanner
 from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
-from celery import Task, shared_task
-from celery.exceptions import Retry
 from channel.src.index import YoutubeChannel
 from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import ParsedURLType, Parser
@@ -21,6 +22,7 @@ from download.src.queue import PendingList
 from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import VideoDownloader
+from downscale.src.downscale import DownscaleRunner
 from task.src.notify import Notifications
 from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskManager
@@ -321,6 +323,21 @@ def index_channel_playlists(self, channel_id):
     """add all playlists of channel to index"""
     channel = YoutubeChannel(channel_id, task=self)
     channel.index_channel_playlists()
+
+
+@shared_task(
+    bind=True,
+    name="downscale_video",
+    base=BaseTask,
+    max_retries=None,
+    default_retry_delay=20,
+)
+def downscale_video(self, youtube_id: str, target_height: int):
+    """downscale a single already downloaded video to target_height"""
+    TaskManager().init(self)
+    DownscaleRunner(
+        task=self, youtube_id=youtube_id, target_height=target_height
+    ).run()
 
 
 @shared_task(name="version_check")

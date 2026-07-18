@@ -2,8 +2,10 @@
 
 # pylint: disable=abstract-method
 
-from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from rest_framework import serializers
+
+from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
+from downscale.serializers import DownscaleBulkResultItemSerializer
 from video.src.constants import VideoTypeEnum
 
 
@@ -108,3 +110,10 @@ class ChannelSearchQuerySerializer(serializers.Serializer):
     """serialize query parameters for searching"""
 
     q = serializers.CharField()
+
+
+class ChannelDownscaleSerializer(serializers.Serializer):
+    """serialize channel batch downscale response"""
+
+    queued = serializers.ListField(child=serializers.CharField())
+    skipped = DownscaleBulkResultItemSerializer(many=True)

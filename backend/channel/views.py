@@ -1,7 +1,15 @@
 """all channel API views"""
 
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+)
+from rest_framework.response import Response
+
 from channel.serializers import (
     ChannelAggSerializer,
+    ChannelDownscaleSerializer,
     ChannelListQuerySerializer,
     ChannelListSerializer,
     ChannelNavSerializer,
@@ -12,15 +20,13 @@ from channel.serializers import (
 from channel.src.index import YoutubeChannel, channel_overwrites
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
+from common.src.es_connect import IndexPaginate
 from common.src.urlparser import Parser
-from common.views_base import AdminWriteOnly, ApiBaseView
-from drf_spectacular.utils import (
-    OpenApiParameter,
-    OpenApiResponse,
-    extend_schema,
-)
-from rest_framework.response import Response
+from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
+from downscale.src.queue_interact import DownscaleInteract
+from task.src.task_manager import TaskCommand
 from task.tasks import index_channel_playlists, subscribe_to
+from video.serializers import VideoDownscaleSerializer
 
 
 class ChannelApiListView(ApiBaseView):
@@ -227,6 +233,77 @@ class ChannelNavApiView(ApiBaseView):
         nav = ChannelNav(channel_id).get_nav()
         serializer = ChannelNavSerializer(nav)
         return Response(serializer.data)
+
+
+class ChannelDownscaleView(ApiBaseView):
+    """resolves to /api/channel/<channel_id>/downscale/
+    POST: batch queue downscale jobs for every video in the channel
+    that's currently above the given target height
+    """
+
+    search_base = "ta_channel/_doc/"
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        request=VideoDownscaleSerializer(),
+        responses={
+            200: OpenApiResponse(ChannelDownscaleSerializer()),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(), description="channel not found"
+            ),
+        },
+    )
+    def post(self, request, channel_id):
+        """queue downscale for all qualifying videos in channel"""
+        self.get_document(channel_id)
+        if not self.response:
+            error = ErrorResponseSerializer({"error": "channel not found"})
+            return Response(error.data, status=404)
+
+        data_serializer = VideoDownscaleSerializer(data=request.data)
+        data_serializer.is_valid(raise_exception=True)
+        target_height = data_serializer.validated_data["target_height"]
+
+        queued = []
+        skipped = []
+        for video in self._get_channel_videos(channel_id):
+            youtube_id = video["youtube_id"]
+            streams = video.get("streams") or []
+            heights = [s["height"] for s in streams if s["type"] == "video"]
+            current_height = max(heights) if heights else None
+
+            if not current_height or target_height >= current_height:
+                # already at or below target, nothing to do
+                continue
+
+            if DownscaleInteract.get_active_for_video(youtube_id):
+                skipped.append(
+                    {
+                        "id": youtube_id,
+                        "error": "a downscale job is already in progress",
+                    }
+                )
+                continue
+
+            TaskCommand().start(
+                "downscale_video",
+                {"youtube_id": youtube_id, "target_height": target_height},
+            )
+            queued.append(youtube_id)
+
+        serializer = ChannelDownscaleSerializer(
+            {"queued": queued, "skipped": skipped}
+        )
+        return Response(serializer.data)
+
+    @staticmethod
+    def _get_channel_videos(channel_id):
+        """get id and streams for all videos in channel"""
+        data = {
+            "query": {"term": {"channel.channel_id": {"value": channel_id}}},
+            "_source": ["youtube_id", "streams"],
+        }
+        return IndexPaginate("ta_video", data).get_results()
 
 
 class ChannelApiSearchView(ApiBaseView):

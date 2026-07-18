@@ -2,11 +2,27 @@
 
 # pylint: disable=abstract-method
 
-from channel.serializers import ChannelSerializer
-from common.serializers import PaginationSerializer
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+
+from channel.serializers import ChannelSerializer
+from common.serializers import PaginationSerializer
 from video.src.constants import OrderEnum, SortEnum, VideoTypeEnum, WatchedEnum
+
+
+class VideoDownscaleSerializer(serializers.Serializer):
+    """serialize downscale start request"""
+
+    target_height = serializers.ChoiceField(choices=[1080, 720, 480, 360])
+
+
+class DownscaleRecordSerializer(serializers.Serializer):
+    """serialize a video's downscale history record"""
+
+    original_height = serializers.IntegerField()
+    original_size = serializers.IntegerField()
+    new_height = serializers.IntegerField()
+    new_size = serializers.IntegerField()
 
 
 class PlayerSerializer(serializers.Serializer):
@@ -99,6 +115,7 @@ class VideoSerializer(serializers.Serializer):
     comment_count = serializers.IntegerField(allow_null=True, required=False)
     date_downloaded = serializers.IntegerField()
     description = serializers.CharField(allow_null=True, required=False)
+    downscale = DownscaleRecordSerializer(required=False)
     media_size = serializers.IntegerField()
     media_url = serializers.CharField()
     player = PlayerSerializer()

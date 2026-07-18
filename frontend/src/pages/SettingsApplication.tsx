@@ -76,6 +76,9 @@ const SettingsApplication = () => {
   const [downloadDislikes, setDownloadDislikes] = useState(false);
   const [enableSponsorBlock, setEnableSponsorBlock] = useState(false);
   const [enableCast, setEnableCast] = useState(false);
+  const [downscaleMaxConcurrent, setDownscaleMaxConcurrent] = useState<number | null>(null);
+  const [downscaleEncoder, setDownscaleEncoder] = useState('h264');
+  const [downscaleCrf, setDownscaleCrf] = useState<number | null>(null);
 
   // Snapshots
   const [enableSnapshots, setEnableSnapshots] = useState(false);
@@ -129,6 +132,11 @@ const SettingsApplication = () => {
     setDownloadDislikes(appSettingsConfigData?.downloads.integrate_ryd || false);
     setEnableSponsorBlock(appSettingsConfigData?.downloads.integrate_sponsorblock || false);
     setEnableCast(appSettingsConfigData?.application.enable_cast || false);
+    setDownscaleMaxConcurrent(
+      appSettingsConfigData?.application.downscale_max_concurrent || null,
+    );
+    setDownscaleEncoder(appSettingsConfigData?.application.downscale_encoder || 'h264');
+    setDownscaleCrf(appSettingsConfigData?.application.downscale_crf ?? null);
 
     // Snapshots
     setEnableSnapshots(appSettingsConfigData?.application.enable_snapshot || false);
@@ -795,6 +803,27 @@ const SettingsApplication = () => {
                         </li>
                       </ul>
                     </li>
+                    <li>
+                      Max concurrent downscale jobs limits how many downscale encodes run at the
+                      same time.
+                      <ul>
+                        <li>Leave empty for no additional limit.</li>
+                        <li>
+                          Still bounded by the Celery worker's overall concurrency, and shares
+                          worker slots with downloads and other background tasks.
+                        </li>
+                      </ul>
+                    </li>
+                    <li>
+                      Downscale encoder and quality (CRF) apply to all future downscale jobs.
+                      <ul>
+                        <li>H.264 is the most compatible, AV1 compresses best but is slowest.</li>
+                        <li>
+                          Lower CRF means higher quality and larger files. The useful range differs
+                          per encoder: roughly 18-28 for H.264/H.265, 25-40 for AV1.
+                        </li>
+                      </ul>
+                    </li>
                   </ul>
                 </div>
               )}
@@ -862,6 +891,51 @@ const SettingsApplication = () => {
                 <ToggleConfig
                   name="application.enable_cast"
                   value={enableCast}
+                  updateCallback={handleUpdateConfig}
+                />
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Max concurrent downscale jobs</p>
+                </div>
+                <InputConfig
+                  type="number"
+                  name="application.downscale_max_concurrent"
+                  value={downscaleMaxConcurrent}
+                  setValue={setDownscaleMaxConcurrent}
+                  oldValue={appSettingsConfig?.application.downscale_max_concurrent ?? null}
+                  updateCallback={handleUpdateConfig}
+                />
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Downscale encoder</p>
+                </div>
+                <div>
+                  <select
+                    name="application.downscale_encoder"
+                    value={downscaleEncoder}
+                    onChange={event => {
+                      setDownscaleEncoder(event.target.value);
+                      handleUpdateConfig('application.downscale_encoder', event.target.value);
+                    }}
+                  >
+                    <option value="h264">H.264</option>
+                    <option value="h265">H.265 (HEVC)</option>
+                    <option value="av1">AV1</option>
+                  </select>
+                </div>
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Downscale quality (CRF)</p>
+                </div>
+                <InputConfig
+                  type="number"
+                  name="application.downscale_crf"
+                  value={downscaleCrf}
+                  setValue={setDownscaleCrf}
+                  oldValue={appSettingsConfig?.application.downscale_crf ?? null}
                   updateCallback={handleUpdateConfig}
                 />
               </div>
