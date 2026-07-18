@@ -285,10 +285,23 @@ class ChannelDownscaleView(ApiBaseView):
                 )
                 continue
 
-            TaskCommand().start(
-                "downscale_video",
-                {"youtube_id": youtube_id, "target_height": target_height},
+            doc_id = DownscaleInteract().create(
+                DownscaleInteract.build_queued_doc(
+                    youtube_id=youtube_id,
+                    video_json_data=video,
+                    current_height=current_height,
+                    target_height=target_height,
+                )
             )
+            message = TaskCommand().start(
+                "downscale_video",
+                {
+                    "youtube_id": youtube_id,
+                    "target_height": target_height,
+                    "doc_id": doc_id,
+                },
+            )
+            DownscaleInteract(doc_id).update(task_id=message["task_id"])
             queued.append(youtube_id)
 
         serializer = ChannelDownscaleSerializer(
@@ -298,10 +311,18 @@ class ChannelDownscaleView(ApiBaseView):
 
     @staticmethod
     def _get_channel_videos(channel_id):
-        """get id and streams for all videos in channel"""
+        """get all fields needed to queue a downscale for all channel videos"""
         data = {
             "query": {"term": {"channel.channel_id": {"value": channel_id}}},
-            "_source": ["youtube_id", "streams"],
+            "_source": [
+                "youtube_id",
+                "streams",
+                "title",
+                "channel",
+                "vid_thumb_url",
+                "media_url",
+                "media_size",
+            ],
         }
         return IndexPaginate("ta_video", data).get_results()
 

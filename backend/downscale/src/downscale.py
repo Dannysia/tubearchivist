@@ -49,19 +49,24 @@ def _get_height(media_path: str) -> int | None:
 class DownscaleRunner:
     """run a single downscale job for a video, called from the celery task"""
 
-    def __init__(self, task, youtube_id: str, target_height: int):
+    def __init__(self, task, youtube_id: str, target_height: int, doc_id: str):
         self.task = task
         self.youtube_id = youtube_id
         self.target_height = target_height
-        self.doc_id: str | None = None
+        self.doc_id: str = doc_id
         self.tmp_path: str | None = None
 
     def run(self) -> None:
-        """entry point"""
+        """entry point. self.doc_id already exists in status=queued"""
+        if self.task.is_stopped():
+            DownscaleInteract(self.doc_id).delete_item()
+            return
+
         video = YoutubeVideo(self.youtube_id)
         video.get_from_es()
         if not video.json_data:
             print(f"{self.youtube_id}: video not found, skip downscale")
+            DownscaleInteract(self.doc_id).delete_item()
             return
 
         original_path = os.path.join(
@@ -69,6 +74,11 @@ class DownscaleRunner:
         )
         if not os.path.exists(original_path):
             print(f"{self.youtube_id}: source file missing, skip downscale")
+            DownscaleInteract(self.doc_id).update(
+                status="failed",
+                message="source file missing",
+                updated=_now(),
+            )
             return
 
         current_height = _get_height(original_path)
@@ -77,9 +87,14 @@ class DownscaleRunner:
                 f"{self.youtube_id}: target height {self.target_height} not "
                 f"below current height {current_height}, skip downscale"
             )
+            DownscaleInteract(self.doc_id).update(
+                status="failed",
+                message="target height no longer below current height",
+                updated=_now(),
+            )
             return
 
-        if not self._reserve_slot(video, current_height, original_path):
+        if not self._reserve_slot(current_height, original_path):
             return
 
         duration = video.json_data.get("player", {}).get("duration") or 0
@@ -97,14 +112,12 @@ class DownscaleRunner:
                 status="failed", message=str(err), updated=_now()
             )
 
-    def _reserve_slot(
-        self, video: YoutubeVideo, current_height: int, original_path: str
-    ) -> bool:
+    def _reserve_slot(self, current_height: int, original_path: str) -> bool:
         """
-        atomically check for an existing job on this video and the
-        concurrency limit, then create the running doc. returns True if
-        a slot was reserved and the doc created, False if the caller
-        should bail out without encoding
+        atomically check for another active job on this video and the
+        concurrency limit, then transition this job's queued doc to
+        running. returns True if a slot was reserved, False if the
+        caller should bail out without encoding
         """
         lock = RedisBase().conn.lock(
             DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
@@ -120,11 +133,14 @@ class DownscaleRunner:
             raise self.task.retry()
 
         try:
-            if DownscaleInteract.get_active_for_video(self.youtube_id):
+            if DownscaleInteract.get_active_for_video(
+                self.youtube_id, exclude_id=self.doc_id
+            ):
                 print(
-                    f"{self.youtube_id}: already has an active downscale "
-                    "job, skip"
+                    f"{self.youtube_id}: already has another active "
+                    "downscale job, skip"
                 )
+                DownscaleInteract(self.doc_id).delete_item()
                 return False
 
             max_concurrent = AppConfig().config["application"][
@@ -147,29 +163,15 @@ class DownscaleRunner:
             )
             os.makedirs(os.path.dirname(self.tmp_path), exist_ok=True)
 
-            self.doc_id = DownscaleInteract().create(
-                {
-                    "youtube_id": self.youtube_id,
-                    "channel_id": video.json_data["channel"]["channel_id"],
-                    "channel_name": video.json_data["channel"]["channel_name"],
-                    "title": video.json_data["title"],
-                    "vid_thumb_url": video.json_data.get("vid_thumb_url"),
-                    "media_url": (
-                        f"{EnvironmentSettings().get_media_root()}/"
-                        f'{video.json_data["media_url"]}'
-                    ),
-                    "status": "running",
-                    "current_height": current_height,
-                    "target_height": self.target_height,
-                    "original_size": MediaStreamExtractor(
-                        original_path
-                    ).get_file_size(),
-                    "new_size": 0,
-                    "tmp_file_path": self.tmp_path,
-                    "task_id": self.task.request.id,
-                    "timestamp": _now(),
-                    "updated": _now(),
-                }
+            DownscaleInteract(self.doc_id).update(
+                status="running",
+                current_height=current_height,
+                original_size=MediaStreamExtractor(
+                    original_path
+                ).get_file_size(),
+                tmp_file_path=self.tmp_path,
+                task_id=self.task.request.id,
+                updated=_now(),
             )
             return True
         finally:

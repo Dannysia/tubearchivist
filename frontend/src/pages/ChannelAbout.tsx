@@ -249,7 +249,7 @@ const ChannelAbout = () => {
                             );
                             setDownscaleResult(response.data ?? { queued: [], skipped: [] });
                             setShowDownscaleForm(false);
-                            setStartNotification(true);
+                            setTimeout(() => setDownscaleResult(null), 6000);
                           }}
                         />
                         <Button label="Cancel" onClick={() => setShowDownscaleForm(false)} />

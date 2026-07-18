@@ -1,7 +1,7 @@
 import APIClient from '../../functions/APIClient';
 import { DownscaleResponseType } from '../../pages/Downscale';
 
-export type DownscaleStatus = 'running' | 'pending_review' | 'failed' | 'cancelled';
+export type DownscaleStatus = 'queued' | 'running' | 'pending_review' | 'failed' | 'cancelled';
 
 const loadDownscaleQueue = async (page: number, status: DownscaleStatus | null) => {
   const searchParams = new URLSearchParams();

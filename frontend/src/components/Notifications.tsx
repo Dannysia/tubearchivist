@@ -12,6 +12,7 @@ type NotificationsProps = {
   includeReindex?: boolean;
   update?: boolean;
   setShouldRefresh?: (isDone: boolean) => void;
+  excludeGroups?: string[];
 };
 
 const Notifications = ({
@@ -19,6 +20,7 @@ const Notifications = ({
   includeReindex = false,
   update,
   setShouldRefresh,
+  excludeGroups,
 }: NotificationsProps) => {
   const [notificationResponse, setNotificationResponse] =
     useState<ApiResponseType<NotificationResponseType>>();
@@ -30,8 +32,14 @@ const Notifications = ({
       const notifications = await loadNotifications(pageName, includeReindex);
       const { data: notificationsData } = notifications ?? {};
 
-      if (notificationsData?.length === 0) {
-        setNotificationResponse(notifications);
+      const visibleData = excludeGroups?.length
+        ? notificationsData?.filter(
+            notification => !excludeGroups.some(prefix => notification.group.startsWith(prefix)),
+          )
+        : notificationsData;
+
+      if (visibleData?.length === 0) {
+        setNotificationResponse({ ...notifications, data: visibleData });
         clearInterval(intervalId);
         setShouldRefresh?.(true);
         return;
@@ -39,13 +47,13 @@ const Notifications = ({
         setShouldRefresh?.(false);
       }
 
-      setNotificationResponse(notifications);
+      setNotificationResponse({ ...notifications, data: visibleData });
     }, 1000);
 
     return () => {
       clearInterval(intervalId);
     };
-  }, [pageName, update, setShouldRefresh, includeReindex]);
+  }, [pageName, update, setShouldRefresh, includeReindex, excludeGroups]);
 
   if (notificationResponseData?.length === 0) {
     return [];

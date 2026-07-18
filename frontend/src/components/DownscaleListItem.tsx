@@ -34,6 +34,7 @@ const DownscaleListItem = ({
 
   const [preview, setPreview] = useState<PreviewType>(null);
 
+  const isQueued = job.status === 'queued';
   const isRunning = job.status === 'running';
   const isPendingReview = job.status === 'pending_review';
 
@@ -79,6 +80,8 @@ const DownscaleListItem = ({
           )}
         </p>
 
+        {isQueued && <p>Waiting for a free slot to start encoding...</p>}
+
         {job.message && (
           <div>
             <p className="danger-zone">{job.message}</p>
@@ -123,7 +126,7 @@ const DownscaleListItem = ({
         )}
 
         <div>
-          {!isRunning && (
+          {!isRunning && !isQueued && (
             <div className="button-box">
               <input
                 type="checkbox"
@@ -158,7 +161,7 @@ const DownscaleListItem = ({
             </>
           )}
 
-          {!isPendingReview && !isRunning && (
+          {!isPendingReview && !isRunning && !isQueued && (
             <div className="button-box">
               <Button
                 label="Dismiss"
@@ -171,7 +174,7 @@ const DownscaleListItem = ({
             </div>
           )}
 
-          {isRunning && (
+          {(isRunning || isQueued) && (
             <div className="button-box">
               <Button
                 label="Cancel"

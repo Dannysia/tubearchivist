@@ -53,7 +53,8 @@ const Downscale = () => {
   const jobList = downscaleResponseData?.data;
   const pagination = downscaleResponseData?.paginate;
 
-  const hasRunningJob = jobList?.some(job => job.status === 'running') ?? false;
+  const hasActiveJob =
+    jobList?.some(job => job.status === 'running' || job.status === 'queued') ?? false;
 
   const refreshQueue = () => {
     setRefreshNonce(current => current + 1);
@@ -67,7 +68,7 @@ const Downscale = () => {
   }, [currentPage, statusFilterFromUrl, refreshNonce]);
 
   useEffect(() => {
-    if (!hasRunningJob) {
+    if (!hasActiveJob) {
       return;
     }
 
@@ -89,7 +90,7 @@ const Downscale = () => {
     }, 1000);
 
     return () => clearInterval(intervalId);
-  }, [hasRunningJob]);
+  }, [hasActiveJob]);
 
   const handleSetPage = (page: number) => {
     setSelectedIds(new Set());
@@ -139,6 +140,7 @@ const Downscale = () => {
             }}
           >
             <option value="all">all statuses</option>
+            <option value="queued">queued</option>
             <option value="running">running</option>
             <option value="pending_review">pending review</option>
             <option value="failed">failed</option>

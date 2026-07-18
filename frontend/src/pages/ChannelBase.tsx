@@ -96,6 +96,7 @@ const ChannelBase = () => {
           includeReindex={true}
           update={startNotification}
           setShouldRefresh={() => setStartNotification(false)}
+          excludeGroups={['downscale']}
         />
       </div>
 

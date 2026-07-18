@@ -332,11 +332,14 @@ def index_channel_playlists(self, channel_id):
     max_retries=None,
     default_retry_delay=20,
 )
-def downscale_video(self, youtube_id: str, target_height: int):
+def downscale_video(self, youtube_id: str, target_height: int, doc_id: str):
     """downscale a single already downloaded video to target_height"""
     TaskManager().init(self)
     DownscaleRunner(
-        task=self, youtube_id=youtube_id, target_height=target_height
+        task=self,
+        youtube_id=youtube_id,
+        target_height=target_height,
+        doc_id=doc_id,
     ).run()
 
 
