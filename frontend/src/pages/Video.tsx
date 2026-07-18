@@ -46,7 +46,7 @@ import NotFound from './NotFound';
 import { ApiResponseType } from '../functions/APIClient';
 import VideoThumbnail from '../components/VideoThumbail';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
-import bitsToBytes from '../functions/bitsToBytes';
+import humanBitRate from '../functions/humanBitRate';
 
 const isInPlaylist = (videoId: string, playlist: PlaylistType) => {
   return playlist.playlist_entries.some(entry => {
@@ -510,7 +510,7 @@ const Video = () => {
                 return (
                   <p key={stream.index}>
                     {capitalizeFirstLetter(stream.type)}: {stream.codec}{' '}
-                    {humanFileSize(bitsToBytes(stream.bitrate), useSiUnits)}/s
+                    {humanBitRate(stream.bitrate)}
                     {stream.width && (
                       <>
                         <span className="space-carrot">|</span> {stream.width}x{stream.height}
