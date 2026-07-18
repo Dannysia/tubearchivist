@@ -45,6 +45,15 @@ Defines views at `/api/download/*`.
 - Thumbnails
 - Subscriptions
 
+### downscale
+Implements ffmpeg-based video downscaling with a review queue.
+
+Defines views at `/api/downscale/*`, plus a downscale endpoint on `/api/video/*` and `/api/channel/*`.
+
+- Run downscale jobs and report progress
+- Review queue: accept/reject downscaled candidates
+- Batch downscale for a whole channel
+
 ### playlist
 Implements playlist functionality.
 
