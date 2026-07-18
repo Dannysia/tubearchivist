@@ -307,18 +307,26 @@ class Reindex(ReindexBase):
         self.task.send_progress(message, progress=progress)
 
     @staticmethod
-    def _get_media_path(youtube_id: str, es_meta: dict) -> str | bool:
+    def _get_media_path(
+        youtube_id: str, es_meta: dict, is_redownload: bool
+    ) -> str | bool:
         """
-        find the file to probe for a reindex: prefer a fresh download still
-        sitting in the cache dir over the archived file, so a force-redownload
-        that hasn't been moved to the archive yet doesn't get reindexed
-        against the stale, about-to-be-replaced file
+        find the file to probe for a reindex. During an active
+        force-redownload, prefer a fresh download still sitting in the
+        cache dir over the archived file, since the archive hasn't been
+        overwritten yet. For a routine reindex (no redownload happening),
+        always use the archived file - a stale/leftover cache file from
+        an unrelated interrupted download should never be probed instead
+        of the real, current archive.
         """
-        cache_path = os.path.join(
-            EnvironmentSettings.CACHE_DIR, "download", f"{youtube_id}.mp4"
-        )
-        if os.path.exists(cache_path):
-            return cache_path
+        if is_redownload:
+            cache_path = os.path.join(
+                EnvironmentSettings.CACHE_DIR,
+                "download",
+                f"{youtube_id}.mp4",
+            )
+            if os.path.exists(cache_path):
+                return cache_path
 
         archive_path = os.path.join(
             EnvironmentSettings.MEDIA_DIR, es_meta["media_url"]
@@ -328,7 +336,9 @@ class Reindex(ReindexBase):
 
         return False
 
-    def reindex_single_video(self, youtube_id: str) -> YoutubeVideo | None:
+    def reindex_single_video(
+        self, youtube_id: str, is_redownload: bool = False
+    ) -> YoutubeVideo | None:
         """refresh data for single video"""
         video = YoutubeVideo(youtube_id)
 
@@ -340,7 +350,9 @@ class Reindex(ReindexBase):
         es_meta = video.json_data.copy()
 
         # get new
-        media_url: str | bool = self._get_media_path(youtube_id, es_meta)
+        media_url: str | bool = self._get_media_path(
+            youtube_id, es_meta, is_redownload
+        )
 
         video.build_json(media_path=media_url)
         if not video.youtube_meta:
@@ -357,6 +369,8 @@ class Reindex(ReindexBase):
         video.json_data["channel"] = es_meta.get("channel")
         if es_meta.get("playlist"):
             video.json_data["playlist"] = es_meta.get("playlist")
+        if not is_redownload and es_meta.get("downscale"):
+            video.json_data["downscale"] = es_meta.get("downscale")
 
         video.upload_to_es()
         self.processed["videos"] += 1

@@ -520,7 +520,9 @@ def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS):
     video.get_from_es(print_error=False)
     if video.json_data:
         # reindex only for force redownload
-        video = Reindex().reindex_single_video(youtube_id=youtube_id)
+        video = Reindex().reindex_single_video(
+            youtube_id=youtube_id, is_redownload=True
+        )
     else:
         video.build_json()
 

@@ -13,12 +13,16 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
+from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
 from video.src.index import YoutubeVideo
 from video.src.media_streams import MediaStreamExtractor
 
 POLL_INTERVAL = 2
 TERMINATE_TIMEOUT = 10
+DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
+DISPATCH_LOCK_TIMEOUT = 30
+DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 
 ENCODER_SETTINGS = {
     "h264": {"codec": "libx264", "extra_args": ["-preset", "veryfast"]},
@@ -54,19 +58,6 @@ class DownscaleRunner:
 
     def run(self) -> None:
         """entry point"""
-        max_concurrent = AppConfig().config["application"][
-            "downscale_max_concurrent"
-        ]
-        if (
-            max_concurrent
-            and DownscaleInteract.count_running() >= max_concurrent
-        ):
-            print(
-                f"{self.youtube_id}: max concurrent downscale jobs "
-                f"({max_concurrent}) reached, waiting for a free slot"
-            )
-            raise self.task.retry()
-
         video = YoutubeVideo(self.youtube_id)
         video.get_from_es()
         if not video.json_data:
@@ -88,37 +79,8 @@ class DownscaleRunner:
             )
             return
 
-        self.tmp_path = os.path.join(
-            EnvironmentSettings.CACHE_DIR,
-            "downscale",
-            f"{self.youtube_id}_{self.target_height}p.mp4",
-        )
-        os.makedirs(os.path.dirname(self.tmp_path), exist_ok=True)
-
-        self.doc_id = DownscaleInteract().create(
-            {
-                "youtube_id": self.youtube_id,
-                "channel_id": video.json_data["channel"]["channel_id"],
-                "channel_name": video.json_data["channel"]["channel_name"],
-                "title": video.json_data["title"],
-                "vid_thumb_url": video.json_data.get("vid_thumb_url"),
-                "media_url": (
-                    f"{EnvironmentSettings().get_media_root()}/"
-                    f'{video.json_data["media_url"]}'
-                ),
-                "status": "running",
-                "current_height": current_height,
-                "target_height": self.target_height,
-                "original_size": MediaStreamExtractor(
-                    original_path
-                ).get_file_size(),
-                "new_size": 0,
-                "tmp_file_path": self.tmp_path,
-                "task_id": self.task.request.id,
-                "timestamp": _now(),
-                "updated": _now(),
-            }
-        )
+        if not self._reserve_slot(video, current_height, original_path):
+            return
 
         duration = video.json_data.get("player", {}).get("duration") or 0
 
@@ -134,6 +96,84 @@ class DownscaleRunner:
             DownscaleInteract(self.doc_id).update(
                 status="failed", message=str(err), updated=_now()
             )
+
+    def _reserve_slot(
+        self, video: YoutubeVideo, current_height: int, original_path: str
+    ) -> bool:
+        """
+        atomically check for an existing job on this video and the
+        concurrency limit, then create the running doc. returns True if
+        a slot was reserved and the doc created, False if the caller
+        should bail out without encoding
+        """
+        lock = RedisBase().conn.lock(
+            DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
+        )
+        acquired = lock.acquire(
+            blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
+        )
+        if not acquired:
+            print(
+                f"{self.youtube_id}: could not acquire downscale dispatch "
+                "lock, retrying"
+            )
+            raise self.task.retry()
+
+        try:
+            if DownscaleInteract.get_active_for_video(self.youtube_id):
+                print(
+                    f"{self.youtube_id}: already has an active downscale "
+                    "job, skip"
+                )
+                return False
+
+            max_concurrent = AppConfig().config["application"][
+                "downscale_max_concurrent"
+            ]
+            if (
+                max_concurrent
+                and DownscaleInteract.count_running() >= max_concurrent
+            ):
+                print(
+                    f"{self.youtube_id}: max concurrent downscale jobs "
+                    f"({max_concurrent}) reached, waiting for a free slot"
+                )
+                raise self.task.retry()
+
+            self.tmp_path = os.path.join(
+                EnvironmentSettings.CACHE_DIR,
+                "downscale",
+                f"{self.youtube_id}_{self.target_height}p.mp4",
+            )
+            os.makedirs(os.path.dirname(self.tmp_path), exist_ok=True)
+
+            self.doc_id = DownscaleInteract().create(
+                {
+                    "youtube_id": self.youtube_id,
+                    "channel_id": video.json_data["channel"]["channel_id"],
+                    "channel_name": video.json_data["channel"]["channel_name"],
+                    "title": video.json_data["title"],
+                    "vid_thumb_url": video.json_data.get("vid_thumb_url"),
+                    "media_url": (
+                        f"{EnvironmentSettings().get_media_root()}/"
+                        f'{video.json_data["media_url"]}'
+                    ),
+                    "status": "running",
+                    "current_height": current_height,
+                    "target_height": self.target_height,
+                    "original_size": MediaStreamExtractor(
+                        original_path
+                    ).get_file_size(),
+                    "new_size": 0,
+                    "tmp_file_path": self.tmp_path,
+                    "task_id": self.task.request.id,
+                    "timestamp": _now(),
+                    "updated": _now(),
+                }
+            )
+            return True
+        finally:
+            lock.release()
 
     def _encode(self, original_path: str, duration: float, title: str) -> None:
         """run ffmpeg, polling for progress and a stop signal"""
@@ -172,6 +212,8 @@ class DownscaleRunner:
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )  # pylint: disable=consider-using-with
 
+        stderr_lines: list[str] = []
+
         while process.poll() is None:
             if self.task.is_stopped():
                 self._terminate(process)
@@ -179,10 +221,11 @@ class DownscaleRunner:
                 DownscaleInteract(self.doc_id).delete_item()
                 return
 
-            self._report_progress(process, duration, title)
+            self._drain_pipes(process, duration, title, stderr_lines)
             time.sleep(POLL_INTERVAL)
 
-        stderr = process.stderr.read() if process.stderr else ""
+        self._drain_pipes(process, duration, title, stderr_lines)
+        stderr = "".join(stderr_lines)
 
         if process.returncode == 0:
             self._finish_success()
@@ -194,25 +237,48 @@ class DownscaleRunner:
                 updated=_now(),
             )
 
-    def _report_progress(
-        self, process: subprocess.Popen, duration: float, title: str
+    def _drain_pipes(
+        self,
+        process: subprocess.Popen,
+        duration: float,
+        title: str,
+        stderr_lines: list[str],
     ) -> None:
-        """parse available ffmpeg -progress output, report last position"""
-        if not duration or not process.stdout:
-            return
-
+        """
+        drain ffmpeg's stdout/stderr so neither pipe fills up and blocks
+        the encode, parsing -progress output from stdout and collecting
+        stderr for the failure message
+        """
         out_time_seconds = None
-        while select.select([process.stdout], [], [], 0)[0]:
-            line = process.stdout.readline()
-            if not line:
-                break
-            if line.startswith("out_time_ms="):
-                try:
-                    out_time_seconds = int(line.split("=", 1)[1]) / 1_000_000
-                except ValueError:
-                    continue
+        readable = [
+            stream
+            for stream in (process.stdout, process.stderr)
+            if stream is not None
+        ]
 
-        if out_time_seconds is not None:
+        while readable:
+            ready, _, _ = select.select(readable, [], [], 0)
+            if not ready:
+                break
+
+            for stream in ready:
+                line = stream.readline()
+                if not line:
+                    readable.remove(stream)
+                    continue
+                if stream is process.stdout and line.startswith(
+                    "out_time_ms="
+                ):
+                    try:
+                        out_time_seconds = (
+                            int(line.split("=", 1)[1]) / 1_000_000
+                        )
+                    except ValueError:
+                        pass
+                elif stream is process.stderr:
+                    stderr_lines.append(line)
+
+        if duration and out_time_seconds is not None:
             fraction = min(out_time_seconds / duration, 1.0)
             self.task.send_progress(
                 [f"Downscaling to {self.target_height}p"],
