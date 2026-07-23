@@ -8,6 +8,16 @@ type ExtractionListItemProps = {
   setRefresh: () => void;
 };
 
+const buildYoutubeUrl = (item: ExtractionItem) => {
+  if (item.item_type === 'video') {
+    return `https://www.youtube.com/watch?v=${item.youtube_id}`;
+  }
+  if (item.item_type === 'playlist') {
+    return `https://www.youtube.com/playlist?list=${item.youtube_id}`;
+  }
+  return `https://www.youtube.com/channel/${item.youtube_id}`;
+};
+
 const ExtractionListItem = ({ item, setRefresh }: ExtractionListItemProps) => {
   const isFailed = item.status === 'failed';
 
@@ -15,11 +25,7 @@ const ExtractionListItem = ({ item, setRefresh }: ExtractionListItemProps) => {
     <div className="video-item list" id={`extraction-${item.id}`}>
       <div className="video-desc list">
         <div>
-          <a
-            href={`https://www.youtube.com/${item.item_type === 'video' ? 'watch?v=' : 'channel/'}${item.youtube_id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
+          <a href={buildYoutubeUrl(item)} target="_blank" rel="noopener noreferrer">
             <h3>{item.youtube_id}</h3>
           </a>
           <span>

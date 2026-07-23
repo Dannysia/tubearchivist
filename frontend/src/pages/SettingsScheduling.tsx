@@ -40,7 +40,6 @@ const getGroupedSchedule = (
     runBackup,
     checkReindexSchedule,
     thumbnailCheckSchedule,
-    download_pending,
   };
 };
 
@@ -113,7 +112,6 @@ const SettingsScheduling = () => {
     runBackup,
     thumbnailCheckSchedule,
     updateSubscribedSchedule,
-    download_pending,
   } = getGroupedSchedule(scheduleResponse);
 
   return (
@@ -229,7 +227,7 @@ const SettingsScheduling = () => {
             <p>
               Current Download schedule:{' '}
               <span className="settings-current">
-                {!download_pending && 'False'}
+                {!downloadPendingSchedule && 'False'}
                 {downloadPendingSchedule && (
                   <>
                     {downloadPendingSchedule?.schedule_human}{' '}

@@ -1,19 +1,16 @@
 """interact with queue items"""
 
 from common.src.es_connect import ElasticWrap
+from common.src.queue_interact import BaseQueueInteract
 
 
-class PendingInteract:
+class PendingInteract(BaseQueueInteract):
     """interact with items in download queue"""
 
-    def __init__(self, youtube_id=False, status=False):
-        self.youtube_id = youtube_id
-        self.status = status
+    INDEX_NAME = "ta_download"
 
-    def delete_item(self):
-        """delete single item from pending"""
-        path = f"ta_download/_doc/{self.youtube_id}"
-        _, _ = ElasticWrap(path).delete(refresh=True)
+    def __init__(self, youtube_id=None, status=None):
+        super().__init__(doc_id=youtube_id, status=status)
 
     def delete_bulk(self, channel_id: str | None, vid_type: str | None):
         """delete all matching item by status"""
@@ -24,10 +21,7 @@ class PendingInteract:
         if vid_type:
             must_list.append({"term": {"vid_type": {"value": vid_type}}})
 
-        data = {"query": {"bool": {"must": must_list}}}
-
-        path = "ta_download/_delete_by_query?refresh=true"
-        _, _ = ElasticWrap(path).post(data=data)
+        self._delete_by_query(must_list)
 
     def update_bulk(
         self,
@@ -64,35 +58,14 @@ class PendingInteract:
         else:
             source = f"ctx._source.status = '{new_status}'"
 
-        data = {
-            "query": {"bool": {"must": must_list, "must_not": must_not_list}},
-            "script": {"source": source, "lang": "painless"},
-        }
-
-        path = "ta_download/_update_by_query?refresh=true"
-        _, _ = ElasticWrap(path).post(data)
+        self._update_by_query(must_list, must_not_list, source)
 
     def update_status(self):
         """update status of pending item"""
         if self.status == "priority":
-            data = {
-                "doc": {
-                    "status": "pending",
-                    "auto_start": True,
-                    "message": None,
-                }
-            }
+            self.update(status="pending", auto_start=True, message=None)
         else:
-            data = {"doc": {"status": self.status}}
-
-        path = f"ta_download/_update/{self.youtube_id}/?refresh=true"
-        _, _ = ElasticWrap(path).post(data=data)
-
-    def get_item(self):
-        """return pending item dict"""
-        path = f"ta_download/_doc/{self.youtube_id}"
-        response, status_code = ElasticWrap(path).get()
-        return response["_source"], status_code
+            self.update(status=self.status)
 
     def get_channel(self):
         """
@@ -100,7 +73,7 @@ class PendingInteract:
         """
         data = {
             "size": 1,
-            "query": {"term": {"channel_id": {"value": self.youtube_id}}},
+            "query": {"term": {"channel_id": {"value": self.doc_id}}},
         }
         response, _ = ElasticWrap("ta_download/_search").get(data=data)
         hits = response["hits"]["hits"]
@@ -110,6 +83,6 @@ class PendingInteract:
             channel_name = hits[0]["_source"].get("channel_name", "NA")
 
         return {
-            "channel_id": self.youtube_id,
+            "channel_id": self.doc_id,
             "channel_name": channel_name,
         }

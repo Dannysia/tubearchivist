@@ -7,6 +7,7 @@ Functionality:
 import json
 import random
 from datetime import datetime, timedelta
+from typing import Callable
 
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
@@ -64,6 +65,43 @@ def _advance_next_check(
     ElasticWrap("_bulk").post(query_str, ndjson=True)
 
 
+def _run_subscription_scan(
+    task,
+    config: dict,
+    all_items: list[dict],
+    index_name: str,
+    id_field: str,
+    next_check_field: str,
+    build_urls: Callable[[list[dict]], list[ParsedURLType]],
+) -> int:
+    """
+    shared skeleton for channel/playlist subscription scans: filter to due
+    items, let the caller build the type-specific queue entries, queue them,
+    then advance each due item's next-check independently
+    """
+    if not all_items:
+        return 0
+
+    now_epoch = int(datetime.now().timestamp())
+    due_items = [
+        item for item in all_items if _is_due(item, next_check_field, now_epoch)
+    ]
+    if not due_items:
+        return 0
+
+    urls = build_urls(due_items)
+
+    added = ExtractionQueue(task=task).add_to_queue(
+        urls,
+        auto_start=config["subscriptions"].get("auto_start", False),
+        flat=config["subscriptions"].get("extract_flat", False),
+    )
+
+    _advance_next_check(index_name, id_field, next_check_field, due_items, config)
+
+    return added
+
+
 class ChannelSubscription:
     """scan subscribed channels to find missing videos to add to pending"""
 
@@ -85,38 +123,21 @@ class ChannelSubscription:
                 "channel_subscribed_next_check",
             ],
         )
-        if not all_channels:
-            return 0
 
-        now_epoch = int(datetime.now().timestamp())
-        due_channels = [
-            channel
-            for channel in all_channels
-            if _is_due(channel, "channel_subscribed_next_check", now_epoch)
-        ]
-        if not due_channels:
-            return 0
+        def build_urls(due_channels: list[dict]) -> list[ParsedURLType]:
+            if self.task:
+                self.task.send_progress([f"Scanning {len(due_channels)} channels"])
+            return self._process_channel_urls(due_channels)
 
-        all_channel_urls = self._process_channel_urls(due_channels)
-
-        if self.task:
-            self.task.send_progress([f"Scanning {len(due_channels)} channels"])
-
-        added = ExtractionQueue(task=self.task).add_to_queue(
-            all_channel_urls,
-            auto_start=self.config["subscriptions"].get("auto_start", False),
-            flat=self.config["subscriptions"].get("extract_flat", False),
-        )
-
-        _advance_next_check(
+        return _run_subscription_scan(
+            self.task,
+            self.config,
+            all_channels,
             "ta_channel",
             "channel_id",
             "channel_subscribed_next_check",
-            due_channels,
-            self.config,
+            build_urls,
         )
-
-        return added
 
     def _process_channel_urls(self, all_channels: list[dict]):
         """process channels, build queries"""
@@ -160,47 +181,28 @@ class PlaylistSubscription:
             subscribed_only=True,
             source=["playlist_id", "playlist_subscribed_next_check"],
         )
-        if not all_playlists:
-            return 0
 
-        now_epoch = int(datetime.now().timestamp())
-        due_playlists = [
-            playlist
-            for playlist in all_playlists
-            if _is_due(
-                playlist, "playlist_subscribed_next_check", now_epoch
-            )
-        ]
-        if not due_playlists:
-            return 0
-
-        size_limit = self.config["subscriptions"]["playlist_size"]
-        all_playlist_urls: list[ParsedURLType] = []
-        for playlist in due_playlists:
-            all_playlist_urls.append(
+        def build_urls(due_playlists: list[dict]) -> list[ParsedURLType]:
+            size_limit = self.config["subscriptions"]["playlist_size"]
+            return [
                 ParsedURLType(
                     type="playlist",
                     url=playlist["playlist_id"],
                     vid_type=VideoTypeEnum.UNKNOWN,
                     limit=size_limit,
                 )
-            )
+                for playlist in due_playlists
+            ]
 
-        added = ExtractionQueue(task=self.task).add_to_queue(
-            all_playlist_urls,
-            auto_start=self.config["subscriptions"].get("auto_start", False),
-            flat=self.config["subscriptions"].get("extract_flat", False),
-        )
-
-        _advance_next_check(
+        return _run_subscription_scan(
+            self.task,
+            self.config,
+            all_playlists,
             "ta_playlist",
             "playlist_id",
             "playlist_subscribed_next_check",
-            due_playlists,
-            self.config,
+            build_urls,
         )
-
-        return added
 
 
 class SubscriptionScanner:

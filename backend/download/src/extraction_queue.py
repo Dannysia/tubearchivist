@@ -58,7 +58,7 @@ class ExtractionQueue:
 
         bulk_list.append("\n")
         query_str = "\n".join(bulk_list)
-        response, status_code = ElasticWrap("_bulk").post(
+        response, status_code = ElasticWrap("_bulk?refresh=true").post(
             query_str, ndjson=True
         )
         if status_code not in [200, 201]:

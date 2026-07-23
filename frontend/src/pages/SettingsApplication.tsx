@@ -459,6 +459,25 @@ const SettingsApplication = () => {
                           and newer) and <q>best</q> audio (mp4a), no max video height, with
                           fallback to avc1 and other formats if necessary.
                         </li>
+                        <li>
+                          <span className="settings-current">
+                            {'bestvideo[format_id!*=-sr]+bestaudio/best[format_id!*=-sr]'}
+                          </span>
+                          : <q>best</q> video and <q>best</q> audio (yt-dlp's choice), no max
+                          height, but excludes YouTube's AI-upscaled <q>Super Resolution</q>{' '}
+                          formats. yt-dlp tags these with <span className="settings-current">-sr</span>{' '}
+                          in the format ID, so this filters them out without otherwise changing
+                          selection.
+                        </li>
+                        <li>
+                          <span className="settings-current">
+                            {
+                              'bestvideo[format_id!*=-sr][height<=1080]+bestaudio/best[format_id!*=-sr][height<=1080]'
+                            }
+                          </span>
+                          : same as the 1080p example above, but also excludes those AI-upscaled
+                          formats.
+                        </li>
                         <li>This can also be configured on a per channel basis.</li>
                         <li>
                           More details{' '}

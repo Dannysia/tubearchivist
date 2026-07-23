@@ -1,19 +1,12 @@
 """interact with items in the extraction queue"""
 
-from common.src.es_connect import ElasticWrap
+from common.src.queue_interact import BaseQueueInteract
 
 
-class ExtractionInteract:
+class ExtractionInteract(BaseQueueInteract):
     """interact with items in ta_extraction"""
 
-    def __init__(self, extraction_id=False, status=False):
-        self.extraction_id = extraction_id
-        self.status = status
-
-    def delete_item(self):
-        """delete single item from extraction queue"""
-        path = f"ta_extraction/_doc/{self.extraction_id}"
-        _, _ = ElasticWrap(path).delete(refresh=True)
+    INDEX_NAME = "ta_extraction"
 
     def delete_bulk(self, item_type: str | None = None):
         """delete all matching items by status"""
@@ -21,10 +14,7 @@ class ExtractionInteract:
         if item_type:
             must_list.append({"term": {"item_type": {"value": item_type}}})
 
-        data = {"query": {"bool": {"must": must_list}}}
-
-        path = "ta_extraction/_delete_by_query?refresh=true"
-        _, _ = ElasticWrap(path).post(data=data)
+        self._delete_by_query(must_list)
 
     def update_bulk(
         self,
@@ -54,28 +44,12 @@ class ExtractionInteract:
         else:
             source = f"ctx._source.status = '{new_status}'"
 
-        data = {
-            "query": {"bool": {"must": must_list, "must_not": must_not_list}},
-            "script": {"source": source, "lang": "painless"},
-        }
-
-        path = "ta_extraction/_update_by_query?refresh=true"
-        _, _ = ElasticWrap(path).post(data)
+        self._update_by_query(must_list, must_not_list, source)
 
     def mark_extracting(self):
         """flip status to extracting"""
-        data = {"doc": {"status": "extracting"}}
-        path = f"ta_extraction/_update/{self.extraction_id}/?refresh=true"
-        _, _ = ElasticWrap(path).post(data=data)
+        self.update(status="extracting")
 
     def mark_failed(self, message: str):
         """flip status to failed with error message"""
-        data = {"doc": {"status": "failed", "message": message}}
-        path = f"ta_extraction/_update/{self.extraction_id}/?refresh=true"
-        _, _ = ElasticWrap(path).post(data=data)
-
-    def get_item(self):
-        """return extraction item dict"""
-        path = f"ta_extraction/_doc/{self.extraction_id}"
-        response, status_code = ElasticWrap(path).get()
-        return response["_source"], status_code
+        self.update(status="failed", message=message)

@@ -6,13 +6,13 @@ from datetime import datetime
 
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap
+from common.src.queue_interact import BaseQueueInteract
 
 
-class DownscaleInteract:
+class DownscaleInteract(BaseQueueInteract):
     """interact with a single item in the downscale review queue"""
 
-    def __init__(self, doc_id: str | None = None):
-        self.doc_id = doc_id
+    INDEX_NAME = "ta_downscale"
 
     def create(self, doc: dict) -> str:
         """create a new downscale job doc, return its id"""
@@ -57,22 +57,6 @@ class DownscaleInteract:
             "timestamp": now,
             "updated": now,
         }
-
-    def get_item(self) -> tuple[dict | None, int]:
-        """return job dict and status code"""
-        path = f"ta_downscale/_doc/{self.doc_id}"
-        response, status_code = ElasticWrap(path).get()
-        return response.get("_source"), status_code
-
-    def update(self, **fields) -> None:
-        """partial update of job doc"""
-        path = f"ta_downscale/_update/{self.doc_id}?refresh=true"
-        ElasticWrap(path).post({"doc": fields})
-
-    def delete_item(self) -> None:
-        """delete job doc"""
-        path = f"ta_downscale/_doc/{self.doc_id}"
-        ElasticWrap(path).delete(refresh=True)
 
     @staticmethod
     def count_running() -> int:

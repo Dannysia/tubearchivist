@@ -16,7 +16,6 @@ class ScheduleBuilder:
 
     SCHEDULES = {
         "update_subscribed": 5,
-        "process_extraction_queue": 24,
         "download_pending": 24,
         "check_reindex": 24,
         "thumbnail_check": 24,
