@@ -11,6 +11,16 @@ urlpatterns = [
         name="api-download-aggs",
     ),
     path(
+        "extraction/",
+        views.ExtractionApiListView.as_view(),
+        name="api-extraction-list",
+    ),
+    path(
+        "extraction/<slug:extraction_id>/",
+        views.ExtractionApiView.as_view(),
+        name="api-extraction",
+    ),
+    path(
         "<slug:video_id>/",
         views.DownloadApiView.as_view(),
         name="api-download",

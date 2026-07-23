@@ -32,8 +32,15 @@ DOWNLOAD_PENDING: TaskItemConfig = {
 }
 
 EXTRACT_DOWNLOAD: TaskItemConfig = {
-    "title": "Add to download queue",
+    "title": "Add to extraction queue",
     "group": "download:add",
+    "api_start": False,
+    "api_stop": True,
+}
+
+PROCESS_EXTRACTION_QUEUE: TaskItemConfig = {
+    "title": "Extracting queue",
+    "group": "download:extract",
     "api_start": False,
     "api_stop": True,
 }
@@ -119,6 +126,7 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "update_subscribed": UPDATE_SUBSCRIBED,
     "download_pending": DOWNLOAD_PENDING,
     "extract_download": EXTRACT_DOWNLOAD,
+    "process_extraction_queue": PROCESS_EXTRACTION_QUEUE,
     "check_reindex": CHECK_REINDEX,
     "manual_import": MANUAL_IMPORT,
     "run_backup": RUN_BACKUP,

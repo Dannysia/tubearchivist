@@ -44,6 +44,8 @@ const SettingsApplication = () => {
   const [playlistPageSize, setPlaylistPageSize] = useState<number | null>(null);
   const [isAutostart, setIsAutostart] = useState<boolean>(false);
   const [isExtractFlat, setIsExtractFlat] = useState<boolean>(false);
+  const [frequencyHours, setFrequencyHours] = useState<number | null>(null);
+  const [jitterPercent, setJitterPercent] = useState<number | null>(null);
 
   // Downloads
   const [currentDownloadSpeed, setCurrentDownloadSpeed] = useState<number | null>(null);
@@ -105,6 +107,8 @@ const SettingsApplication = () => {
     setPlaylistPageSize(appSettingsConfigData?.subscriptions.playlist_size || null);
     setIsAutostart(appSettingsConfigData?.subscriptions.auto_start || false);
     setIsExtractFlat(appSettingsConfigData?.subscriptions.extract_flat || false);
+    setFrequencyHours(appSettingsConfigData?.subscriptions.frequency_hours ?? null);
+    setJitterPercent(appSettingsConfigData?.subscriptions.jitter_percent ?? null);
 
     // Downloads
     setCurrentDownloadSpeed(appSettingsConfigData?.downloads.limit_speed || null);
@@ -222,6 +226,12 @@ const SettingsApplication = () => {
                       Fast add extracts and adds videos in bulk. That is much faster but is not able
                       to extract as much metadata during adding to the queue.
                     </li>
+                    <li>
+                      Each subscription is checked independently on its own schedule. Rescan
+                      frequency is the average interval between checks; rescan jitter randomizes it
+                      &plusmn; that percent per subscription, so they don&apos;t all get checked in
+                      one burst.
+                    </li>
                   </ul>
                 </div>
               )}
@@ -294,6 +304,32 @@ const SettingsApplication = () => {
                 <ToggleConfig
                   name="subscriptions.extract_flat"
                   value={isExtractFlat}
+                  updateCallback={handleUpdateConfig}
+                />
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Rescan frequency, in hours</p>
+                </div>
+                <InputConfig
+                  type="number"
+                  name="subscriptions.frequency_hours"
+                  value={frequencyHours}
+                  setValue={setFrequencyHours}
+                  oldValue={appSettingsConfig?.subscriptions.frequency_hours}
+                  updateCallback={handleUpdateConfig}
+                />
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Rescan jitter, in percent</p>
+                </div>
+                <InputConfig
+                  type="number"
+                  name="subscriptions.jitter_percent"
+                  value={jitterPercent}
+                  setValue={setJitterPercent}
+                  oldValue={appSettingsConfig?.subscriptions.jitter_percent}
                   updateCallback={handleUpdateConfig}
                 />
               </div>

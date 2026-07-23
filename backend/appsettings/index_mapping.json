@@ -81,6 +81,10 @@
                 "channel_subscribed": {
                     "type": "boolean"
                 },
+                "channel_subscribed_next_check": {
+                    "type": "date",
+                    "format": "epoch_second"
+                },
                 "channel_tags": {
                     "type": "text",
                     "analyzer": "english",
@@ -515,6 +519,48 @@
             }
         },
         {
+            "index_name": "extraction",
+            "expected_map": {
+                "youtube_id": {
+                    "type": "keyword"
+                },
+                "item_type": {
+                    "type": "keyword"
+                },
+                "vid_type": {
+                    "type": "keyword"
+                },
+                "limit": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "keyword"
+                },
+                "message": {
+                    "type": "text"
+                },
+                "target_status": {
+                    "type": "keyword"
+                },
+                "auto_start": {
+                    "type": "boolean"
+                },
+                "flat": {
+                    "type": "boolean"
+                },
+                "force": {
+                    "type": "boolean"
+                },
+                "timestamp": {
+                    "type": "date",
+                    "format": "epoch_second"
+                }
+            },
+            "expected_set": {
+                "number_of_replicas": "0"
+            }
+        },
+        {
             "index_name": "downscale",
             "expected_map": {
                 "channel_id": {
@@ -682,6 +728,10 @@
                 },                
                 "playlist_subscribed": {
                     "type": "boolean"
+                },
+                "playlist_subscribed_next_check": {
+                    "type": "date",
+                    "format": "epoch_second"
                 },
                 "playlist_thumbnail": {
                     "type": "keyword"

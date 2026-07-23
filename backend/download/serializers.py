@@ -111,6 +111,74 @@ class DownloadQueueItemUpdateSerializer(serializers.Serializer):
     )
 
 
+class ExtractionItemSerializer(serializers.Serializer):
+    """serialize extraction queue item"""
+
+    id = serializers.CharField()
+    youtube_id = serializers.CharField()
+    item_type = serializers.ChoiceField(choices=["video", "channel", "playlist"])
+    vid_type = serializers.CharField(required=False, allow_null=True)
+    limit = serializers.IntegerField(required=False, allow_null=True)
+    status = serializers.ChoiceField(
+        choices=["pending", "extracting", "failed"]
+    )
+    message = serializers.CharField(required=False, allow_null=True)
+    target_status = serializers.CharField()
+    auto_start = serializers.BooleanField()
+    flat = serializers.BooleanField()
+    force = serializers.BooleanField()
+    timestamp = serializers.IntegerField()
+    _index = serializers.CharField(required=False)
+    _score = serializers.IntegerField(required=False)
+
+
+class ExtractionListSerializer(serializers.Serializer):
+    """serialize extraction queue list"""
+
+    data = ExtractionItemSerializer(many=True)
+    paginate = PaginationSerializer()
+
+
+class ExtractionListQuerySerializer(
+    ValidateUnknownFieldsMixin, serializers.Serializer
+):
+    """serialize query params for extraction list"""
+
+    filter = serializers.ChoiceField(
+        choices=["pending", "extracting", "failed"], required=False
+    )
+    item_type = serializers.ChoiceField(
+        choices=["video", "channel", "playlist"], required=False
+    )
+    page = serializers.IntegerField(required=False)
+    q = serializers.CharField(required=False, help_text="Search Query")
+
+
+class ExtractionListQueueDeleteQuerySerializer(serializers.Serializer):
+    """serialize bulk delete extraction queue query string"""
+
+    filter = serializers.ChoiceField(choices=["pending", "extracting", "failed"])
+    item_type = serializers.ChoiceField(
+        choices=["video", "channel", "playlist"], required=False
+    )
+
+
+class ExtractionBulkQuerySerializer(serializers.Serializer):
+    """serialize bulk update query"""
+
+    filter = serializers.ChoiceField(choices=["pending", "extracting", "failed"])
+    item_type = serializers.ChoiceField(
+        choices=["video", "channel", "playlist"], required=False
+    )
+    error = serializers.BooleanField(required=False, allow_null=True)
+
+
+class ExtractionBulkDataSerializer(serializers.Serializer):
+    """serialize data, retry reuses the clear_error convention"""
+
+    status = serializers.ChoiceField(choices=["clear_error"])
+
+
 class DownloadAggBucketSerializer(serializers.Serializer):
     """serialize bucket"""
 

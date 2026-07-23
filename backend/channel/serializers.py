@@ -47,6 +47,9 @@ class ChannelSerializer(serializers.Serializer):
     channel_overwrites = ChannelOverwriteSerializer(required=False)
     channel_subs = serializers.IntegerField()
     channel_subscribed = serializers.BooleanField()
+    channel_subscribed_next_check = serializers.CharField(
+        allow_null=True, required=False
+    )
     channel_tags = serializers.ListField(
         child=serializers.CharField(), required=False
     )

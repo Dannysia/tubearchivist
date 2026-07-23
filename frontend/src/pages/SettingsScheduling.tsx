@@ -51,12 +51,12 @@ const SettingsScheduling = () => {
   const [appriseNotification, setAppriseNotification] =
     useState<ApiResponseType<AppriseNotificationType>>();
 
-  const [updateSubscribed, setUpdateSubscribed] = useState<string | undefined>();
-  const [downloadPending, setDownloadPending] = useState<string | undefined>();
-  const [checkReindex, setCheckReindex] = useState<string | undefined>();
+  const [updateSubscribed, setUpdateSubscribed] = useState<number | undefined>();
+  const [downloadPending, setDownloadPending] = useState<number | undefined>();
+  const [checkReindex, setCheckReindex] = useState<number | undefined>();
   const [checkReindexDays, setCheckReindexDays] = useState<number | undefined>();
-  const [thumbnailCheck, setThumbnailCheck] = useState<string | undefined>();
-  const [zipBackup, setZipBackup] = useState<string | undefined>();
+  const [thumbnailCheck, setThumbnailCheck] = useState<number | undefined>();
+  const [zipBackup, setZipBackup] = useState<number | undefined>();
   const [zipBackupDays, setZipBackupDays] = useState<number | undefined>();
   const [notificationUrl, setNotificationUrl] = useState<string | undefined>();
   const [notificationTask, setNotificationTask] = useState<AppriseTaskNameType | string>('');
@@ -89,12 +89,12 @@ const SettingsScheduling = () => {
           updateSubscribedSchedule,
         } = getGroupedSchedule(scheduleResponse);
 
-        setUpdateSubscribed(updateSubscribedSchedule?.schedule || '');
-        setDownloadPending(downloadPendingSchedule?.schedule || '');
-        setCheckReindex(checkReindexSchedule?.schedule || '');
+        setUpdateSubscribed(Number(updateSubscribedSchedule?.schedule) || undefined);
+        setDownloadPending(Number(downloadPendingSchedule?.schedule) || undefined);
+        setCheckReindex(Number(checkReindexSchedule?.schedule) || undefined);
         setCheckReindexDays(checkReindexSchedule?.config?.days || 0);
-        setThumbnailCheck(thumbnailCheckSchedule?.schedule || '');
-        setZipBackup(runBackup?.schedule || '');
+        setThumbnailCheck(Number(thumbnailCheckSchedule?.schedule) || undefined);
+        setZipBackup(Number(runBackup?.schedule) || undefined);
         setZipBackupDays(runBackup?.config?.rotate || 0);
 
         setRefresh(false);
@@ -126,19 +126,14 @@ const SettingsScheduling = () => {
         <div className="title-bar">
           <h1>Scheduler Setup</h1>
           <div className="settings-group">
-            <p>
-              Schedule settings expect a cron like format, where the first value is minute, second
-              is hour and third is day of the week.
-            </p>
+            <p>Schedule settings expect a whole number of hours between runs.</p>
             <p>Examples:</p>
             <ul>
               <li>
-                <span className="settings-current">0 15 *</span>: Run task every day at 15:00 in the
-                afternoon.
+                <span className="settings-current">24</span>: Run task once a day.
               </li>
               <li>
-                <span className="settings-current">30 8 */2</span>: Run task every second day of the
-                week (Sun, Tue, Thu, Sat) at 08:30 in the morning.
+                <span className="settings-current">1</span>: Run task every hour.
               </li>
               <li>
                 <span className="settings-current">auto</span>: Sensible default.
@@ -150,6 +145,11 @@ const SettingsScheduling = () => {
                 Avoid an unnecessary frequent schedule to not get blocked by YouTube. For that
                 reason, the scheduler doesn't support schedules that trigger more than once per
                 hour.
+              </li>
+              <li>
+                Exception: the subscription check below only looks up which subscriptions are
+                due, it doesn't rescan everything, so it's scheduled in{' '}
+                <span className="settings-current">minutes</span> instead of hours.
               </li>
             </ul>
           </div>
@@ -172,7 +172,7 @@ const SettingsScheduling = () => {
                 {!updateSubscribedSchedule && 'False'}
                 {updateSubscribedSchedule && (
                   <>
-                    {updateSubscribedSchedule?.schedule}{' '}
+                    {updateSubscribedSchedule?.schedule_human}{' '}
                     <Button
                       label="Delete"
                       data-schedule="update_subscribed"
@@ -187,13 +187,18 @@ const SettingsScheduling = () => {
                 )}
               </span>
             </p>
-            <p>Periodically rescan your subscriptions:</p>
+            <p>
+              Check for due subscriptions every ⎵ minutes (each subscription is then rescanned on
+              its own randomized schedule, see Application settings):
+            </p>
 
             <input
-              type="text"
-              value={updateSubscribed}
+              type="number"
+              min="1"
+              step="1"
+              value={updateSubscribed ?? ''}
               onChange={e => {
-                setUpdateSubscribed(e.currentTarget.value);
+                setUpdateSubscribed(Number(e.currentTarget.value));
               }}
             />
             <Button
@@ -201,7 +206,7 @@ const SettingsScheduling = () => {
               onClick={async () => {
                 try {
                   await createTaskSchedule('update_subscribed', {
-                    schedule: updateSubscribed,
+                    schedule: String(updateSubscribed),
                   });
                   setUpdateSubscribedError('');
                 } catch (error) {
@@ -212,7 +217,6 @@ const SettingsScheduling = () => {
                     setUpdateSubscribedError('An unexpected error occurred.');
                   }
                 }
-                setUpdateSubscribed('');
                 setRefresh(true);
               }}
             />
@@ -228,7 +232,7 @@ const SettingsScheduling = () => {
                 {!download_pending && 'False'}
                 {downloadPendingSchedule && (
                   <>
-                    {downloadPendingSchedule?.schedule}{' '}
+                    {downloadPendingSchedule?.schedule_human}{' '}
                     <Button
                       label="Delete"
                       className="danger-button"
@@ -242,13 +246,15 @@ const SettingsScheduling = () => {
                 )}
               </span>
             </p>
-            <p>Automatic video download schedule:</p>
+            <p>Automatic video download schedule, every ⎵ hours:</p>
 
             <input
-              type="text"
-              value={downloadPending}
+              type="number"
+              min="1"
+              step="1"
+              value={downloadPending ?? ''}
               onChange={e => {
-                setDownloadPending(e.currentTarget.value);
+                setDownloadPending(Number(e.currentTarget.value));
               }}
             />
             <Button
@@ -256,7 +262,7 @@ const SettingsScheduling = () => {
               onClick={async () => {
                 try {
                   await createTaskSchedule('download_pending', {
-                    schedule: downloadPending,
+                    schedule: String(downloadPending),
                   });
                   setDownloadPendingError('');
                 } catch (error) {
@@ -267,7 +273,6 @@ const SettingsScheduling = () => {
                     setDownloadPendingError('An unexpected error occurred.');
                   }
                 }
-                setDownloadPending('');
                 setRefresh(true);
               }}
             />
@@ -284,7 +289,7 @@ const SettingsScheduling = () => {
                 {!checkReindexSchedule && 'False'}
                 {checkReindexSchedule && (
                   <>
-                    {checkReindexSchedule?.schedule}{' '}
+                    {checkReindexSchedule?.schedule_human}{' '}
                     <Button
                       label="Delete"
                       className="danger-button"
@@ -298,13 +303,15 @@ const SettingsScheduling = () => {
                 )}
               </span>
             </p>
-            <p>Daily schedule to refresh metadata from YouTube:</p>
+            <p>Schedule to refresh metadata from YouTube, every ⎵ hours:</p>
 
             <input
-              type="text"
-              value={checkReindex}
+              type="number"
+              min="1"
+              step="1"
+              value={checkReindex ?? ''}
               onChange={e => {
-                setCheckReindex(e.currentTarget.value);
+                setCheckReindex(Number(e.currentTarget.value));
               }}
             />
             <Button
@@ -312,7 +319,7 @@ const SettingsScheduling = () => {
               onClick={async () => {
                 try {
                   await createTaskSchedule('check_reindex', {
-                    schedule: checkReindex,
+                    schedule: String(checkReindex),
                   });
                   setCheckReindexError('');
                 } catch (error) {
@@ -323,7 +330,6 @@ const SettingsScheduling = () => {
                     setCheckReindexError('An unexpected error occurred.');
                   }
                 }
-                setCheckReindex('');
                 setRefresh(true);
               }}
             />
@@ -369,7 +375,7 @@ const SettingsScheduling = () => {
                 {!thumbnailCheckSchedule && 'False'}
                 {thumbnailCheckSchedule && (
                   <>
-                    {thumbnailCheckSchedule?.schedule}{' '}
+                    {thumbnailCheckSchedule?.schedule_human}{' '}
                     <Button
                       label="Delete"
                       className="danger-button"
@@ -383,13 +389,15 @@ const SettingsScheduling = () => {
                 )}
               </span>
             </p>
-            <p>Periodically check and cleanup thumbnails:</p>
+            <p>Periodically check and cleanup thumbnails, every ⎵ hours:</p>
 
             <input
-              type="text"
-              value={thumbnailCheck}
+              type="number"
+              min="1"
+              step="1"
+              value={thumbnailCheck ?? ''}
               onChange={e => {
-                setThumbnailCheck(e.currentTarget.value);
+                setThumbnailCheck(Number(e.currentTarget.value));
               }}
             />
             <Button
@@ -397,7 +405,7 @@ const SettingsScheduling = () => {
               onClick={async () => {
                 try {
                   await createTaskSchedule('thumbnail_check', {
-                    schedule: thumbnailCheck,
+                    schedule: String(thumbnailCheck),
                   });
                   setThumnailCheckError('');
                 } catch (error) {
@@ -408,7 +416,6 @@ const SettingsScheduling = () => {
                     setThumnailCheckError('An unexpected error occurred.');
                   }
                 }
-                setThumbnailCheck('');
                 setRefresh(true);
               }}
             />
@@ -431,7 +438,7 @@ const SettingsScheduling = () => {
                 {!runBackup && 'False'}
                 {runBackup && (
                   <>
-                    {runBackup.schedule}{' '}
+                    {runBackup.schedule_human}{' '}
                     <Button
                       label="Delete"
                       className="danger-button"
@@ -445,13 +452,15 @@ const SettingsScheduling = () => {
                 )}
               </span>
             </p>
-            <p>Automatically backup metadata to a zip file:</p>
+            <p>Automatically backup metadata to a zip file, every ⎵ hours:</p>
 
             <input
-              type="text"
-              value={zipBackup}
+              type="number"
+              min="1"
+              step="1"
+              value={zipBackup ?? ''}
               onChange={e => {
-                setZipBackup(e.currentTarget.value);
+                setZipBackup(Number(e.currentTarget.value));
               }}
             />
             <Button
@@ -459,7 +468,7 @@ const SettingsScheduling = () => {
               onClick={async () => {
                 try {
                   await createTaskSchedule('run_backup', {
-                    schedule: zipBackup,
+                    schedule: String(zipBackup),
                   });
                   setZipBackupError('');
                 } catch (error) {
@@ -470,7 +479,6 @@ const SettingsScheduling = () => {
                     setZipBackupError('An unexpected error occurred.');
                   }
                 }
-                setZipBackup('');
                 setRefresh(true);
               }}
             />

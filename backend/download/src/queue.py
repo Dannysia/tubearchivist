@@ -124,12 +124,17 @@ class PendingList(PendingIndex):
         self.to_skip = False
         self.missing_videos: list[dict] = []
         self.added = 0
+        self.extraction_failed = False
+        self.videos_failed_count = 0
 
     def parse_url_list(self, status="pending") -> int:
         """extract youtube ids from list"""
-        self.get_download()
-        self.get_indexed()
-        self.get_channels()
+        if self.all_pending is False:
+            self.get_download()
+        if self.all_videos is False:
+            self.get_indexed()
+        if self.all_channels is False:
+            self.get_channels()
         total = len(self.youtube_ids)
         for idx, entry in enumerate(self.youtube_ids, start=1):
             if self.task:
@@ -217,6 +222,7 @@ class PendingList(PendingIndex):
         channel_handler.build_json(upload=False)
         if not channel_handler.json_data:
             print(f"{url}: channel metadata extraction failed, skipping")
+            self.extraction_failed = True
             return
 
         total = len(video_results)
@@ -262,7 +268,7 @@ class PendingList(PendingIndex):
                 video_data=video_data,
             )
         else:
-            to_add = self._parse_video(video_id, vid_type)
+            to_add = self._parse_video(video_id, vid_type, track_failure=False)
 
         return to_add
 
@@ -272,6 +278,7 @@ class PendingList(PendingIndex):
         playlist.update_playlist()
         if not playlist.youtube_meta:
             print(f"{url}: playlist metadata extraction failed, skipping")
+            self.extraction_failed = True
             return
 
         video_results = playlist.youtube_meta["entries"]
@@ -297,7 +304,9 @@ class PendingList(PendingIndex):
 
                 to_add = self._parse_entry(video_id, video_data)
             else:
-                to_add = self._parse_video(video_id, vid_type=None)
+                to_add = self._parse_video(
+                    video_id, vid_type=None, track_failure=False
+                )
 
             if not to_add:
                 continue
@@ -310,13 +319,18 @@ class PendingList(PendingIndex):
                 total=total,
             )
 
-    def _parse_video(self, url: str, vid_type) -> dict | None:
+    def _parse_video(
+        self, url: str, vid_type, track_failure: bool = True
+    ) -> dict | None:
         """parse video when not flat, fetch from YT"""
         video = YoutubeVideo(youtube_id=url)
         video.get_from_youtube()
 
         if not video.youtube_meta:
             print(f"{url}: video metadata extraction failed, skipping")
+            self.videos_failed_count += 1
+            if track_failure:
+                self.extraction_failed = True
             if self.task:
                 self.task.send_progress(
                     message_lines=[
@@ -330,6 +344,9 @@ class PendingList(PendingIndex):
         expected_keys = {"id", "title", "channel", "channel_id"}
         if not set(video.youtube_meta.keys()).issuperset(expected_keys):
             print(f"{url}: video metadata extraction incomplete, skipping")
+            self.videos_failed_count += 1
+            if track_failure:
+                self.extraction_failed = True
             if self.task:
                 self.task.send_progress(
                     message_lines=[

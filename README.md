@@ -108,6 +108,48 @@ You will see the current version number of **Tube Archivist** in the footer of t
 * There can be breaking changes between updates, particularly as the application grows, new environment variables or settings might be required for you to set in the your docker-compose file. *Always* check the **release notes**: Any breaking changes will be marked there.
 * All testing and development is done with the Elasticsearch version number as mentioned in the provided *docker-compose.yml* file. This will be updated from time to time. Running an older version of Elasticsearch is most likely not going to result in any issues, but it's still recommended to run the same version as mentioned. Use `bbilly1/tubearchivist-es` to automatically get the recommended version.
 
+## Custom Build & Push (personal fork)
+
+This fork builds and pushes to a private GHCR (GitHub Container Registry) image instead of Docker Hub.
+
+### One-time setup
+
+1. Extend your `gh` auth token with package scopes:
+
+    ```shell
+    gh auth refresh -h github.com -s write:packages,read:packages
+    ```
+
+2. Log Docker into GHCR using that token:
+
+    ```shell
+    gh auth token | docker login ghcr.io -u dannysia --password-stdin
+    ```
+
+### Build and push
+
+This fork builds `linux/arm64` only, native on the Pi 5 (cross-building `amd64` via QEMU currently core dumps during the `builder` stage's C extension compilation):
+
+```shell
+docker build \
+  -t ghcr.io/dannysia/tubearchivist:mainline \
+  --push .
+```
+
+### Unraid
+
+GHCR packages default to **private**. Unraid needs its own pull-only login, separate from the machine that pushes:
+
+```shell
+docker login ghcr.io -u dannysia --password-stdin   # use a narrower, read:packages-only PAT here
+```
+
+Then set Unraid's **Repository** field to:
+
+```
+ghcr.io/dannysia/tubearchivist:mainline
+```
+
 ## Getting Started
 
 1. Go through the **settings** page and look at the available options. Particularly set *Download Format* to your desired video quality before downloading. **Tube Archivist** downloads the best available quality by default. To support iOS or MacOS and some other browsers a compatible format must be specified. For example:

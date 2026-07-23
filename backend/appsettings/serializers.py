@@ -32,6 +32,12 @@ class AppConfigSubSerializer(
     playlist_size = serializers.IntegerField(required=False, allow_null=True)
     auto_start = serializers.BooleanField(required=False)
     extract_flat = serializers.BooleanField(required=False)
+    frequency_hours = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1
+    )
+    jitter_percent = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0, max_value=100
+    )
 
 
 class AppConfigDownloadsSerializer(

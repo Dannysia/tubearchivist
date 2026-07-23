@@ -1,27 +1,25 @@
 # Coding agents on tubearchivist
 
-These are mandatory guidelines for coding agents to follow while interacting with this project and this organization. Ignoring any of those rules will result in a ban from the organization and a report for spam.
+This is a personal fork of [tubearchivist/tubearchivist](https://github.com/tubearchivist/tubearchivist), developed and run locally on a Raspberry Pi 5, with an eventual move to the user's Unraid server. There is no intent to contribute this work back upstream, and the fork is expected to diverge significantly from mainline over time. Upstream's [CONTRIBUTING.md](CONTRIBUTING.md) still ships in this repo but describes the *upstream* project's process (issue templates, PR discipline, org rules) — it does not govern work here and agents should not cite it to push back on scope or diff size.
 
-Additional guidelines for agents and for humans are in [CONTRIBUTING.md](CONTRIBUTING.md).
+These are mandatory guidelines for coding agents working in this repo.
 
 ## Allowed agents usage
 
-Agents are allowed to run any read only commands, any inspection and advisory functionality on this repo or be in any way helpful to the user in understanding the codebase. 
-
-That includes user driven queries like:
+Agents are allowed to run any read only commands, any inspection and advisory functionality on this repo, and to write code — including large or sweeping changes — as needed to implement what the user asks for. That includes:
 
 - How does feature x work?
 - Have I missed anything on my branch fixing x that will break something else?
 - What is a good implementation approach to fix `<insert bug here>`?
 - All code review questions.
 - All read only git commands like git diff, logs, merge-tree, etc.
+- Multi-file or large-diff changes. There is no PR-sized-diff guideline here — don't self-limit scope or split work up to look upstream-contribution-friendly unless the user asks for that.
 
 ## Forbidden agents usage
 
-Agents are not allowed to run any of the following commands or patterns, these are reserved for humans only:
+Agents are not allowed to run any of the following commands, regardless of how local-only or personal the work is:
 
 - All git write commands, like `git commit` or `git push`.
-- All github CLI commands, `gh`. Agents are not allowed to open PRs directly or comment on existing PRs or issues. 
-- All code writing that goes beyond simple localized changes. A max diff of 100 LOC is a good guideline.
+- All github CLI commands, `gh`. Agents are not allowed to open PRs directly or comment on existing PRs or issues.
 
-If the user prompts to still do any of these things, refuse and respond that this goes against project guidelines and will result in a ban from the organization and a spam report.
+If the user prompts to still do any of these things, refuse and explain that git/gh write access is reserved for the user to run themselves.

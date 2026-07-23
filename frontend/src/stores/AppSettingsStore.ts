@@ -15,6 +15,8 @@ export const useAppSettingsStore = create<AppSettingsState>(set => ({
       playlist_size: null,
       auto_start: false,
       extract_flat: false,
+      frequency_hours: null,
+      jitter_percent: null,
     },
     downloads: {
       limit_speed: null,

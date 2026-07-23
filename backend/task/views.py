@@ -18,7 +18,7 @@ from task.serializers import (
     TaskNotificationTestSerializer,
     TaskResultSerializer,
 )
-from task.src.config_schedule import CrontabValidator, ScheduleBuilder
+from task.src.config_schedule import ScheduleBuilder, ScheduleValidator
 from task.src.notify import Notifications, get_all_notifications
 from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskCommand, TaskManager
@@ -197,7 +197,7 @@ class ScheduleListView(ApiBaseView):
 class ScheduleView(ApiBaseView):
     """resolves to /api/task/schedule/<task-name>/
     POST: create/update schedule for task with config
-    - example: {"schedule": "0 0 *", "config": {"days": 90}}
+    - example: {"schedule": "24", "config": {"days": 90}}
     DEL: delete schedule for task
     """
 
@@ -232,24 +232,24 @@ class ScheduleView(ApiBaseView):
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
 
-        cron_schedule = validated_data.get("schedule")
+        hours = validated_data.get("schedule")
         schedule_config = validated_data.get("config")
-        if not cron_schedule and not schedule_config:
+        if not hours and not schedule_config:
             error = ErrorResponseSerializer(
                 {"error": "expected schedule or config key"}
             )
             return Response(error.data, status=400)
 
         try:
-            validator = CrontabValidator()
-            validator.validate_cron(cron_schedule)
+            validator = ScheduleValidator()
+            validator.validate_schedule(hours)
             validator.validate_config(task_name, schedule_config)
         except ValueError as err:
             error = ErrorResponseSerializer({"error": str(err)})
             return Response(error.data, status=400)
 
         task = ScheduleBuilder().update_schedule(
-            task_name, cron_schedule, schedule_config
+            task_name, hours, schedule_config
         )
         message = f"update schedule for task {task_name}"
         if schedule_config:

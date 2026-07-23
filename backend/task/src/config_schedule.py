@@ -5,10 +5,8 @@ Functionality:
 
 from datetime import datetime
 
-from celery.schedules import crontab
-from common.src.env_settings import EnvironmentSettings
 from django.utils import dateformat
-from django_celery_beat.models import CrontabSchedule
+from django_celery_beat.models import IntervalSchedule
 from task.models import CustomPeriodicTask
 from task.src.task_config import TASK_CONFIG
 
@@ -17,23 +15,30 @@ class ScheduleBuilder:
     """build schedule dicts for beat"""
 
     SCHEDULES = {
-        "update_subscribed": "0 8 *",
-        "download_pending": "0 16 *",
-        "check_reindex": "0 12 *",
-        "thumbnail_check": "0 17 *",
-        "run_backup": "0 18 0",
-        "version_check": "0 11 *",
+        "update_subscribed": 5,
+        "process_extraction_queue": 24,
+        "download_pending": 24,
+        "check_reindex": 24,
+        "thumbnail_check": 24,
+        "run_backup": 168,
+        "version_check": 24,
+    }
+    # tasks not listed here default to hourly intervals. update_subscribed
+    # is a lightweight ticker that only checks which subscriptions are due,
+    # so it's safe to run much more frequently than a full rescan.
+    UNITS = {
+        "update_subscribed": IntervalSchedule.MINUTES,
     }
     MSG = "message:setting"
 
     def update_schedule(
-        self, task_name: str, cron_schedule: str, schedule_conf: dict | None
+        self, task_name: str, schedule: str, schedule_conf: dict | None
     ) -> CustomPeriodicTask:
         """update schedule"""
-        if cron_schedule == "auto":
-            cron_schedule = self.SCHEDULES[task_name]
+        if schedule == "auto":
+            schedule = self.SCHEDULES[task_name]
 
-        task = self.get_set_task(task_name, cron_schedule)
+        task = self.get_set_task(task_name, schedule)
 
         if schedule_conf:
             for key, value in schedule_conf.items():
@@ -54,21 +59,24 @@ class ScheduleBuilder:
             )
 
         if schedule:
-            task_crontab = self.get_set_cron_tab(schedule)
-            task.crontab = task_crontab
+            unit = self.UNITS.get(task_name, IntervalSchedule.HOURS)
+            task.interval = self.get_set_interval(int(schedule), unit)
+            task.crontab = None
             task.last_run_at = dateformat.make_aware(datetime.now())
             task.save()
 
         return task
 
     @staticmethod
-    def get_set_cron_tab(schedule: str) -> CrontabSchedule:
+    def get_set_interval(
+        every: int, period: str = IntervalSchedule.HOURS
+    ) -> IntervalSchedule:
         """needs to be validated before"""
-        kwargs = dict(zip(["minute", "hour", "day_of_week"], schedule.split()))
-        kwargs.update({"timezone": EnvironmentSettings.TZ})
-        task_crontab, _ = CrontabSchedule.objects.get_or_create(**kwargs)
+        interval, _ = IntervalSchedule.objects.get_or_create(
+            every=every, period=period
+        )
 
-        return task_crontab
+        return interval
 
     def set_config(
         self, task_name: str, key: str, value
@@ -81,8 +89,8 @@ class ScheduleBuilder:
         return task
 
 
-class CrontabValidator:
-    """validate crontab"""
+class ScheduleValidator:
+    """validate schedule input"""
 
     CONFIG = {
         "check_reindex": ["days"],
@@ -90,40 +98,18 @@ class CrontabValidator:
     }
 
     @staticmethod
-    def validate_fields(cron_fields: str) -> None:
-        """expect 3 cron fields"""
-        if not len(cron_fields) == 3:
-            raise ValueError("expected three cron schedule fields")
-
-    @staticmethod
-    def validate_minute(minute_field: str):
-        """expect minute int"""
-        if not minute_field.isdigit():
-            raise ValueError("Invalid value for minutes. Must be an integer.")
-
-        minutes = int(minute_field)
-        if not 0 <= minutes <= 59:
-            raise ValueError("Invalid minutes. Must be between 0 and 59.")
-
-    @staticmethod
-    def validate_cron_tab(minute, hour, day_of_week):
-        """check if crontab can be created"""
-        try:
-            crontab(minute=minute, hour=hour, day_of_week=day_of_week)
-        except ValueError as err:
-            raise ValueError(f"invalid crontab: {err}") from err
-
-    def validate_cron(self, cron_expression):
-        """create crontab schedule"""
-        if not cron_expression or cron_expression == "auto":
+    def validate_schedule(schedule) -> None:
+        """expect a whole number in the task's unit, or the 'auto' sentinel"""
+        if not schedule or schedule == "auto":
             return
 
-        cron_fields = cron_expression.split()
-        self.validate_fields(cron_fields)
+        try:
+            schedule_int = int(schedule)
+        except (TypeError, ValueError) as err:
+            raise ValueError("schedule must be a whole number") from err
 
-        minute, hour, day_of_week = cron_fields
-        self.validate_minute(minute)
-        self.validate_cron_tab(minute, hour, day_of_week)
+        if schedule_int < 1:
+            raise ValueError("schedule must be at least 1")
 
     def validate_config(self, task_name: str, schedule_config: dict):
         """validate config for given task"""

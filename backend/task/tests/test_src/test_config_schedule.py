@@ -10,59 +10,67 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
 import pytest
-from task.src.config_schedule import CrontabValidator
+from django_celery_beat.models import IntervalSchedule
+from task.src.config_schedule import ScheduleBuilder, ScheduleValidator
 
-INCORRECT_CRONTAB = [
-    "0 0 * * *",
-    "0 0",
+VALID_SCHEDULES = ["1", "24", "168", 1, 24, "auto", None, "", " 24 "]
+
+
+@pytest.mark.parametrize("valid_value", VALID_SCHEDULES)
+def test_valid_schedule(valid_value):
+    """accept whole numbers, 'auto', and empty/None, regardless of unit"""
+    validator = ScheduleValidator()
+    validator.validate_schedule(valid_value)
+
+
+INVALID_SCHEDULES = [
     "0",
+    "-1",
+    "1.5",
+    "24h",
+    "not a number",
 ]
 
 
-@pytest.mark.parametrize("invalid_value", INCORRECT_CRONTAB)
-def test_invalid_len(invalid_value):
-    """raise error on invalid crontab"""
-    validator = CrontabValidator()
-    with pytest.raises(ValueError, match="three cron schedule fields"):
-        validator.validate_cron(invalid_value)
+@pytest.mark.parametrize("invalid_value", INVALID_SCHEDULES)
+def test_invalid_schedule(invalid_value):
+    """raise error on non-whole-number or sub-1 schedules"""
+    validator = ScheduleValidator()
+    with pytest.raises(ValueError):
+        validator.validate_schedule(invalid_value)
 
 
-NONE_INT_MINUTE = [
-    "* * *",
-    "0,30 * *",
-    "0,1,2 * *",
-    "-1 * *",
-]
+def test_config_rejects_unknown_key():
+    """raise error on unknown config key for a task that does take config"""
+    validator = ScheduleValidator()
+    with pytest.raises(ValueError, match="invalid config key"):
+        validator.validate_config("check_reindex", {"nonexistent": 1})
 
 
-@pytest.mark.parametrize("invalid_value", NONE_INT_MINUTE)
-def test_none_int_crontabs(invalid_value):
-    """raise error on invalid crontab"""
-    validator = CrontabValidator()
-    with pytest.raises(ValueError, match="Must be an integer."):
-        validator.validate_cron(invalid_value)
+def test_config_rejects_task_without_config():
+    """raise error when a task that doesn't take config gets any"""
+    validator = ScheduleValidator()
+    with pytest.raises(ValueError, match="doesn't take config"):
+        validator.validate_config("download_pending", {"days": 90})
 
 
-INVALID_MINUTE = ["60 * *", "61 * *"]
+def test_config_accepts_known_key():
+    """accept a valid config key for a task that takes config"""
+    validator = ScheduleValidator()
+    validator.validate_config("check_reindex", {"days": 90})
 
 
-@pytest.mark.parametrize("invalid_value", INVALID_MINUTE)
-def test_invalid_minute(invalid_value):
-    """raise error on invalid crontab"""
-    validator = CrontabValidator()
-    with pytest.raises(ValueError, match="Must be between 0 and 59."):
-        validator.validate_cron(invalid_value)
+def test_update_subscribed_uses_minutes():
+    """the subscription ticker is scheduled in minutes, not hours"""
+    assert ScheduleBuilder.UNITS["update_subscribed"] == IntervalSchedule.MINUTES
 
 
-INVALID_CRONTAB = [
-    "0 /1 *",
-    "0 0/1 *",
-]
-
-
-@pytest.mark.parametrize("invalid_value", INVALID_CRONTAB)
-def test_invalid_crontab(invalid_value):
-    """raise error on invalid crontab"""
-    validator = CrontabValidator()
-    with pytest.raises(ValueError, match="invalid crontab"):
-        validator.validate_cron(invalid_value)
+def test_other_tasks_default_to_hours():
+    """every other task falls back to the hourly interval unit"""
+    for task_name in ScheduleBuilder.SCHEDULES:
+        if task_name == "update_subscribed":
+            continue
+        assert (
+            ScheduleBuilder.UNITS.get(task_name, IntervalSchedule.HOURS)
+            == IntervalSchedule.HOURS
+        )

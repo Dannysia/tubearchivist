@@ -4,15 +4,64 @@ Functionality:
 - handle playlist subscriptions
 """
 
+import json
+import random
+from datetime import datetime, timedelta
+
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
 from channel.src.remote_query import VideoQueryBuilder
+from common.src.es_connect import ElasticWrap
 from common.src.helper import get_channels, get_playlists
 from common.src.urlparser import ParsedURLType, Parser
-from download.src.queue import PendingList
+from download.src.extraction_queue import ExtractionQueue
 from playlist.src.index import YoutubePlaylist
 from video.src.constants import VideoTypeEnum
 from video.src.index import YoutubeVideo
+
+MIN_INTERVAL_HOURS = 1
+
+
+def _is_due(item: dict, field: str, now_epoch: int) -> bool:
+    """a subscription is due if it was never checked or its next check has passed"""
+    return not item.get(field) or item[field] <= now_epoch
+
+
+def _compute_next_check(
+    frequency_hours: float, jitter_percent: float, now: datetime | None = None
+) -> int:
+    """compute a jittered next-check epoch, independent per call"""
+    jitter_factor = 1 + random.uniform(-jitter_percent, jitter_percent) / 100
+    interval_hours = max(frequency_hours * jitter_factor, MIN_INTERVAL_HOURS)
+    next_check = (now or datetime.now()) + timedelta(hours=interval_hours)
+
+    return int(next_check.timestamp())
+
+
+def _advance_next_check(
+    index_name: str,
+    id_field: str,
+    next_check_field: str,
+    due_items: list[dict],
+    config: dict,
+) -> None:
+    """bulk persist a freshly jittered next-check time for each due item"""
+    if not due_items:
+        return
+
+    frequency_hours = config["subscriptions"].get("frequency_hours") or 24
+    jitter_percent = config["subscriptions"].get("jitter_percent") or 0
+
+    bulk_list = []
+    for item in due_items:
+        next_check = _compute_next_check(frequency_hours, jitter_percent)
+        action = {"update": {"_id": item[id_field], "_index": index_name}}
+        bulk_list.append(json.dumps(action))
+        bulk_list.append(json.dumps({"doc": {next_check_field: next_check}}))
+
+    bulk_list.append("\n")
+    query_str = "\n".join(bulk_list)
+    ElasticWrap("_bulk").post(query_str, ndjson=True)
 
 
 class ChannelSubscription:
@@ -23,29 +72,49 @@ class ChannelSubscription:
         self.task = task
 
     def find_missing(self) -> int:
-        """find missing videos from channel subscriptions"""
+        """find missing videos from due channel subscriptions"""
         if self.task:
             self.task.send_progress(["Looking up channels."])
 
         all_channels = get_channels(
             subscribed_only=True,
-            source=["channel_id", "channel_overwrites", "channel_tabs"],
+            source=[
+                "channel_id",
+                "channel_overwrites",
+                "channel_tabs",
+                "channel_subscribed_next_check",
+            ],
         )
         if not all_channels:
             return 0
 
-        all_channel_urls = self._process_channel_urls(all_channels)
+        now_epoch = int(datetime.now().timestamp())
+        due_channels = [
+            channel
+            for channel in all_channels
+            if _is_due(channel, "channel_subscribed_next_check", now_epoch)
+        ]
+        if not due_channels:
+            return 0
+
+        all_channel_urls = self._process_channel_urls(due_channels)
 
         if self.task:
-            self.task.send_progress([f"Scanning {len(all_channels)} channels"])
+            self.task.send_progress([f"Scanning {len(due_channels)} channels"])
 
-        pending_handler = PendingList(
-            youtube_ids=all_channel_urls,
-            task=self.task,
+        added = ExtractionQueue(task=self.task).add_to_queue(
+            all_channel_urls,
             auto_start=self.config["subscriptions"].get("auto_start", False),
             flat=self.config["subscriptions"].get("extract_flat", False),
         )
-        added = pending_handler.parse_url_list()
+
+        _advance_next_check(
+            "ta_channel",
+            "channel_id",
+            "channel_subscribed_next_check",
+            due_channels,
+            self.config,
+        )
 
         return added
 
@@ -86,16 +155,28 @@ class PlaylistSubscription:
         self.task = task
 
     def find_missing(self) -> int:
-        """find missing"""
+        """find missing from due playlist subscriptions"""
         all_playlists = get_playlists(
-            subscribed_only=True, source=["playlist_id"]
+            subscribed_only=True,
+            source=["playlist_id", "playlist_subscribed_next_check"],
         )
         if not all_playlists:
             return 0
 
+        now_epoch = int(datetime.now().timestamp())
+        due_playlists = [
+            playlist
+            for playlist in all_playlists
+            if _is_due(
+                playlist, "playlist_subscribed_next_check", now_epoch
+            )
+        ]
+        if not due_playlists:
+            return 0
+
         size_limit = self.config["subscriptions"]["playlist_size"]
         all_playlist_urls: list[ParsedURLType] = []
-        for playlist in all_playlists:
+        for playlist in due_playlists:
             all_playlist_urls.append(
                 ParsedURLType(
                     type="playlist",
@@ -105,13 +186,19 @@ class PlaylistSubscription:
                 )
             )
 
-        pending_handler = PendingList(
-            youtube_ids=all_playlist_urls,
-            task=self.task,
+        added = ExtractionQueue(task=self.task).add_to_queue(
+            all_playlist_urls,
             auto_start=self.config["subscriptions"].get("auto_start", False),
             flat=self.config["subscriptions"].get("extract_flat", False),
         )
-        added = pending_handler.parse_url_list()
+
+        _advance_next_check(
+            "ta_playlist",
+            "playlist_id",
+            "playlist_subscribed_next_check",
+            due_playlists,
+            self.config,
+        )
 
         return added
 

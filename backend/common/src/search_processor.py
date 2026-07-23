@@ -64,6 +64,10 @@ class SearchProcess:
             processed = self._process_playlist(result["_source"])
         if index.startswith("ta_download"):
             processed = self._process_download(result["_source"])
+        if index.startswith("ta_extraction"):
+            processed = self._process_extraction(
+                result["_id"], result["_source"]
+            )
         if index.startswith("ta_downscale"):
             processed = self._process_downscale(
                 result["_id"], result["_source"]
@@ -90,9 +94,13 @@ class SearchProcess:
         cache_root = EnvironmentSettings().get_cache_root()
         art_base = f"{cache_root}/channels/{channel_id}"
         date_str = date_parser(channel_dict["channel_last_refresh"])
+        next_check = date_parser(
+            channel_dict.get("channel_subscribed_next_check")
+        )
         channel_dict.update(
             {
                 "channel_last_refresh": date_str,
+                "channel_subscribed_next_check": next_check,
                 "channel_description": channel_dict.get("channel_description"),
             }
         )
@@ -199,6 +207,11 @@ class SearchProcess:
             }
         )
         return dict(sorted(download_dict.items()))
+
+    def _process_extraction(self, doc_id, extraction_dict):
+        """run on single extraction queue item"""
+        extraction_dict.update({"id": doc_id})
+        return dict(sorted(extraction_dict.items()))
 
     def _process_downscale(self, doc_id, downscale_dict):
         """run on single downscale queue item"""

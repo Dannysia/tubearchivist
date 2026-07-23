@@ -6,7 +6,6 @@ Functionality:
 
 import os
 from datetime import datetime
-from random import randint
 from time import sleep
 
 from appsettings.src.config import AppConfig, ReleaseVersion
@@ -19,8 +18,11 @@ from common.src.helper import clear_dl_cache, get_channels
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.utils import dateformat
-from django_celery_beat.models import CrontabSchedule, PeriodicTasks
+from django_celery_beat.models import (
+    CrontabSchedule,
+    IntervalSchedule,
+    PeriodicTasks,
+)
 from task.models import CustomPeriodicTask
 from task.src.config_schedule import ScheduleBuilder
 from task.src.task_manager import TaskManager
@@ -236,54 +238,64 @@ class Command(BaseCommand):
         ElasticSnapshot().setup()
 
     def _create_default_schedules(self) -> None:
-        """create default schedules for new installations"""
+        """create default schedules for new installations, migrate any
+        pre-existing crontab-based auto schedules to the interval format"""
         self.stdout.write("[8] create initial schedules")
-        init_has_run = CustomPeriodicTask.objects.filter(
-            name="version_check"
-        ).exists()
+        builder = ScheduleBuilder()
 
-        if init_has_run:
-            self.stdout.write(
-                self.style.SUCCESS(
-                    "    schedule init already done, skipping..."
+        for task_name in ("check_reindex", "thumbnail_check", "version_check"):
+            existing = CustomPeriodicTask.objects.filter(
+                name=task_name
+            ).first()
+            if existing and existing.interval_id:
+                self.stdout.write(
+                    self.style.SUCCESS(f"    schedule up to date: {task_name}")
                 )
+                continue
+
+            task = builder.get_set_task(
+                task_name, schedule=builder.SCHEDULES[task_name]
+            )
+            if task_name == "check_reindex":
+                task.task_config.update({"days": 90})
+                task.save()
+
+            self.stdout.write(
+                self.style.SUCCESS(f"    ✓ schedule set: {task}")
+            )
+
+        self._mig_update_subscribed_to_minutes(builder)
+
+        self.stdout.write(
+            self.style.SUCCESS("    ✓ all default schedules created")
+        )
+
+    def _mig_update_subscribed_to_minutes(self, builder: ScheduleBuilder) -> None:
+        """migrate a pre-existing update_subscribed schedule from hours to
+        the new minutes-based interval, resetting to the default cadence
+        since the old number no longer means the same thing"""
+        task_name = "update_subscribed"
+        existing = CustomPeriodicTask.objects.filter(name=task_name).first()
+        if not existing:
+            # opt-in schedule, nothing to migrate until the user sets one
+            return
+
+        if (
+            existing.interval_id
+            and existing.interval.period == IntervalSchedule.MINUTES
+        ):
+            self.stdout.write(
+                self.style.SUCCESS(f"    schedule up to date: {task_name}")
             )
             return
 
-        builder = ScheduleBuilder()
-        check_reindex = builder.get_set_task(
-            "check_reindex", schedule=builder.SCHEDULES["check_reindex"]
-        )
-        check_reindex.task_config.update({"days": 90})
-        check_reindex.last_run_at = dateformat.make_aware(datetime.now())
-        check_reindex.save()
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"    ✓ created new default schedule: {check_reindex}"
-            )
-        )
-
-        thumbnail_check = builder.get_set_task(
-            "thumbnail_check", schedule=builder.SCHEDULES["thumbnail_check"]
-        )
-        thumbnail_check.last_run_at = dateformat.make_aware(datetime.now())
-        thumbnail_check.save()
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"    ✓ created new default schedule: {thumbnail_check}"
-            )
-        )
-        daily_random = f"{randint(0, 59)} {randint(0, 23)} *"
-        version_check_task = builder.get_set_task(
-            "version_check", schedule=daily_random
+        task = builder.get_set_task(
+            task_name, schedule=builder.SCHEDULES[task_name]
         )
         self.stdout.write(
             self.style.SUCCESS(
-                f"    ✓ created new default schedule: {version_check_task}"
+                f"    ✓ migrated {task_name} to minutes-based interval: {task}"
             )
-        )
-        self.stdout.write(
-            self.style.SUCCESS("    ✓ all default schedules created")
         )
 
     def _update_schedule_tz(self) -> None:

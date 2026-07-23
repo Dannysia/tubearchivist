@@ -25,6 +25,8 @@ class SubscriptionsConfigType(TypedDict):
     playlist_size: int
     auto_start: bool
     extract_flat: bool
+    frequency_hours: int
+    jitter_percent: int
 
 
 class DownloadsConfigType(TypedDict):
@@ -80,6 +82,8 @@ class AppConfig:
             "playlist_size": 50,
             "auto_start": False,
             "extract_flat": False,
+            "frequency_hours": 24,
+            "jitter_percent": 0,
         },
         "downloads": {
             "limit_speed": None,

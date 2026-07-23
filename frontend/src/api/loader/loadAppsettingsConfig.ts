@@ -8,6 +8,8 @@ export type AppSettingsConfigType = {
     playlist_size: number | null;
     auto_start: boolean;
     extract_flat: boolean;
+    frequency_hours: number | null;
+    jitter_percent: number | null;
   };
   downloads: {
     limit_speed: number | null;

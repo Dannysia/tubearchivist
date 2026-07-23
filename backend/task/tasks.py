@@ -18,7 +18,7 @@ from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
 from channel.src.index import YoutubeChannel
 from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import ParsedURLType, Parser
-from download.src.queue import PendingList
+from download.src.extraction_queue import ExtractionQueue
 from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import VideoDownloader
@@ -97,7 +97,7 @@ class BaseTask(Task):
 
 @shared_task(name="update_subscribed", bind=True, base=BaseTask)
 def update_subscribed(self):
-    """look for missing videos and add to pending"""
+    """look for missing videos and add to extraction queue"""
     manager = TaskManager()
     if manager.is_pending(self):
         print(f"[task][{self.name}] rescan already running")
@@ -107,12 +107,10 @@ def update_subscribed(self):
     manager.init(self)
     handler = SubscriptionScanner(task=self)
     added = handler.scan()
-    auto_start = handler.auto_start
-    if added:
-        if auto_start:
-            download_pending.delay(auto_only=True)
 
-        return f"Found {added} videos to add to the queue."
+    if added:
+        process_extraction_queue.delay()
+        return f"Found {added} channels/playlists to add to the extraction queue."
 
     return None
 
@@ -151,6 +149,43 @@ def download_pending(self, auto_only=False):
     return None
 
 
+@shared_task(
+    name="process_extraction_queue",
+    bind=True,
+    base=BaseTask,
+    max_retries=3,
+    default_retry_delay=10,
+)
+def process_extraction_queue(self):
+    """resolve pending extraction queue entries into the download queue"""
+    manager = TaskManager()
+    if manager.is_pending(self):
+        print(f"[task][{self.name}] extraction queue already running")
+        self.send_progress(["Extraction Queue is already running."])
+        return None
+
+    manager.init(self)
+    try:
+        resolver = ExtractionQueue(task=self)
+        resolved, failed, any_auto_start = resolver.run_queue()
+
+        if failed:
+            print(f"[task][{self.name}] Extractions failed, retry.")
+            self.send_progress(["Extractions failed, retry."])
+            raise self.retry()
+
+    except Retry as exc:
+        raise exc
+
+    if any_auto_start:
+        download_pending.delay(auto_only=True)
+
+    if resolved:
+        return f"resolved {resolved} extraction item(s)."
+
+    return None
+
+
 @shared_task(name="extract_download", bind=True, base=BaseTask)
 def extrac_dl(
     self,
@@ -160,27 +195,24 @@ def extrac_dl(
     force: bool = False,
     status: str = "pending",
 ) -> str | None:
-    """parse list passed and add to pending"""
+    """parse list passed and add to extraction queue"""
     TaskManager().init(self)
     if isinstance(youtube_ids, str):
         to_add = Parser(youtube_ids).parse()
     else:
         to_add = youtube_ids
 
-    pending_handler = PendingList(
-        youtube_ids=to_add,
-        task=self,
+    added = ExtractionQueue(task=self).add_to_queue(
+        to_add,
         auto_start=auto_start,
         flat=flat,
         force=force,
+        target_status=status,
     )
-    videos_added = pending_handler.parse_url_list(status=status)
+    process_extraction_queue.delay()
 
-    if auto_start:
-        download_pending.delay(auto_only=True)
-
-    if videos_added:
-        return f"added {videos_added} Videos to Queue"
+    if added:
+        return f"added {added} item(s) to extraction queue"
 
     return None
 

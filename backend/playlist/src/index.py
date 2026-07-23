@@ -145,6 +145,11 @@ class YoutubePlaylist(YouTubeItem):
         """change subscribe status"""
         self.build_json()
         self.json_data["playlist_subscribed"] = new_subscribe_state
+        if new_subscribe_state:
+            self.json_data["playlist_subscribed_next_check"] = int(
+                datetime.now().timestamp()
+            )
+
         self.upload_to_es()
         return self.json_data
 

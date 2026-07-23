@@ -16,7 +16,14 @@ from download.serializers import (
     DownloadListQueueDeleteQuerySerializer,
     DownloadListSerializer,
     DownloadQueueItemUpdateSerializer,
+    ExtractionBulkDataSerializer,
+    ExtractionBulkQuerySerializer,
+    ExtractionItemSerializer,
+    ExtractionListQuerySerializer,
+    ExtractionListQueueDeleteQuerySerializer,
+    ExtractionListSerializer,
 )
+from download.src.extraction_interact import ExtractionInteract
 from download.src.queue_interact import PendingInteract
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
@@ -355,3 +362,143 @@ class DownloadAggsApiView(ApiBaseView):
         serializer = DownloadAggsSerializer(self.response["channel_downloads"])
 
         return Response(serializer.data)
+
+
+class ExtractionApiListView(ApiBaseView):
+    """resolves to /api/download/extraction/
+    GET: returns items in the extraction queue
+    DELETE: remove items based on query filter
+    PATCH: bulk update status filtered by query
+    """
+
+    search_base = "ta_extraction/_search/"
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        responses={200: OpenApiResponse(ExtractionListSerializer())},
+        parameters=[ExtractionListQuerySerializer()],
+    )
+    def get(self, request):
+        """get extraction queue list"""
+        serializer = ExtractionListQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        validated_data = serializer.validated_data
+
+        self.data.update({"sort": [{"timestamp": {"order": "asc"}}]})
+
+        must_list = []
+        query_filter = validated_data.get("filter")
+        if query_filter:
+            must_list.append({"term": {"status": {"value": query_filter}}})
+
+        item_type_filter = validated_data.get("item_type")
+        if item_type_filter:
+            must_list.append(
+                {"term": {"item_type": {"value": item_type_filter}}}
+            )
+
+        search_query = validated_data.get("q")
+        if search_query:
+            must_list.append(
+                {"match_phrase_prefix": {"youtube_id": search_query}}
+            )
+
+        self.data["query"] = {"bool": {"must": must_list}}
+
+        self.get_document_list(request)
+        serializer = ExtractionListSerializer(self.response)
+
+        return Response(serializer.data)
+
+    @extend_schema(
+        parameters=[ExtractionListQueueDeleteQuerySerializer()],
+        responses={204: OpenApiResponse(description="Extraction items deleted")},
+    )
+    def delete(self, request):
+        """bulk delete extraction queue items by filter"""
+        serializer = ExtractionListQueueDeleteQuerySerializer(
+            data=request.query_params
+        )
+        serializer.is_valid(raise_exception=True)
+        validated_query = serializer.validated_data
+
+        query_filter = validated_query["filter"]
+        item_type = validated_query.get("item_type")
+
+        ExtractionInteract(status=query_filter).delete_bulk(
+            item_type=item_type
+        )
+
+        return Response(status=204)
+
+    @extend_schema(
+        request=ExtractionBulkDataSerializer(),
+        parameters=[ExtractionBulkQuerySerializer()],
+        responses={204: OpenApiResponse(description="Status updated")},
+    )
+    def patch(self, request):
+        """bulk update status, e.g. retry failed entries"""
+        data_serializer = ExtractionBulkDataSerializer(data=request.data)
+        data_serializer.is_valid(raise_exception=True)
+        validated_data = data_serializer.validated_data
+
+        query_serializer = ExtractionBulkQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        validated_query = query_serializer.validated_data
+
+        ExtractionInteract(status=validated_query["filter"]).update_bulk(
+            item_type=validated_query.get("item_type"),
+            new_status=validated_data["status"],
+            error=validated_query.get("error"),
+        )
+
+        return Response(status=204)
+
+
+class ExtractionApiView(ApiBaseView):
+    """resolves to /api/download/extraction/<extraction_id>/
+    GET: returns metadata dict of an item in the extraction queue
+    DELETE: forget from extraction queue
+    """
+
+    search_base = "ta_extraction/_doc/"
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(ExtractionItemSerializer()),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="Extraction item not found",
+            ),
+        },
+    )
+    def get(self, request, extraction_id):
+        # pylint: disable=unused-argument
+        """get extraction queue item"""
+        self.get_document(extraction_id)
+        if not self.response:
+            error = ErrorResponseSerializer(
+                {"error": "Extraction item not found"}
+            )
+            return Response(error.data, status=404)
+
+        response_serializer = ExtractionItemSerializer(self.response)
+
+        return Response(response_serializer.data, status=self.status_code)
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            204: OpenApiResponse(description="delete extraction item"),
+        },
+    )
+    def delete(request, extraction_id):
+        # pylint: disable=unused-argument
+        """delete single item from extraction queue"""
+        print(f"{extraction_id}: delete from extraction queue")
+        ExtractionInteract(extraction_id).delete_item()
+
+        return Response(status=204)

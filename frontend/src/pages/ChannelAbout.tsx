@@ -136,6 +136,9 @@ const ChannelAbout = () => {
           <div className="info-box-item">
             <div>
               <p>Last refreshed: {formatDate(channel.channel_last_refresh)}</p>
+              {channel.channel_subscribed && channel.channel_subscribed_next_check && (
+                <p>Next scan: {formatDate(channel.channel_subscribed_next_check, true)}</p>
+              )}
               {channel.channel_active && (
                 <p>
                   Youtube:{' '}

@@ -38,6 +38,7 @@ export type ChannelType = {
   channel_overwrites?: ChannelOverwritesType;
   channel_subs: number;
   channel_subscribed: boolean;
+  channel_subscribed_next_check?: string | null;
   channel_tags?: string[];
   channel_thumb_url: string;
   channel_tvart_url: string;

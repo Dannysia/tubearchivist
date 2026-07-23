@@ -11,7 +11,7 @@ class CustomPeriodicTaskSerializer(serializers.ModelSerializer):
     """serialize CustomPeriodicTask"""
 
     schedule = serializers.CharField(source="schedule_parsed")
-    schedule_human = serializers.CharField(source="crontab.human_readable")
+    schedule_human = serializers.CharField(source="human_readable")
     last_run_at = serializers.DateTimeField()
     config = serializers.DictField(source="task_config")
 
