@@ -204,7 +204,7 @@ const Video = () => {
   const currentHeight = video.streams
     ?.filter(stream => stream.type === 'video')
     .reduce((max, stream) => Math.max(max, stream.height ?? 0), 0);
-  const downscaleLadder = [1080, 720, 480, 360].filter(
+  const downscaleLadder = [2160, 1440, 1080, 720, 480, 360, 240].filter(
     height => currentHeight && height < currentHeight,
   );
 

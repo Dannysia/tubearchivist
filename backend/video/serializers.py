@@ -12,7 +12,9 @@ from video.src.constants import OrderEnum, SortEnum, VideoTypeEnum, WatchedEnum
 class VideoDownscaleSerializer(serializers.Serializer):
     """serialize downscale start request"""
 
-    target_height = serializers.ChoiceField(choices=[1080, 720, 480, 360])
+    target_height = serializers.ChoiceField(
+        choices=[2160, 1440, 1080, 720, 480, 360, 240]
+    )
 
 
 class DownscaleRecordSerializer(serializers.Serializer):

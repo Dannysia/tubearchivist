@@ -19,7 +19,7 @@ import startChannelDownscale, {
   ChannelDownscaleResponseType,
 } from '../api/actions/startChannelDownscale';
 
-const DOWNSCALE_LADDER = [1080, 720, 480, 360];
+const DOWNSCALE_LADDER = [2160, 1440, 1080, 720, 480, 360, 240];
 
 export type ChannelBaseOutletContextType = {
   currentPage: number;
