@@ -78,6 +78,7 @@ const DownscaleListItem = ({
               {job.new_size > 0 && <> → {humanFileSize(job.new_size, useSiUnits)}</>}
             </span>
           )}
+          {isRunning && <span> | {Math.round((progress ?? 0) * 100)}% Complete</span>}
         </p>
 
         {isQueued && <p>Waiting for a free slot to start encoding...</p>}
