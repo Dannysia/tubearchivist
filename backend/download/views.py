@@ -412,7 +412,9 @@ class ExtractionApiListView(ApiBaseView):
 
     @extend_schema(
         parameters=[ExtractionListQueueDeleteQuerySerializer()],
-        responses={204: OpenApiResponse(description="Extraction items deleted")},
+        responses={
+            204: OpenApiResponse(description="Extraction items deleted")
+        },
     )
     def delete(self, request):
         """bulk delete extraction queue items by filter"""

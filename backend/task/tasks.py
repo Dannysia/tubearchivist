@@ -6,15 +6,14 @@ Functionality:
 - handle task locking
 """
 
-from celery import Task, shared_task
-from celery.exceptions import Retry
-
 from appsettings.src.backup import ElasticBackup
 from appsettings.src.config import ReleaseVersion
 from appsettings.src.filesystem import Scanner
 from appsettings.src.index_setup import ElasticIndexWrap
 from appsettings.src.manual import ImportFolderScanner
 from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
+from celery import Task, shared_task
+from celery.exceptions import Retry
 from channel.src.index import YoutubeChannel
 from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import ParsedURLType, Parser
@@ -110,7 +109,9 @@ def update_subscribed(self):
 
     if added:
         process_extraction_queue.delay()
-        return f"Found {added} channels/playlists to add to the extraction queue."
+        return (
+            f"Found {added} channels/playlists to add to the extraction queue."
+        )
 
     return None
 

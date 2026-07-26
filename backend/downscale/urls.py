@@ -9,4 +9,9 @@ urlpatterns = [
         views.DownscaleApiListView.as_view(),
         name="api-downscale-list",
     ),
+    path(
+        "test-encoders/",
+        views.DownscaleEncoderTestApiView.as_view(),
+        name="api-downscale-test-encoders",
+    ),
 ]

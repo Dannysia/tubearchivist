@@ -59,6 +59,17 @@ RUN apt-get clean && apt-get -y update && apt-get -y install --no-install-recomm
     tini \
     curl && rm -rf /var/lib/apt/lists/*
 
+ARG TARGETARCH
+
+# install Intel VAAPI hardware encode runtime, amd64 only: no such driver
+# package exists for arm64, and there's no Intel iGPU to target there anyway
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+    sed -i 's/^Components: main$/Components: main non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && \
+    apt-get -y update && apt-get -y install --no-install-recommends \
+    libva2 libva-drm2 vainfo intel-media-va-driver-non-free \
+    && rm -rf /var/lib/apt/lists/* ; \
+    fi
+
 # install debug tools for testing environment
 RUN if [ "$INSTALL_DEBUG" ] ; then \
     apt-get -y update && apt-get -y install --no-install-recommends \

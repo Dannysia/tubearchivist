@@ -19,6 +19,23 @@ import deleteCookie from '../api/actions/deleteCookie';
 import validateCookie from '../api/actions/validateCookie';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import MembershipAppsettings from '../components/MembershipAppsettings';
+import testDownscaleEncoders, {
+  DownscaleEncoderTestResultType,
+} from '../api/actions/testDownscaleEncoders';
+import LoadingIndicator from '../components/LoadingIndicator';
+
+const ENCODER_OPTIONS = [
+  { value: 'h264', label: 'H.264' },
+  { value: 'h264_vaapi', label: 'H.264 (Hardware - VAAPI)' },
+  { value: 'h265', label: 'H.265 (HEVC)' },
+  { value: 'h265_vaapi', label: 'H.265 (Hardware - VAAPI)' },
+  { value: 'av1', label: 'AV1' },
+  { value: 'av1_vaapi', label: 'AV1 (Hardware - VAAPI)' },
+];
+
+const ENCODER_LABELS: Record<string, string> = Object.fromEntries(
+  ENCODER_OPTIONS.map(option => [option.value, option.label]),
+);
 
 type SettingsApplicationReponses = {
   snapshots?: SnapshotListType;
@@ -83,6 +100,10 @@ const SettingsApplication = () => {
   const [downscaleMaxConcurrent, setDownscaleMaxConcurrent] = useState<number | null>(null);
   const [downscaleEncoder, setDownscaleEncoder] = useState('h264');
   const [downscaleCrf, setDownscaleCrf] = useState<number | null>(null);
+  const [encoderTestResults, setEncoderTestResults] = useState<DownscaleEncoderTestResultType[]>(
+    [],
+  );
+  const [isTestingEncoders, setIsTestingEncoders] = useState(false);
 
   // Snapshots
   const [enableSnapshots, setEnableSnapshots] = useState(false);
@@ -140,9 +161,7 @@ const SettingsApplication = () => {
     setEnableCast(appSettingsConfigData?.application.enable_cast || false);
 
     // Downscale
-    setDownscaleMaxConcurrent(
-      appSettingsConfigData?.application.downscale_max_concurrent || null,
-    );
+    setDownscaleMaxConcurrent(appSettingsConfigData?.application.downscale_max_concurrent || null);
     setDownscaleEncoder(appSettingsConfigData?.application.downscale_encoder || 'h264');
     setDownscaleCrf(appSettingsConfigData?.application.downscale_crf ?? null);
 
@@ -165,6 +184,14 @@ const SettingsApplication = () => {
     const updatedConfig = { [group]: { [key]: configValue } } as Partial<AppSettingsConfigType>;
     await updateAppsettingsConfig(updatedConfig);
     setRefresh(true);
+  };
+
+  const handleTestEncoders = async () => {
+    setIsTestingEncoders(true);
+    setEncoderTestResults([]);
+    const response = await testDownscaleEncoders();
+    setEncoderTestResults(response?.data ?? []);
+    setIsTestingEncoders(false);
   };
 
   const handleCookieUpdate = async () => {
@@ -465,9 +492,9 @@ const SettingsApplication = () => {
                           </span>
                           : <q>best</q> video and <q>best</q> audio (yt-dlp's choice), no max
                           height, but excludes YouTube's AI-upscaled <q>Super Resolution</q>{' '}
-                          formats. yt-dlp tags these with <span className="settings-current">-sr</span>{' '}
-                          in the format ID, so this filters them out without otherwise changing
-                          selection.
+                          formats. yt-dlp tags these with{' '}
+                          <span className="settings-current">-sr</span> in the format ID, so this
+                          filters them out without otherwise changing selection.
                         </li>
                         <li>
                           <span className="settings-current">
@@ -956,6 +983,25 @@ const SettingsApplication = () => {
                         <li>Lower CRF means higher quality and larger files.</li>
                       </ul>
                     </li>
+                    <li>
+                      Hardware (VAAPI) options offload encoding to an Intel iGPU.
+                      <ul>
+                        <li>
+                          Requires the GPU passed through to the container (<code>/dev/dri</code>)
+                          and a working VAAPI driver.
+                        </li>
+                        <li>
+                          If a hardware job fails (missing device, driver issue, or this codec
+                          isn&apos;t supported on your GPU), it fails with the ffmpeg error shown.
+                          There is no automatic fallback to software encoding.
+                        </li>
+                        <li>
+                          AV1 hardware encode needs a fairly recent GPU (Intel Arc, Meteor Lake or
+                          newer) &mdash; most current-generation Intel iGPUs (e.g. UHD 7xx/Xe-LP)
+                          only support AV1 hardware decode, not encode.
+                        </li>
+                      </ul>
+                    </li>
                   </ul>
                 </div>
               )}
@@ -985,9 +1031,11 @@ const SettingsApplication = () => {
                       handleUpdateConfig('application.downscale_encoder', event.target.value);
                     }}
                   >
-                    <option value="h264">H.264</option>
-                    <option value="h265">H.265 (HEVC)</option>
-                    <option value="av1">AV1</option>
+                    {ENCODER_OPTIONS.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
               </div>
@@ -1007,8 +1055,47 @@ const SettingsApplication = () => {
                   <ul className="settings-current">
                     <li>H.264: 18-22 near-lossless, 23 balanced (default), 26-28 smaller files.</li>
                     <li>H.265: 24-26 near-lossless, 28 balanced (default), 30-32 smaller files.</li>
-                    <li>AV1: 24-28 near-lossless, 30-35 balanced (default), 36-40 smaller files.</li>
+                    <li>
+                      AV1: 24-28 near-lossless, 30-35 balanced (default), 36-40 smaller files.
+                    </li>
+                    <li>
+                      H.264 (Hardware): QP 18-22 near-lossless, 23-26 balanced, 28-32 smaller files.
+                    </li>
+                    <li>
+                      H.265 (Hardware): QP 20-24 near-lossless, 25-28 balanced, 30-34 smaller files.
+                    </li>
+                    <li>
+                      AV1 (Hardware): QP range depends on your driver; only usable on GPUs with AV1
+                      hardware encode support.
+                    </li>
+                    <li>
+                      Hardware QP and software CRF are different scales &mdash; a value tuned for
+                      one is not directly portable to the other. Lower the number when switching
+                      from software to hardware to target similar visual quality.
+                    </li>
                   </ul>
+                </div>
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Test hardware encoders</p>
+                </div>
+                <div>
+                  {isTestingEncoders ? (
+                    <LoadingIndicator />
+                  ) : (
+                    <Button label="Run test" onClick={handleTestEncoders} />
+                  )}
+                  {encoderTestResults.length > 0 && (
+                    <ul className="settings-current">
+                      {encoderTestResults.map(result => (
+                        <li key={result.encoder}>
+                          {ENCODER_LABELS[result.encoder] ?? result.encoder}:{' '}
+                          {result.ok ? 'works' : `failed - ${result.message}`}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               </div>
             </div>

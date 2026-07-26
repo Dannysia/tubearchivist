@@ -34,7 +34,7 @@ export type AppSettingsConfigType = {
     enable_snapshot: boolean;
     enable_cast: boolean;
     downscale_max_concurrent: number | null;
-    downscale_encoder: 'h264' | 'h265' | 'av1';
+    downscale_encoder: 'h264' | 'h264_vaapi' | 'h265' | 'h265_vaapi' | 'av1' | 'av1_vaapi';
     downscale_crf: number;
   };
 };

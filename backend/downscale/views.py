@@ -4,10 +4,12 @@ from common.views_base import AdminOnly, ApiBaseView
 from downscale.serializers import (
     DownscaleBulkActionSerializer,
     DownscaleBulkResultSerializer,
+    DownscaleEncoderTestSerializer,
     DownscaleListQuerySerializer,
     DownscaleListSerializer,
 )
 from downscale.src.downscale import DownscaleReview
+from downscale.src.encoder_capability import EncoderCapabilityTest
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
 
@@ -69,3 +71,23 @@ class DownscaleApiListView(ApiBaseView):
         )
 
         return Response(response_serializer.data)
+
+
+class DownscaleEncoderTestApiView(ApiBaseView):
+    """resolves to /api/downscale/test-encoders/
+    POST: run a small test encode for each hardware encoder
+    """
+
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(DownscaleEncoderTestSerializer(many=True))
+        },
+    )
+    def post(self, request):
+        """test hardware encoders with a small synthetic encode"""
+        results = EncoderCapabilityTest().run()
+        serializer = DownscaleEncoderTestSerializer(results, many=True)
+
+        return Response(serializer.data)

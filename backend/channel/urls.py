@@ -1,8 +1,7 @@
 """all channel API urls"""
 
-from django.urls import path
-
 from channel import views
+from django.urls import path
 
 urlpatterns = [
     path(

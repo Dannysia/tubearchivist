@@ -24,14 +24,40 @@ DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
 DISPATCH_LOCK_TIMEOUT = 30
 DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 
+# hardware (VAAPI) encoder keys all carry a _vaapi suffix; hw vs software
+# is derived from the key rather than stored, so there's nothing to keep
+# in sync when adding an encoder
 ENCODER_SETTINGS = {
     "h264": {"codec": "libx264", "extra_args": ["-preset", "veryfast"]},
+    "h264_vaapi": {"codec": "h264_vaapi", "extra_args": []},
     "h265": {
         "codec": "libx265",
         "extra_args": ["-preset", "veryfast", "-tag:v", "hvc1"],
     },
+    "h265_vaapi": {
+        # ffmpeg's encoder is named hevc_vaapi, there is no h265_vaapi
+        "codec": "hevc_vaapi",
+        "extra_args": ["-tag:v", "hvc1"],
+    },
     "av1": {"codec": "libsvtav1", "extra_args": ["-preset", "8"]},
+    "av1_vaapi": {"codec": "av1_vaapi", "extra_args": []},
 }
+
+
+def is_hw_encoder(encoder_key: str) -> bool:
+    """hardware (VAAPI) encoder keys all carry a _vaapi suffix"""
+    return encoder_key.endswith("_vaapi")
+
+
+def missing_vaapi_device_message(vaapi_device: str) -> str | None:
+    """None if the VAAPI render device exists, else an actionable message"""
+    if os.path.exists(vaapi_device):
+        return None
+
+    return (
+        f"VAAPI device {vaapi_device} not found - check /dev/dri "
+        "passthrough in docker-compose"
+    )
 
 
 def _now() -> int:
@@ -44,6 +70,67 @@ def _get_height(media_path: str) -> int | None:
     streams = MediaStreamExtractor(media_path).extract_metadata()
     heights = [s["height"] for s in streams if s["type"] == "video"]
     return max(heights) if heights else None
+
+
+def _encode_args(encoder_key: str, quality: int) -> list[str]:
+    """
+    build the -c:v/quality portion of an ffmpeg command, shared between a
+    real downscale encode and a synthetic capability test encode
+    """
+    encoder = ENCODER_SETTINGS.get(encoder_key, ENCODER_SETTINGS["h264"])
+    args = ["-c:v", encoder["codec"], *encoder["extra_args"]]
+
+    if is_hw_encoder(encoder_key):
+        args += ["-rc_mode", "CQP", "-qp", str(quality)]
+    else:
+        args += ["-crf", str(quality)]
+
+    return args
+
+
+def _build_ffmpeg_cmd(
+    original_path: str,
+    target_height: int,
+    encoder_key: str,
+    quality: int,
+    tmp_path: str,
+    vaapi_device: str,
+) -> list[str]:
+    """
+    build the ffmpeg argv for a downscale encode. For a hardware encoder,
+    decoding and scaling still happen in software (for compatibility with
+    arbitrary source codecs) and only the encode step runs on the GPU, fed
+    via hwupload after the scale filter.
+    """
+    is_hw = is_hw_encoder(encoder_key)
+
+    cmd = ["ffmpeg", "-y"]
+    if is_hw:
+        cmd += ["-vaapi_device", vaapi_device]
+
+    cmd += ["-i", original_path]
+
+    video_filter = f"scale=-2:{target_height}"
+    if is_hw:
+        video_filter += ",format=nv12,hwupload"
+    cmd += ["-vf", video_filter]
+
+    cmd += _encode_args(encoder_key, quality)
+
+    cmd += [
+        "-c:a",
+        "copy",
+        "-movflags",
+        "+faststart",
+        "-loglevel",
+        "warning",
+        "-nostats",
+        "-progress",
+        "pipe:1",
+        tmp_path,
+    ]
+
+    return cmd
 
 
 class DownscaleRunner:
@@ -180,36 +267,26 @@ class DownscaleRunner:
     def _encode(self, original_path: str, duration: float, title: str) -> None:
         """run ffmpeg, polling for progress and a stop signal"""
         config = AppConfig().config["application"]
-        encoder = ENCODER_SETTINGS.get(
-            config["downscale_encoder"], ENCODER_SETTINGS["h264"]
-        )
-        crf = config["downscale_crf"]
-        if crf is None:
-            crf = 23
+        encoder_key = config["downscale_encoder"]
 
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
+        vaapi_device = EnvironmentSettings.VAAPI_RENDER_DEVICE
+        if is_hw_encoder(encoder_key):
+            missing_message = missing_vaapi_device_message(vaapi_device)
+            if missing_message:
+                raise RuntimeError(missing_message)
+
+        quality = config["downscale_crf"]
+        if quality is None:
+            quality = 23
+
+        cmd = _build_ffmpeg_cmd(
             original_path,
-            "-vf",
-            f"scale=-2:{self.target_height}",
-            "-c:v",
-            encoder["codec"],
-            *encoder["extra_args"],
-            "-crf",
-            str(crf),
-            "-c:a",
-            "copy",
-            "-movflags",
-            "+faststart",
-            "-loglevel",
-            "warning",
-            "-nostats",
-            "-progress",
-            "pipe:1",
+            self.target_height,
+            encoder_key,
+            quality,
             self.tmp_path,
-        ]
+            vaapi_device,
+        )
         process = subprocess.Popen(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )  # pylint: disable=consider-using-with

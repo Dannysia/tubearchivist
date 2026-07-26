@@ -2,9 +2,8 @@
 
 # pylint: disable=abstract-method
 
-from rest_framework import serializers
-
 from common.serializers import PaginationSerializer
+from rest_framework import serializers
 
 
 class DownscaleItemSerializer(serializers.Serializer):
@@ -69,3 +68,11 @@ class DownscaleBulkResultSerializer(serializers.Serializer):
 
     success = serializers.ListField(child=serializers.CharField())
     failed = DownscaleBulkResultItemSerializer(many=True)
+
+
+class DownscaleEncoderTestSerializer(serializers.Serializer):
+    """serialize a single hardware encoder capability test result"""
+
+    encoder = serializers.CharField()
+    ok = serializers.BooleanField()
+    message = serializers.CharField(allow_null=True)

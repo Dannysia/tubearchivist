@@ -62,7 +62,9 @@ def test_config_accepts_known_key():
 
 def test_update_subscribed_uses_minutes():
     """the subscription ticker is scheduled in minutes, not hours"""
-    assert ScheduleBuilder.UNITS["update_subscribed"] == IntervalSchedule.MINUTES
+    assert (
+        ScheduleBuilder.UNITS["update_subscribed"] == IntervalSchedule.MINUTES
+    )
 
 
 def test_other_tasks_default_to_hours():

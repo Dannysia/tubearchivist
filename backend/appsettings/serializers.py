@@ -2,9 +2,8 @@
 
 # pylint: disable=abstract-method
 
-from rest_framework import serializers
-
 from common.serializers import ValidateUnknownFieldsMixin
+from rest_framework import serializers
 
 
 class BackupFileSerializer(serializers.Serializer):
@@ -79,7 +78,14 @@ class AppConfigAppSerializer(
         allow_null=True, min_value=1
     )
     downscale_encoder = serializers.ChoiceField(
-        choices=["h264", "h265", "av1"]
+        choices=[
+            "h264",
+            "h264_vaapi",
+            "h265",
+            "h265_vaapi",
+            "av1",
+            "av1_vaapi",
+        ]
     )
     downscale_crf = serializers.IntegerField(
         allow_null=True, min_value=0, max_value=63

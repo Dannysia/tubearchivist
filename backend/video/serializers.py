@@ -2,11 +2,10 @@
 
 # pylint: disable=abstract-method
 
-from drf_spectacular.utils import extend_schema_field
-from rest_framework import serializers
-
 from channel.serializers import ChannelSerializer
 from common.serializers import PaginationSerializer
+from drf_spectacular.utils import extend_schema_field
+from rest_framework import serializers
 from video.src.constants import OrderEnum, SortEnum, VideoTypeEnum, WatchedEnum
 
 

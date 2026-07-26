@@ -145,8 +145,8 @@ const SettingsScheduling = () => {
                 hour.
               </li>
               <li>
-                Exception: the subscription check below only looks up which subscriptions are
-                due, it doesn't rescan everything, so it's scheduled in{' '}
+                Exception: the subscription check below only looks up which subscriptions are due,
+                it doesn't rescan everything, so it's scheduled in{' '}
                 <span className="settings-current">minutes</span> instead of hours.
               </li>
             </ul>

@@ -24,7 +24,8 @@ MIN_INTERVAL_HOURS = 1
 
 
 def _is_due(item: dict, field: str, now_epoch: int) -> bool:
-    """a subscription is due if it was never checked or its next check has passed"""
+    """a subscription is due if it was never checked or its next
+    check has passed"""
     return not item.get(field) or item[field] <= now_epoch
 
 
@@ -84,7 +85,9 @@ def _run_subscription_scan(
 
     now_epoch = int(datetime.now().timestamp())
     due_items = [
-        item for item in all_items if _is_due(item, next_check_field, now_epoch)
+        item
+        for item in all_items
+        if _is_due(item, next_check_field, now_epoch)
     ]
     if not due_items:
         return 0
@@ -97,7 +100,9 @@ def _run_subscription_scan(
         flat=config["subscriptions"].get("extract_flat", False),
     )
 
-    _advance_next_check(index_name, id_field, next_check_field, due_items, config)
+    _advance_next_check(
+        index_name, id_field, next_check_field, due_items, config
+    )
 
     return added
 
@@ -126,7 +131,9 @@ class ChannelSubscription:
 
         def build_urls(due_channels: list[dict]) -> list[ParsedURLType]:
             if self.task:
-                self.task.send_progress([f"Scanning {len(due_channels)} channels"])
+                self.task.send_progress(
+                    [f"Scanning {len(due_channels)} channels"]
+                )
             return self._process_channel_urls(due_channels)
 
         return _run_subscription_scan(

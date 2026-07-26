@@ -2,10 +2,9 @@
 
 # pylint: disable=abstract-method
 
-from rest_framework import serializers
-
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from downscale.serializers import DownscaleBulkResultItemSerializer
+from rest_framework import serializers
 from video.src.constants import VideoTypeEnum
 
 

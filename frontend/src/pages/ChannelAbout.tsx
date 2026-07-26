@@ -50,9 +50,7 @@ const ChannelAbout = () => {
   const [refresh, setRefresh] = useState(true);
   const [showDownscaleForm, setShowDownscaleForm] = useState(false);
   const [downscaleTargetHeight, setDownscaleTargetHeight] = useState(DOWNSCALE_LADDER[0]);
-  const [downscaleResult, setDownscaleResult] = useState<ChannelDownscaleResponseType | null>(
-    null,
-  );
+  const [downscaleResult, setDownscaleResult] = useState<ChannelDownscaleResponseType | null>(null);
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
 

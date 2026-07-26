@@ -65,7 +65,9 @@ def test_compute_next_check_never_below_floor(_run):
     now = datetime(2026, 1, 1, 0, 0, 0)
     now_epoch = int(now.timestamp())
 
-    result = _compute_next_check(frequency_hours=1, jitter_percent=100, now=now)
+    result = _compute_next_check(
+        frequency_hours=1, jitter_percent=100, now=now
+    )
 
     floor = now_epoch + int(MIN_INTERVAL_HOURS * 3600)
     assert result >= floor

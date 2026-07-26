@@ -270,7 +270,9 @@ class Command(BaseCommand):
             self.style.SUCCESS("    ✓ all default schedules created")
         )
 
-    def _mig_update_subscribed_to_minutes(self, builder: ScheduleBuilder) -> None:
+    def _mig_update_subscribed_to_minutes(
+        self, builder: ScheduleBuilder
+    ) -> None:
         """migrate a pre-existing update_subscribed schedule from hours to
         the new minutes-based interval, resetting to the default cadence
         since the old number no longer means the same thing"""

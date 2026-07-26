@@ -1,8 +1,5 @@
 """all API views for video endpoints"""
 
-from drf_spectacular.utils import OpenApiResponse, extend_schema
-from rest_framework.response import Response
-
 from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
@@ -12,7 +9,9 @@ from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from downscale.src.queue_interact import DownscaleInteract
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
+from rest_framework.response import Response
 from task.src.task_manager import TaskCommand
 from video.serializers import (
     CommentItemSerializer,

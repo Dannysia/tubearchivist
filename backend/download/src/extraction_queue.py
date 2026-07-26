@@ -51,8 +51,12 @@ class ExtractionQueue:
                 "force": force,
                 "timestamp": int(datetime.now().timestamp()),
             }
-            extraction_id = self._build_id(entry["type"], entry["url"], vid_type)
-            action = {"index": {"_index": "ta_extraction", "_id": extraction_id}}
+            extraction_id = self._build_id(
+                entry["type"], entry["url"], vid_type
+            )
+            action = {
+                "index": {"_index": "ta_extraction", "_id": extraction_id}
+            }
             bulk_list.append(json.dumps(action))
             bulk_list.append(json.dumps(doc))
 
@@ -74,7 +78,8 @@ class ExtractionQueue:
         return f"{item_type}_{youtube_id}_{vid_type or 'na'}"
 
     def run_queue(self) -> tuple[int, int, bool]:
-        """resolve all pending/extracting entries, returns (resolved, failed, any_auto_start)"""
+        """resolve all pending/extracting entries, returns
+        (resolved, failed, any_auto_start)"""
         warm = PendingList(youtube_ids=[], task=self.task)
         warm.get_download()
         warm.get_indexed()
@@ -113,7 +118,9 @@ class ExtractionQueue:
             handler.all_channels = warm.all_channels
             handler.channel_overwrites = warm.channel_overwrites
 
-            handler.parse_url_list(status=entry_doc.get("target_status", "pending"))
+            handler.parse_url_list(
+                status=entry_doc.get("target_status", "pending")
+            )
 
             if handler.extraction_failed:
                 failed += 1

@@ -18,6 +18,9 @@ services:
       - TA_PASSWORD=verysecret              # your initial TA credentials
       - ELASTIC_PASSWORD=verysecret         # set password for Elasticsearch
       - TZ=America/New_York                 # set your time zone
+      # - TA_VAAPI_RENDER_DEVICE=/dev/dri/renderD129 # only if renderD128 (default) is wrong
+    # devices:                              # uncomment to pass through an Intel iGPU for
+    #   - /dev/dri:/dev/dri                 # hardware (VAAPI) downscale encoding, see docs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health/"]
       interval: 2m

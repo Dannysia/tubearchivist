@@ -116,7 +116,9 @@ class ExtractionItemSerializer(serializers.Serializer):
 
     id = serializers.CharField()
     youtube_id = serializers.CharField()
-    item_type = serializers.ChoiceField(choices=["video", "channel", "playlist"])
+    item_type = serializers.ChoiceField(
+        choices=["video", "channel", "playlist"]
+    )
     vid_type = serializers.CharField(required=False, allow_null=True)
     limit = serializers.IntegerField(required=False, allow_null=True)
     status = serializers.ChoiceField(
@@ -157,7 +159,9 @@ class ExtractionListQuerySerializer(
 class ExtractionListQueueDeleteQuerySerializer(serializers.Serializer):
     """serialize bulk delete extraction queue query string"""
 
-    filter = serializers.ChoiceField(choices=["pending", "extracting", "failed"])
+    filter = serializers.ChoiceField(
+        choices=["pending", "extracting", "failed"]
+    )
     item_type = serializers.ChoiceField(
         choices=["video", "channel", "playlist"], required=False
     )
@@ -166,7 +170,9 @@ class ExtractionListQueueDeleteQuerySerializer(serializers.Serializer):
 class ExtractionBulkQuerySerializer(serializers.Serializer):
     """serialize bulk update query"""
 
-    filter = serializers.ChoiceField(choices=["pending", "extracting", "failed"])
+    filter = serializers.ChoiceField(
+        choices=["pending", "extracting", "failed"]
+    )
     item_type = serializers.ChoiceField(
         choices=["video", "channel", "playlist"], required=False
     )

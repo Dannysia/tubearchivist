@@ -26,7 +26,11 @@ class CustomPeriodicTask(PeriodicTask):
         """human readable schedule description"""
         if self.interval_id:
             every = int(self.interval.every)
-            unit = self.interval.period if every != 1 else self.interval.period.rstrip("s")
+            unit = (
+                self.interval.period
+                if every != 1
+                else self.interval.period.rstrip("s")
+            )
             return f"every {every} {unit}"
 
         if self.crontab_id:

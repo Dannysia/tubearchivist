@@ -1,12 +1,5 @@
 """all channel API views"""
 
-from drf_spectacular.utils import (
-    OpenApiParameter,
-    OpenApiResponse,
-    extend_schema,
-)
-from rest_framework.response import Response
-
 from channel.serializers import (
     ChannelAggSerializer,
     ChannelDownscaleSerializer,
@@ -24,6 +17,12 @@ from common.src.es_connect import IndexPaginate
 from common.src.urlparser import Parser
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from downscale.src.queue_interact import DownscaleInteract
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+)
+from rest_framework.response import Response
 from task.src.task_manager import TaskCommand
 from task.tasks import index_channel_playlists, subscribe_to
 from video.serializers import VideoDownscaleSerializer
