@@ -51,6 +51,11 @@ class DownscaleListQuerySerializer(serializers.Serializer):
     )
     channel = serializers.CharField(required=False, help_text="channel ID")
     q = serializers.CharField(required=False, help_text="Search Query")
+    size_change = serializers.ChoiceField(
+        choices=["smaller", "larger"],
+        required=False,
+        help_text="only jobs where the encode finished smaller/larger than the original",
+    )
     page = serializers.IntegerField(required=False)
 
 

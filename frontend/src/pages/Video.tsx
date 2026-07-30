@@ -41,6 +41,7 @@ import ToggleConfig from '../components/ToggleConfig';
 import { PlaylistType } from '../api/loader/loadPlaylistById';
 import { useAppSettingsStore } from '../stores/AppSettingsStore';
 import updateDownloadQueueStatusById from '../api/actions/updateDownloadQueueStatusById';
+import updateDownloadQueue from '../api/actions/updateDownloadQueue';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import NotFound from './NotFound';
@@ -120,6 +121,8 @@ const Video = () => {
   );
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showRedownloadConfirm, setShowRedownloadConfirm] = useState(false);
+  const [redownloadQueued, setRedownloadQueued] = useState(false);
   const [showDownscaleForm, setShowDownscaleForm] = useState(false);
   const [downscaleTargetHeight, setDownscaleTargetHeight] = useState(0);
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
@@ -360,6 +363,52 @@ const Video = () => {
               <a download="" href={`${getApiUrl()}${video.media_url}`}>
                 <Button label="Download File" id="download-item" />
               </a>
+            </div>
+
+            <div className="button-box">
+              {isAdmin && (
+                <>
+                  {redownloadQueued && (
+                    <p>
+                      Redownload queued &mdash; watch progress on the{' '}
+                      <Link to={Routes.Downloads}>Download queue</Link>
+                    </p>
+                  )}
+
+                  {!redownloadQueued && !showRedownloadConfirm && (
+                    <Button
+                      label="Redownload"
+                      id="redownload-item"
+                      title={`Redownload ${video.title}`}
+                      onClick={() => setShowRedownloadConfirm(true)}
+                    />
+                  )}
+
+                  {!redownloadQueued && showRedownloadConfirm && (
+                    <div className="delete-confirm">
+                      <span>Re-fetch and overwrite this file? </span>
+
+                      <Button
+                        label="Redownload"
+                        className="danger-button"
+                        onClick={async () => {
+                          await updateDownloadQueue({
+                            youtubeIdStrings: video.youtube_id,
+                            force: true,
+                            autostart: true,
+                          });
+                          setShowRedownloadConfirm(false);
+                          setRedownloadQueued(true);
+                        }}
+                      />
+                      <Button
+                        label="Cancel"
+                        onClick={() => setShowRedownloadConfirm(false)}
+                      />
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="button-box">

@@ -6,7 +6,10 @@ import { ConfigType } from './Home';
 import Pagination, { PaginationType } from '../components/Pagination';
 import Button from '../components/Button';
 import DownscaleListItem from '../components/DownscaleListItem';
-import loadDownscaleQueue, { DownscaleStatus } from '../api/loader/loadDownscaleQueue';
+import loadDownscaleQueue, {
+  DownscaleSizeChange,
+  DownscaleStatus,
+} from '../api/loader/loadDownscaleQueue';
 import loadDownscaleAggs, { DownscaleAggsType } from '../api/loader/loadDownscaleAggs';
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
@@ -46,6 +49,7 @@ const Downscale = () => {
 
   const statusFilterFromUrl = searchParams.get('status') as DownscaleStatus | null;
   const channelFilterFromUrl = searchParams.get('channel');
+  const sizeChangeFilterFromUrl = searchParams.get('size_change') as DownscaleSizeChange | null;
 
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -85,10 +89,18 @@ const Downscale = () => {
         statusFilterFromUrl,
         channelFilterFromUrl,
         searchInput,
+        sizeChangeFilterFromUrl,
       );
       setDownscaleResponse(response);
     })();
-  }, [currentPage, statusFilterFromUrl, channelFilterFromUrl, searchInput, refreshNonce]);
+  }, [
+    currentPage,
+    statusFilterFromUrl,
+    channelFilterFromUrl,
+    searchInput,
+    sizeChangeFilterFromUrl,
+    refreshNonce,
+  ]);
 
   useEffect(() => {
     (async () => {
@@ -230,12 +242,39 @@ const Downscale = () => {
             }}
           />
           {searchInput && <Button onClick={() => setSearchInput('')}>Clear</Button>}
+          <select
+            name="size_change_filter"
+            id="size_change_filter"
+            value={sizeChangeFilterFromUrl || 'all'}
+            onChange={event => {
+              const value = event.currentTarget.value;
+              const params = searchParams;
+              if (value !== 'all') {
+                params.set('size_change', value);
+              } else {
+                params.delete('size_change');
+              }
+              setSearchParams(params);
+              setSelectedIds(new Set());
+              setShowBulkRejectConfirm(false);
+            }}
+          >
+            <option value="all">any size change</option>
+            <option value="smaller">got smaller</option>
+            <option value="larger">got larger</option>
+          </select>
         </div>
 
         <h3>
           {channelFilterFromUrl && (
             <>
               Filtered by channel: <i>{channel_filter_name}</i>
+            </>
+          )}
+          {sizeChangeFilterFromUrl && (
+            <>
+              {channelFilterFromUrl && ' - '}
+              Filtered by size change: <i>{sizeChangeFilterFromUrl}</i>
             </>
           )}
         </h3>

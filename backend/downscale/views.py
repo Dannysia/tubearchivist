@@ -54,6 +54,27 @@ class DownscaleApiListView(ApiBaseView):
         if search_query:
             must_list.append({"match_phrase_prefix": {"title": search_query}})
 
+        size_change = validated_query.get("size_change")
+        if size_change:
+            # new_size is only ever set once an encode actually finishes
+            # (_finish_success), so requiring > 0 excludes queued/running/
+            # failed jobs rather than treating their unset 0 as "smaller"
+            operator = "<" if size_change == "smaller" else ">"
+            must_list.append(
+                {
+                    "script": {
+                        "script": {
+                            "source": (
+                                "doc['new_size'].size() > 0 && "
+                                "doc['new_size'].value > 0 && "
+                                f"doc['new_size'].value {operator} "
+                                "doc['original_size'].value"
+                            )
+                        }
+                    }
+                }
+            )
+
         if must_list:
             self.data["query"] = {"bool": {"must": must_list}}
 
