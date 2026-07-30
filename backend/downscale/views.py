@@ -173,9 +173,7 @@ class DownscaleAggsApiView(ApiBaseView):
 
         status_filter = validated_query.get("status")
         if status_filter:
-            self.data["query"] = {
-                "term": {"status": {"value": status_filter}}
-            }
+            self.data["query"] = {"term": {"status": {"value": status_filter}}}
 
         self.data.update(
             {
@@ -194,7 +192,9 @@ class DownscaleAggsApiView(ApiBaseView):
             }
         )
         self.get_aggs()
-        serializer = DownscaleAggsSerializer(self.response["channel_downscale"])
+        serializer = DownscaleAggsSerializer(
+            self.response["channel_downscale"]
+        )
 
         return Response(serializer.data)
 

@@ -54,7 +54,7 @@ class DownscaleListQuerySerializer(serializers.Serializer):
     size_change = serializers.ChoiceField(
         choices=["smaller", "larger"],
         required=False,
-        help_text="only jobs where the encode finished smaller/larger than the original",
+        help_text="only jobs where the encode finished smaller/larger",
     )
     page = serializers.IntegerField(required=False)
 
@@ -66,9 +66,7 @@ class DownscaleBulkActionSerializer(serializers.Serializer):
     filter instead (see DownscaleListQuerySerializer)
     """
 
-    ids = serializers.ListField(
-        child=serializers.CharField(), required=False
-    )
+    ids = serializers.ListField(child=serializers.CharField(), required=False)
     action = serializers.ChoiceField(
         choices=["accept", "reject", "retry", "cancel"]
     )

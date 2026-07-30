@@ -178,7 +178,9 @@ const SettingsApplication = () => {
   // h264_vaapi has a real speed/quality knob (ffmpeg's -quality, Intel's
   // "Target Usage"); h265_vaapi/av1_vaapi expose nothing equivalent
   const presetUnsupported = isHardwareEncoder && downscaleEncoder !== 'h264_vaapi';
-  const presetTableRows = presetUnsupported ? undefined : PRESET_REFERENCE[downscaleEncoder as 'h264' | 'h265' | 'av1' | 'h264_vaapi'];
+  const presetTableRows = presetUnsupported
+    ? undefined
+    : PRESET_REFERENCE[downscaleEncoder as 'h264' | 'h265' | 'av1' | 'h264_vaapi'];
 
   // Snapshots
   const [enableSnapshots, setEnableSnapshots] = useState(false);
@@ -1131,10 +1133,14 @@ const SettingsApplication = () => {
                   />
                   <ul className="settings-current">
                     {downscaleEncoder === 'h264' && (
-                      <li>H.264: 18-22 near-lossless, 23 balanced (default), 26-28 smaller files.</li>
+                      <li>
+                        H.264: 18-22 near-lossless, 23 balanced (default), 26-28 smaller files.
+                      </li>
                     )}
                     {downscaleEncoder === 'h265' && (
-                      <li>H.265: 24-26 near-lossless, 28 balanced (default), 30-32 smaller files.</li>
+                      <li>
+                        H.265: 24-26 near-lossless, 28 balanced (default), 30-32 smaller files.
+                      </li>
                     )}
                     {downscaleEncoder === 'av1' && (
                       <li>

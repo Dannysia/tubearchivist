@@ -401,10 +401,7 @@ const Video = () => {
                           setRedownloadQueued(true);
                         }}
                       />
-                      <Button
-                        label="Cancel"
-                        onClick={() => setShowRedownloadConfirm(false)}
-                      />
+                      <Button label="Cancel" onClick={() => setShowRedownloadConfirm(false)} />
                     </div>
                   )}
                 </>
@@ -572,8 +569,7 @@ const Video = () => {
 
             {video.downscale && (
               <p>
-                Downscaled: {video.downscale.original_height}p &rarr; {video.downscale.new_height}
-                p
+                Downscaled: {video.downscale.original_height}p &rarr; {video.downscale.new_height}p
                 <span className="space-carrot">|</span>
                 {humanFileSize(video.downscale.original_size, useSiUnits)} &rarr;{' '}
                 {humanFileSize(video.downscale.new_size, useSiUnits)}
