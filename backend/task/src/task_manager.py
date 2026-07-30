@@ -56,6 +56,8 @@ class TaskManager:
 
     def init(self, task):
         """pass task object from bind task to set initial pending message"""
+        handler = TaskRedis()
+        existing = handler.get_single(task.request.id)
         message = {
             "status": "PENDING",
             "result": None,
@@ -64,7 +66,14 @@ class TaskManager:
             "name": task.name,
             "task_id": task.request.id,
         }
-        TaskRedis().set_key(task.request.id, message)
+        if existing.get("command"):
+            # preserve a STOP/KILL command across the task's own retries -
+            # init() runs again on every retry re-entry (e.g. a task
+            # waiting on a concurrency limit) and would otherwise silently
+            # overwrite a pending command before the task ever checks
+            # is_stopped()
+            message["command"] = existing["command"]
+        handler.set_key(task.request.id, message)
 
     def fail_pending(self):
         """
