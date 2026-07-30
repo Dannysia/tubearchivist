@@ -65,6 +65,7 @@ class ApplicationConfigType(TypedDict):
         "av1_vaapi",
     ]
     downscale_crf: int | None
+    downscale_preset: str | None
 
 
 class AppConfigType(TypedDict):
@@ -116,6 +117,7 @@ class AppConfig:
             "downscale_max_concurrent": None,
             "downscale_encoder": "h264",
             "downscale_crf": 23,
+            "downscale_preset": "veryfast",
         },
     }
 

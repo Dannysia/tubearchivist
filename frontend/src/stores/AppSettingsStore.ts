@@ -43,6 +43,7 @@ export const useAppSettingsStore = create<AppSettingsState>(set => ({
       downscale_max_concurrent: null,
       downscale_encoder: 'h264',
       downscale_crf: 23,
+      downscale_preset: 'veryfast',
     },
   },
   setAppSettingsConfig: appSettingsConfig => set({ appSettingsConfig }),

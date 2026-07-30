@@ -33,6 +33,7 @@ import updateCustomPlaylist from '../api/actions/updateCustomPlaylist';
 import loadCommentsbyVideoId, { CommentsResponseType } from '../api/loader/loadCommentsbyVideoId';
 import CommentBox from '../components/CommentBox';
 import Button from '../components/Button';
+import { ENCODER_LABELS, QUALITY_LABELS } from '../configuration/constants/DownscaleEncoders';
 import getApiUrl from '../configuration/getApiUrl';
 import loadVideoNav, { VideoNavResponseType } from '../api/loader/loadVideoNav';
 import useIsAdmin from '../functions/useIsAdmin';
@@ -519,6 +520,25 @@ const Video = () => {
                   </p>
                 );
               })}
+
+            {video.downscale && (
+              <p>
+                Downscaled: {video.downscale.original_height}p &rarr; {video.downscale.new_height}
+                p
+                <span className="space-carrot">|</span>
+                {humanFileSize(video.downscale.original_size, useSiUnits)} &rarr;{' '}
+                {humanFileSize(video.downscale.new_size, useSiUnits)}
+                {video.downscale.encoder && (
+                  <>
+                    <span className="space-carrot">|</span>
+                    {ENCODER_LABELS[video.downscale.encoder] ?? video.downscale.encoder}
+                    {video.downscale.quality != null &&
+                      ` ${QUALITY_LABELS[video.downscale.encoder] ?? 'quality'} ${video.downscale.quality}`}
+                    {video.downscale.preset && `, preset ${video.downscale.preset}`}
+                  </>
+                )}
+              </p>
+            )}
           </div>
         </div>
         {video.tags && video.tags.length > 0 && (

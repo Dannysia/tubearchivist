@@ -3,6 +3,7 @@
 # pylint: disable=abstract-method
 
 from common.serializers import ValidateUnknownFieldsMixin
+from downscale.src.downscale import PRESET_CHOICES
 from rest_framework import serializers
 
 
@@ -89,6 +90,9 @@ class AppConfigAppSerializer(
     )
     downscale_crf = serializers.IntegerField(
         allow_null=True, min_value=0, max_value=63
+    )
+    downscale_preset = serializers.ChoiceField(
+        choices=PRESET_CHOICES, allow_null=True
     )
 
 

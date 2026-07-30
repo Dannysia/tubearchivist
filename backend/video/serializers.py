@@ -24,6 +24,9 @@ class DownscaleRecordSerializer(serializers.Serializer):
     original_size = serializers.IntegerField()
     new_height = serializers.IntegerField()
     new_size = serializers.IntegerField()
+    encoder = serializers.CharField(required=False, allow_null=True)
+    quality = serializers.IntegerField(required=False, allow_null=True)
+    preset = serializers.CharField(required=False, allow_null=True)
 
 
 class PlayerSerializer(serializers.Serializer):

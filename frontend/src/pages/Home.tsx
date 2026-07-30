@@ -58,6 +58,17 @@ export type Subtitles = {
   media_url: string;
 };
 
+export type DownscaleRecordType = {
+  original_height: number;
+  original_size: number;
+  new_height: number;
+  new_size: number;
+  // absent on records created before per-job encoder settings were tracked
+  encoder?: string;
+  quality?: number;
+  preset?: string;
+};
+
 export type VideoType = {
   active: boolean;
   category: string[];
@@ -65,6 +76,7 @@ export type VideoType = {
   date_downloaded: number;
   description: string;
   comment_count?: number;
+  downscale?: DownscaleRecordType;
   media_size: number;
   media_url: string;
   player: PlayerType;

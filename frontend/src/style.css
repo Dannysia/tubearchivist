@@ -224,6 +224,23 @@ button:disabled:hover {
   color: var(--accent-font-light);
 }
 
+.preset-reference-table {
+  border-collapse: collapse;
+  margin-top: 5px;
+  font-size: 0.9em;
+}
+
+.preset-reference-table th,
+.preset-reference-table td {
+  border: 1px solid var(--accent-font-light);
+  padding: 3px 10px;
+  text-align: left;
+}
+
+.preset-reference-table .active-row {
+  font-weight: bold;
+}
+
 .help-text {
   width: 100%;
   border-left: 1px solid var(--accent-font-light);

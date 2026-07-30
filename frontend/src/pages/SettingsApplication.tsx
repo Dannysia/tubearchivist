@@ -23,19 +23,86 @@ import testDownscaleEncoders, {
   DownscaleEncoderTestResultType,
 } from '../api/actions/testDownscaleEncoders';
 import LoadingIndicator from '../components/LoadingIndicator';
+import { ENCODER_LABELS, QUALITY_LABELS } from '../configuration/constants/DownscaleEncoders';
 
-const ENCODER_OPTIONS = [
-  { value: 'h264', label: 'H.264' },
-  { value: 'h264_vaapi', label: 'H.264 (Hardware - VAAPI)' },
-  { value: 'h265', label: 'H.265 (HEVC)' },
-  { value: 'h265_vaapi', label: 'H.265 (Hardware - VAAPI)' },
-  { value: 'av1', label: 'AV1' },
-  { value: 'av1_vaapi', label: 'AV1 (Hardware - VAAPI)' },
+const ENCODER_OPTIONS = Object.entries(ENCODER_LABELS).map(([value, label]) => ({
+  value,
+  label,
+}));
+
+const PRESET_OPTIONS = [
+  'ultrafast',
+  'superfast',
+  'veryfast',
+  'faster',
+  'fast',
+  'medium',
+  'slow',
+  'slower',
+  'veryslow',
+  'placebo',
 ];
 
-const ENCODER_LABELS: Record<string, string> = Object.fromEntries(
-  ENCODER_OPTIONS.map(option => [option.value, option.label]),
-);
+type PresetReferenceRow = { preset: string; time: string; size: string };
+
+// ballpark figures from commonly cited community encoder benchmarks, all
+// relative to that codec's own "medium" preset. Not measured on this
+// device - actual results depend heavily on source content, resolution
+// and hardware, so treat these as a rough sense of direction only.
+const PRESET_REFERENCE: Record<'h264' | 'h265' | 'av1' | 'h264_vaapi', PresetReferenceRow[]> = {
+  h264: [
+    { preset: 'ultrafast', time: '~0.3x (3x faster)', size: '~40-50% larger' },
+    { preset: 'superfast', time: '~0.45x', size: '~25-35% larger' },
+    { preset: 'veryfast', time: '~0.6x', size: '~10-20% larger' },
+    { preset: 'faster', time: '~0.8x', size: '~4-8% larger' },
+    { preset: 'fast', time: '~0.9x', size: '~2-4% larger' },
+    { preset: 'medium', time: '1x (baseline)', size: 'baseline' },
+    { preset: 'slow', time: '~1.6-1.8x', size: '~3-7% smaller' },
+    { preset: 'slower', time: '~2.5-3x', size: '~6-10% smaller' },
+    { preset: 'veryslow', time: '~4-5x', size: '~8-12% smaller' },
+    { preset: 'placebo', time: '~15-30x+', size: '~9-13% smaller' },
+  ],
+  h265: [
+    { preset: 'ultrafast', time: '~0.35x (2-3x faster)', size: '~35-45% larger' },
+    { preset: 'superfast', time: '~0.5x', size: '~20-30% larger' },
+    { preset: 'veryfast', time: '~0.65x', size: '~8-15% larger' },
+    { preset: 'faster', time: '~0.8x', size: '~3-6% larger' },
+    { preset: 'fast', time: '~0.9x', size: '~1-3% larger' },
+    { preset: 'medium', time: '1x (baseline)', size: 'baseline' },
+    { preset: 'slow', time: '~1.8-2.2x', size: '~2-5% smaller' },
+    { preset: 'slower', time: '~3-4x', size: '~4-7% smaller' },
+    { preset: 'veryslow', time: '~5-7x', size: '~6-9% smaller' },
+    { preset: 'placebo', time: '~20x+', size: '~6-10% smaller' },
+  ],
+  av1: [
+    { preset: 'ultrafast', time: '~0.2x (5x faster)', size: '~50-70% larger' },
+    { preset: 'superfast', time: '~0.35x', size: '~30-45% larger' },
+    { preset: 'veryfast', time: '~0.5x', size: '~15-25% larger' },
+    { preset: 'faster', time: '~0.65x', size: '~8-14% larger' },
+    { preset: 'fast', time: '~0.8x', size: '~3-6% larger' },
+    { preset: 'medium', time: '1x (baseline)', size: 'baseline' },
+    { preset: 'slow', time: '~2-2.5x', size: '~5-10% smaller' },
+    { preset: 'slower', time: '~3-4x', size: '~8-14% smaller' },
+    { preset: 'veryslow', time: '~5-8x', size: '~10-16% smaller' },
+    { preset: 'placebo', time: '~10-15x+', size: '~12-18% smaller' },
+  ],
+  // Quick Sync's Target Usage knob covers a much narrower speed/quality
+  // range than software presets - this is much fuzzier community knowledge
+  // than the x264 numbers above, not a well-established benchmark chart.
+  // ultrafast/superfast share a Target Usage level, as do veryslow/placebo.
+  h264_vaapi: [
+    { preset: 'ultrafast', time: '~0.5x', size: '~15-20% larger' },
+    { preset: 'superfast', time: '~0.5x', size: '~15-20% larger' },
+    { preset: 'veryfast', time: '~0.65x', size: '~8-12% larger' },
+    { preset: 'faster', time: '~0.8x', size: '~3-6% larger' },
+    { preset: 'fast', time: '~0.8x', size: '~3-6% larger' },
+    { preset: 'medium', time: '1x (baseline)', size: 'baseline' },
+    { preset: 'slow', time: '~1.3x', size: '~3-6% smaller' },
+    { preset: 'slower', time: '~1.6x', size: '~5-9% smaller' },
+    { preset: 'veryslow', time: '~2x', size: '~8-12% smaller' },
+    { preset: 'placebo', time: '~2x', size: '~8-12% smaller' },
+  ],
+};
 
 type SettingsApplicationReponses = {
   snapshots?: SnapshotListType;
@@ -100,10 +167,18 @@ const SettingsApplication = () => {
   const [downscaleMaxConcurrent, setDownscaleMaxConcurrent] = useState<number | null>(null);
   const [downscaleEncoder, setDownscaleEncoder] = useState('h264');
   const [downscaleCrf, setDownscaleCrf] = useState<number | null>(null);
+  const [downscalePreset, setDownscalePreset] = useState('veryfast');
   const [encoderTestResults, setEncoderTestResults] = useState<DownscaleEncoderTestResultType[]>(
     [],
   );
   const [isTestingEncoders, setIsTestingEncoders] = useState(false);
+
+  const isHardwareEncoder = downscaleEncoder.endsWith('_vaapi');
+  const codecFamily = downscaleEncoder.replace('_vaapi', '') as 'h264' | 'h265' | 'av1';
+  // h264_vaapi has a real speed/quality knob (ffmpeg's -quality, Intel's
+  // "Target Usage"); h265_vaapi/av1_vaapi expose nothing equivalent
+  const presetUnsupported = isHardwareEncoder && downscaleEncoder !== 'h264_vaapi';
+  const presetTableRows = presetUnsupported ? undefined : PRESET_REFERENCE[downscaleEncoder as 'h264' | 'h265' | 'av1' | 'h264_vaapi'];
 
   // Snapshots
   const [enableSnapshots, setEnableSnapshots] = useState(false);
@@ -164,6 +239,7 @@ const SettingsApplication = () => {
     setDownscaleMaxConcurrent(appSettingsConfigData?.application.downscale_max_concurrent || null);
     setDownscaleEncoder(appSettingsConfigData?.application.downscale_encoder || 'h264');
     setDownscaleCrf(appSettingsConfigData?.application.downscale_crf ?? null);
+    setDownscalePreset(appSettingsConfigData?.application.downscale_preset || 'veryfast');
 
     // Snapshots
     setEnableSnapshots(appSettingsConfigData?.application.enable_snapshot || false);
@@ -977,7 +1053,8 @@ const SettingsApplication = () => {
                       </ul>
                     </li>
                     <li>
-                      Downscale encoder and quality (CRF) apply to all future downscale jobs.
+                      Downscale encoder, quality (CRF) and speed preset apply to all future
+                      downscale jobs.
                       <ul>
                         <li>H.264 is the most compatible, AV1 compresses best but is slowest.</li>
                         <li>Lower CRF means higher quality and larger files.</li>
@@ -1041,7 +1118,7 @@ const SettingsApplication = () => {
               </div>
               <div className="settings-box-wrapper">
                 <div>
-                  <p>Downscale quality (CRF)</p>
+                  <p>Downscale quality ({QUALITY_LABELS[downscaleEncoder] ?? 'CRF'})</p>
                 </div>
                 <div>
                   <InputConfig
@@ -1053,27 +1130,137 @@ const SettingsApplication = () => {
                     updateCallback={handleUpdateConfig}
                   />
                   <ul className="settings-current">
-                    <li>H.264: 18-22 near-lossless, 23 balanced (default), 26-28 smaller files.</li>
-                    <li>H.265: 24-26 near-lossless, 28 balanced (default), 30-32 smaller files.</li>
-                    <li>
-                      AV1: 24-28 near-lossless, 30-35 balanced (default), 36-40 smaller files.
-                    </li>
-                    <li>
-                      H.264 (Hardware): QP 18-22 near-lossless, 23-26 balanced, 28-32 smaller files.
-                    </li>
-                    <li>
-                      H.265 (Hardware): QP 20-24 near-lossless, 25-28 balanced, 30-34 smaller files.
-                    </li>
-                    <li>
-                      AV1 (Hardware): QP range depends on your driver; only usable on GPUs with AV1
-                      hardware encode support.
-                    </li>
-                    <li>
-                      Hardware QP and software CRF are different scales &mdash; a value tuned for
-                      one is not directly portable to the other. Lower the number when switching
-                      from software to hardware to target similar visual quality.
-                    </li>
+                    {downscaleEncoder === 'h264' && (
+                      <li>H.264: 18-22 near-lossless, 23 balanced (default), 26-28 smaller files.</li>
+                    )}
+                    {downscaleEncoder === 'h265' && (
+                      <li>H.265: 24-26 near-lossless, 28 balanced (default), 30-32 smaller files.</li>
+                    )}
+                    {downscaleEncoder === 'av1' && (
+                      <li>
+                        AV1: 24-28 near-lossless, 30-35 balanced (default), 36-40 smaller files.
+                      </li>
+                    )}
+                    {downscaleEncoder === 'h264_vaapi' && (
+                      <li>
+                        H.264 (Hardware): QP 18-22 near-lossless, 23-26 balanced, 28-32 smaller
+                        files.
+                      </li>
+                    )}
+                    {downscaleEncoder === 'h265_vaapi' && (
+                      <li>
+                        H.265 (Hardware): QP 20-24 near-lossless, 25-28 balanced, 30-34 smaller
+                        files.
+                      </li>
+                    )}
+                    {downscaleEncoder === 'av1_vaapi' && (
+                      <li>
+                        AV1 (Hardware): applied as an ICQ quality target rather than a raw QP
+                        (av1_vaapi doesn&apos;t support QP/CQP in ffmpeg) &mdash; range depends on
+                        your driver; only usable on GPUs with AV1 hardware encode support.
+                      </li>
+                    )}
+                    {isHardwareEncoder && (
+                      <li>
+                        Hardware QP and software CRF are different scales &mdash; a value tuned for
+                        one is not directly portable to the other. Lower the number when switching
+                        from software to hardware to target similar visual quality.
+                      </li>
+                    )}
                   </ul>
+                </div>
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Downscale speed (preset)</p>
+                </div>
+                <div>
+                  {presetUnsupported ? (
+                    <p className="settings-current">
+                      Not applicable &mdash; H.265/AV1 hardware encoders have no speed preset in
+                      ffmpeg, so there is nothing to set here while one of them is selected.
+                    </p>
+                  ) : (
+                    <>
+                      <select
+                        name="application.downscale_preset"
+                        value={downscalePreset}
+                        onChange={event => {
+                          setDownscalePreset(event.target.value);
+                          handleUpdateConfig('application.downscale_preset', event.target.value);
+                        }}
+                      >
+                        {PRESET_OPTIONS.map(preset => (
+                          <option key={preset} value={preset}>
+                            {preset}
+                          </option>
+                        ))}
+                      </select>
+                      <ul className="settings-current">
+                        <li>
+                          Trades encode speed against compression efficiency at the same CRF/QP
+                          &mdash; slower presets shrink the file more for the same quality, faster
+                          presets encode quicker but produce larger files.
+                        </li>
+                        {codecFamily === 'av1' && !isHardwareEncoder && (
+                          <li>
+                            AV1 (libsvtav1) uses its own numeric 0-13 speed scale internally &mdash;
+                            the named preset chosen here is mapped onto it.
+                          </li>
+                        )}
+                        {downscaleEncoder === 'h264_vaapi' && (
+                          <li>
+                            H.264 (Hardware) maps this onto Intel&apos;s Quick Sync &quot;Target
+                            Usage&quot; (roughly 1-7, best-to-fastest quality) via ffmpeg&apos;s
+                            <code>-quality</code> option &mdash; a much narrower range than the
+                            software presets, so several named presets in a row can behave
+                            identically on hardware.
+                          </li>
+                        )}
+                      </ul>
+                      {presetTableRows && (
+                        <>
+                          <p className="settings-current">
+                            Approximate, relative to that encoder&apos;s own &quot;medium&quot;
+                            preset &mdash; ballpark figures from typical community benchmarks, not
+                            measured on this device. Actual results depend heavily on source
+                            content, resolution and hardware.
+                            {downscaleEncoder === 'h264_vaapi' && (
+                              <>
+                                {' '}
+                                Quick Sync isn&apos;t directly comparable to software x264 presets
+                                either &mdash; even its best quality setting generally lands closer
+                                to x264 &quot;fast&quot;-&quot;medium&quot; quality, just
+                                dramatically faster since it runs on dedicated silicon rather than
+                                the CPU.
+                              </>
+                            )}
+                          </p>
+                          <table className="preset-reference-table">
+                            <thead>
+                              <tr>
+                                <th>Preset</th>
+                                <th>Encode time</th>
+                                <th>File size</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {presetTableRows.map(row => (
+                                <tr
+                                  key={row.preset}
+                                  className={row.preset === downscalePreset ? 'active-row' : ''}
+                                >
+                                  <td>{row.preset}</td>
+                                  <td>{row.time}</td>
+                                  <td>{row.size}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
               <div className="settings-box-wrapper">

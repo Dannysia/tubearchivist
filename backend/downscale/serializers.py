@@ -28,6 +28,9 @@ class DownscaleItemSerializer(serializers.Serializer):
     timestamp = serializers.IntegerField()
     updated = serializers.IntegerField()
     message = serializers.CharField(required=False, allow_null=True)
+    encoder = serializers.CharField(required=False, allow_null=True)
+    quality = serializers.IntegerField(required=False, allow_null=True)
+    preset = serializers.CharField(required=False, allow_null=True)
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 

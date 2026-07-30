@@ -29,25 +29,106 @@ DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 # is derived from the key rather than stored, so there's nothing to keep
 # in sync when adding an encoder
 ENCODER_SETTINGS = {
-    "h264": {"codec": "libx264", "extra_args": ["-preset", "veryfast"]},
+    "h264": {"codec": "libx264", "extra_args": []},
     "h264_vaapi": {"codec": "h264_vaapi", "extra_args": []},
     "h265": {
         "codec": "libx265",
-        "extra_args": ["-preset", "veryfast", "-tag:v", "hvc1"],
+        "extra_args": ["-tag:v", "hvc1"],
     },
     "h265_vaapi": {
         # ffmpeg's encoder is named hevc_vaapi, there is no h265_vaapi
         "codec": "hevc_vaapi",
         "extra_args": ["-tag:v", "hvc1"],
     },
-    "av1": {"codec": "libsvtav1", "extra_args": ["-preset", "8"]},
+    "av1": {"codec": "libsvtav1", "extra_args": []},
     "av1_vaapi": {"codec": "av1_vaapi", "extra_args": []},
 }
+
+# named speed presets exposed to the user, matching the libx264/libx265
+# scale. VAAPI encoders have no equivalent knob in ffmpeg - speed/quality
+# there is controlled by the driver, not a -preset flag - so PRESET_CHOICES
+# only applies to software encoders.
+PRESET_CHOICES = [
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+    "placebo",
+]
+
+# libsvtav1 uses a numeric 0 (slowest/best quality) - 13 (fastest) scale
+# instead of named presets, so the chosen named preset is approximated onto
+# it here. "veryfast" maps to 8 to match the previously hardcoded default.
+AV1_PRESET_MAP = {
+    "ultrafast": 12,
+    "superfast": 10,
+    "veryfast": 8,
+    "faster": 7,
+    "fast": 6,
+    "medium": 5,
+    "slow": 3,
+    "slower": 2,
+    "veryslow": 1,
+    "placebo": 0,
+}
+
+# ffmpeg's h264_vaapi exposes a -quality option (higher is faster) that maps
+# to Intel's "Target Usage" on VAAPI/Quick Sync hardware, typically clamped
+# to a 1 (best quality, slowest) - 7 (fastest, worst quality) range by the
+# driver. hevc_vaapi and av1_vaapi expose no such option in ffmpeg - there
+# is nothing to map a preset onto for those two.
+H264_VAAPI_QUALITY_MAP = {
+    "ultrafast": 7,
+    "superfast": 7,
+    "veryfast": 6,
+    "faster": 5,
+    "fast": 5,
+    "medium": 4,
+    "slow": 3,
+    "slower": 2,
+    "veryslow": 1,
+    "placebo": 1,
+}
+
+# encoders that actually apply the preset setting - h265_vaapi and
+# av1_vaapi expose no such option, so a preset is never really "used" for
+# either of those, regardless of what's configured
+PRESET_APPLIES = {"h264", "h265", "av1", "h264_vaapi"}
 
 
 def is_hw_encoder(encoder_key: str) -> bool:
     """hardware (VAAPI) encoder keys all carry a _vaapi suffix"""
     return encoder_key.endswith("_vaapi")
+
+
+def _preset_args(encoder_key: str, preset: str | None) -> list[str]:
+    """
+    speed preset args for encoders that support one. h265_vaapi and
+    av1_vaapi expose no such option in ffmpeg, so this is a no-op for
+    those two.
+    """
+    if not preset:
+        return []
+
+    if encoder_key == "av1":
+        numeric = AV1_PRESET_MAP.get(preset, AV1_PRESET_MAP["veryfast"])
+        return ["-preset", str(numeric)]
+
+    if encoder_key == "h264_vaapi":
+        quality = H264_VAAPI_QUALITY_MAP.get(
+            preset, H264_VAAPI_QUALITY_MAP["medium"]
+        )
+        return ["-quality", str(quality)]
+
+    if encoder_key in ("h264", "h265"):
+        return ["-preset", preset]
+
+    return []
 
 
 def missing_vaapi_device_message(vaapi_device: str) -> str | None:
@@ -73,15 +154,27 @@ def _get_height(media_path: str) -> int | None:
     return max(heights) if heights else None
 
 
-def _encode_args(encoder_key: str, quality: int) -> list[str]:
+def _encode_args(
+    encoder_key: str, quality: int, preset: str | None = None
+) -> list[str]:
     """
-    build the -c:v/quality portion of an ffmpeg command, shared between a
-    real downscale encode and a synthetic capability test encode
+    build the -c:v/preset/quality portion of an ffmpeg command, shared
+    between a real downscale encode and a synthetic capability test encode
     """
     encoder = ENCODER_SETTINGS.get(encoder_key, ENCODER_SETTINGS["h264"])
-    args = ["-c:v", encoder["codec"], *encoder["extra_args"]]
+    args = [
+        "-c:v",
+        encoder["codec"],
+        *_preset_args(encoder_key, preset),
+        *encoder["extra_args"],
+    ]
 
-    if is_hw_encoder(encoder_key):
+    if encoder_key == "av1_vaapi":
+        # av1_vaapi doesn't expose -qp/CQP in ffmpeg like h264_vaapi and
+        # hevc_vaapi do - ICQ + -global_quality is the mode it actually
+        # supports for a constant-quality target
+        args += ["-rc_mode", "ICQ", "-global_quality", str(quality)]
+    elif is_hw_encoder(encoder_key):
         args += ["-rc_mode", "CQP", "-qp", str(quality)]
     else:
         args += ["-crf", str(quality)]
@@ -94,6 +187,7 @@ def _build_ffmpeg_cmd(
     target_height: int,
     encoder_key: str,
     quality: int,
+    preset: str | None,
     tmp_path: str,
     vaapi_device: str,
 ) -> list[str]:
@@ -116,7 +210,7 @@ def _build_ffmpeg_cmd(
         video_filter += ",format=nv12,hwupload"
     cmd += ["-vf", video_filter]
 
-    cmd += _encode_args(encoder_key, quality)
+    cmd += _encode_args(encoder_key, quality, preset)
 
     cmd += [
         "-c:a",
@@ -143,6 +237,11 @@ class DownscaleRunner:
         self.target_height = target_height
         self.doc_id: str = doc_id
         self.tmp_path: str | None = None
+        # populated by _encode with the settings actually used, so
+        # _finish_success can persist what really produced this file
+        self.encoder_key: str | None = None
+        self.quality: int | None = None
+        self.preset: str | None = None
 
     def run(self) -> None:
         """entry point. self.doc_id already exists in status=queued"""
@@ -280,11 +379,20 @@ class DownscaleRunner:
         if quality is None:
             quality = 23
 
+        preset = config["downscale_preset"]
+        if not preset:
+            preset = "veryfast"
+
+        self.encoder_key = encoder_key
+        self.quality = quality
+        self.preset = preset if encoder_key in PRESET_APPLIES else None
+
         cmd = _build_ffmpeg_cmd(
             original_path,
             self.target_height,
             encoder_key,
             quality,
+            preset,
             self.tmp_path,
             vaapi_device,
         )
@@ -380,7 +488,12 @@ class DownscaleRunner:
 
         new_size = MediaStreamExtractor(self.tmp_path).get_file_size()
         DownscaleInteract(self.doc_id).update(
-            status="pending_review", new_size=new_size, updated=_now()
+            status="pending_review",
+            new_size=new_size,
+            encoder=self.encoder_key,
+            quality=self.quality,
+            preset=self.preset,
+            updated=_now(),
         )
 
     def _terminate(self, process: subprocess.Popen) -> None:
@@ -448,6 +561,9 @@ class DownscaleReview:
             ),
             "new_height": job["target_height"],
             "new_size": job["new_size"],
+            "encoder": job.get("encoder"),
+            "quality": job.get("quality"),
+            "preset": job.get("preset"),
         }
 
         video.add_streams(media_path=original_path)

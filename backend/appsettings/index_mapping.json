@@ -238,6 +238,15 @@
                         },
                         "new_size": {
                             "type": "long"
+                        },
+                        "encoder": {
+                            "type": "keyword"
+                        },
+                        "quality": {
+                            "type": "integer"
+                        },
+                        "preset": {
+                            "type": "keyword"
                         }
                     }
                 },
@@ -579,6 +588,9 @@
                 "current_height": {
                     "type": "integer"
                 },
+                "encoder": {
+                    "type": "keyword"
+                },
                 "media_url": {
                     "type": "keyword",
                     "index": false
@@ -591,6 +603,12 @@
                 },
                 "original_size": {
                     "type": "long"
+                },
+                "preset": {
+                    "type": "keyword"
+                },
+                "quality": {
+                    "type": "integer"
                 },
                 "status": {
                     "type": "keyword"
