@@ -10,6 +10,11 @@ urlpatterns = [
         name="api-downscale-list",
     ),
     path(
+        "aggs/",
+        views.DownscaleAggsApiView.as_view(),
+        name="api-downscale-aggs",
+    ),
+    path(
         "test-encoders/",
         views.DownscaleEncoderTestApiView.as_view(),
         name="api-downscale-test-encoders",

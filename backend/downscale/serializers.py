@@ -46,6 +46,8 @@ class DownscaleListQuerySerializer(serializers.Serializer):
         choices=["queued", "running", "pending_review", "failed", "cancelled"],
         required=False,
     )
+    channel = serializers.CharField(required=False, help_text="channel ID")
+    q = serializers.CharField(required=False, help_text="Search Query")
     page = serializers.IntegerField(required=False)
 
 
@@ -76,3 +78,28 @@ class DownscaleEncoderTestSerializer(serializers.Serializer):
     encoder = serializers.CharField()
     ok = serializers.BooleanField()
     message = serializers.CharField(allow_null=True)
+
+
+class DownscaleAggsQuerySerializer(serializers.Serializer):
+    """serialize query params for downscale aggs"""
+
+    status = serializers.ChoiceField(
+        choices=["queued", "running", "pending_review", "failed", "cancelled"],
+        required=False,
+    )
+
+
+class DownscaleAggBucketSerializer(serializers.Serializer):
+    """serialize bucket"""
+
+    key = serializers.ListField(child=serializers.CharField())
+    key_as_string = serializers.CharField()
+    doc_count = serializers.IntegerField()
+
+
+class DownscaleAggsSerializer(serializers.Serializer):
+    """serialize downscale channel bucket aggregations"""
+
+    doc_count_error_upper_bound = serializers.IntegerField()
+    sum_other_doc_count = serializers.IntegerField()
+    buckets = DownscaleAggBucketSerializer(many=True)

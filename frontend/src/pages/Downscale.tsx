@@ -7,6 +7,7 @@ import Pagination, { PaginationType } from '../components/Pagination';
 import Button from '../components/Button';
 import DownscaleListItem from '../components/DownscaleListItem';
 import loadDownscaleQueue, { DownscaleStatus } from '../api/loader/loadDownscaleQueue';
+import loadDownscaleAggs, { DownscaleAggsType } from '../api/loader/loadDownscaleAggs';
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
 } from '../api/actions/updateDownscaleQueueByIds';
@@ -44,19 +45,34 @@ const Downscale = () => {
   const { currentPage, setCurrentPage } = useOutletContext() as OutletContextType;
 
   const statusFilterFromUrl = searchParams.get('status') as DownscaleStatus | null;
+  const channelFilterFromUrl = searchParams.get('channel');
 
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searchInput, setSearchInput] = useState('');
+  const [showBulkRejectConfirm, setShowBulkRejectConfirm] = useState(false);
   const [downscaleResponse, setDownscaleResponse] =
     useState<ApiResponseType<DownscaleResponseType>>();
+  const [downscaleAggsResponse, setDownscaleAggsResponse] =
+    useState<ApiResponseType<DownscaleAggsType>>();
   const [progressByTaskId, setProgressByTaskId] = useState<Record<string, number>>({});
 
   const { data: downscaleResponseData } = downscaleResponse ?? {};
+  const { data: downscaleAggsResponseData } = downscaleAggsResponse ?? {};
   const jobList = downscaleResponseData?.data;
   const pagination = downscaleResponseData?.paginate;
+  const channelAggsList = downscaleAggsResponseData?.buckets;
+
+  const channel_filter_name = jobList?.length ? jobList[0].channel_name : '';
 
   const hasActiveJob =
     jobList?.some(job => job.status === 'running' || job.status === 'queued') ?? false;
+
+  const selectableIds = jobList
+    ?.filter(job => job.status !== 'running' && job.status !== 'queued')
+    .map(job => job.id);
+  const allSelected =
+    !!selectableIds?.length && selectableIds.every(id => selectedIds.has(id));
 
   const refreshQueue = () => {
     setRefreshNonce(current => current + 1);
@@ -64,10 +80,22 @@ const Downscale = () => {
 
   useEffect(() => {
     (async () => {
-      const response = await loadDownscaleQueue(currentPage, statusFilterFromUrl);
+      const response = await loadDownscaleQueue(
+        currentPage,
+        statusFilterFromUrl,
+        channelFilterFromUrl,
+        searchInput,
+      );
       setDownscaleResponse(response);
     })();
-  }, [currentPage, statusFilterFromUrl, refreshNonce]);
+  }, [currentPage, statusFilterFromUrl, channelFilterFromUrl, searchInput, refreshNonce]);
+
+  useEffect(() => {
+    (async () => {
+      const response = await loadDownscaleAggs(statusFilterFromUrl);
+      setDownscaleAggsResponse(response);
+    })();
+  }, [statusFilterFromUrl, refreshNonce]);
 
   useEffect(() => {
     if (!hasActiveJob) {
@@ -96,6 +124,7 @@ const Downscale = () => {
 
   const handleSetPage = (page: number) => {
     setSelectedIds(new Set());
+    setShowBulkRejectConfirm(false);
     setCurrentPage(page);
   };
 
@@ -111,9 +140,18 @@ const Downscale = () => {
     });
   };
 
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(selectableIds));
+    }
+  };
+
   const handleBulkAction = async (action: DownscaleBulkAction) => {
     await updateDownscaleQueueByIds([...selectedIds], action);
     setSelectedIds(new Set());
+    setShowBulkRejectConfirm(false);
     refreshQueue();
   };
 
@@ -139,6 +177,8 @@ const Downscale = () => {
                 params.delete('status');
               }
               setSearchParams(params);
+              setSelectedIds(new Set());
+              setShowBulkRejectConfirm(false);
             }}
           >
             <option value="all">all statuses</option>
@@ -148,6 +188,72 @@ const Downscale = () => {
             <option value="failed">failed</option>
             <option value="cancelled">cancelled</option>
           </select>
+          {channelAggsList && channelAggsList.length > 0 && (
+            <select
+              name="channel_filter"
+              id="channel_filter"
+              value={channelFilterFromUrl || 'all'}
+              onChange={event => {
+                const value = event.currentTarget.value;
+                const params = searchParams;
+                if (value !== 'all') {
+                  params.set('channel', value);
+                } else {
+                  params.delete('channel');
+                }
+                setSearchParams(params);
+                setSelectedIds(new Set());
+                setShowBulkRejectConfirm(false);
+              }}
+            >
+              <option value="all">all channels</option>
+              {channelAggsList.map(channel => {
+                const [name, id] = channel.key;
+                const count = channel.doc_count;
+
+                return (
+                  <option key={id} value={id}>
+                    {name} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          )}
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchInput}
+            onChange={event => {
+              setSearchInput(event.target.value);
+              setSelectedIds(new Set());
+              setShowBulkRejectConfirm(false);
+            }}
+          />
+          {searchInput && <Button onClick={() => setSearchInput('')}>Clear</Button>}
+        </div>
+
+        <h3>
+          {channelFilterFromUrl && (
+            <>
+              Filtered by channel: <i>{channel_filter_name}</i>
+            </>
+          )}
+        </h3>
+
+        <div className="button-box">
+          {!!selectableIds?.length && (
+            <span className="toggle">
+              <input
+                id="select_all_downscale"
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleSelectAll}
+              />
+              <label htmlFor="select_all_downscale">
+                {allSelected ? 'Deselect all' : 'Select all'}
+              </label>
+            </span>
+          )}
         </div>
 
         {selectedIds.size > 0 && (
@@ -160,11 +266,22 @@ const Downscale = () => {
               label={`Retry Selected (${selectedIds.size})`}
               onClick={() => handleBulkAction('retry')}
             />
-            <Button
-              label={`Reject Selected (${selectedIds.size})`}
-              className="danger-button"
-              onClick={() => handleBulkAction('reject')}
-            />
+            {showBulkRejectConfirm ? (
+              <>
+                <Button
+                  label={`Confirm Reject (${selectedIds.size})`}
+                  className="danger-button"
+                  onClick={() => handleBulkAction('reject')}
+                />
+                <Button onClick={() => setShowBulkRejectConfirm(false)}>Cancel</Button>
+              </>
+            ) : (
+              <Button
+                label={`Reject Selected (${selectedIds.size})`}
+                className="danger-button"
+                onClick={() => setShowBulkRejectConfirm(true)}
+              />
+            )}
           </div>
         )}
 

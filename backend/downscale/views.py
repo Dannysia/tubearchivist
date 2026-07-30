@@ -2,6 +2,8 @@
 
 from common.views_base import AdminOnly, ApiBaseView
 from downscale.serializers import (
+    DownscaleAggsQuerySerializer,
+    DownscaleAggsSerializer,
     DownscaleBulkActionSerializer,
     DownscaleBulkResultSerializer,
     DownscaleEncoderTestSerializer,
@@ -36,9 +38,24 @@ class DownscaleApiListView(ApiBaseView):
         validated_query = query_serializer.validated_data
 
         self.data.update({"sort": [{"timestamp": {"order": "desc"}}]})
+
+        must_list = []
         status_filter = validated_query.get("status")
         if status_filter:
-            self.data["query"] = {"term": {"status": {"value": status_filter}}}
+            must_list.append({"term": {"status": {"value": status_filter}}})
+
+        channel_filter = validated_query.get("channel")
+        if channel_filter:
+            must_list.append(
+                {"term": {"channel_id": {"value": channel_filter}}}
+            )
+
+        search_query = validated_query.get("q")
+        if search_query:
+            must_list.append({"match_phrase_prefix": {"title": search_query}})
+
+        if must_list:
+            self.data["query"] = {"bool": {"must": must_list}}
 
         self.get_document_list(request)
         serializer = DownscaleListSerializer(self.response)
@@ -71,6 +88,54 @@ class DownscaleApiListView(ApiBaseView):
         )
 
         return Response(response_serializer.data)
+
+
+class DownscaleAggsApiView(ApiBaseView):
+    """resolves to /api/downscale/aggs/
+    GET: get channel aggregations for the downscale queue
+    """
+
+    search_base = "ta_downscale/_search"
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        parameters=[DownscaleAggsQuerySerializer()],
+        responses={200: OpenApiResponse(DownscaleAggsSerializer())},
+    )
+    def get(self, request):
+        """get aggs"""
+        query_serializer = DownscaleAggsQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        validated_query = query_serializer.validated_data
+
+        status_filter = validated_query.get("status")
+        if status_filter:
+            self.data["query"] = {
+                "term": {"status": {"value": status_filter}}
+            }
+
+        self.data.update(
+            {
+                "aggs": {
+                    "channel_downscale": {
+                        "multi_terms": {
+                            "size": 30,
+                            "terms": [
+                                {"field": "channel_name.keyword"},
+                                {"field": "channel_id"},
+                            ],
+                            "order": {"_count": "desc"},
+                        }
+                    }
+                }
+            }
+        )
+        self.get_aggs()
+        serializer = DownscaleAggsSerializer(self.response["channel_downscale"])
+
+        return Response(serializer.data)
 
 
 class DownscaleEncoderTestApiView(ApiBaseView):
