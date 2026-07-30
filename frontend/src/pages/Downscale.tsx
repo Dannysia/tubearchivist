@@ -14,6 +14,8 @@ import loadDownscaleAggs, { DownscaleAggsType } from '../api/loader/loadDownscal
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
 } from '../api/actions/updateDownscaleQueueByIds';
+import updateDownscaleQueueByFilter from '../api/actions/updateDownscaleQueueByFilter';
+import stopTaskByName from '../api/actions/stopTaskByName';
 import loadNotifications from '../api/loader/loadNotifications';
 import { ApiResponseType } from '../functions/APIClient';
 
@@ -55,6 +57,7 @@ const Downscale = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchInput, setSearchInput] = useState('');
   const [showBulkRejectConfirm, setShowBulkRejectConfirm] = useState(false);
+  const [filterActionPending, setFilterActionPending] = useState<DownscaleBulkAction | null>(null);
   const [downscaleResponse, setDownscaleResponse] =
     useState<ApiResponseType<DownscaleResponseType>>();
   const [downscaleAggsResponse, setDownscaleAggsResponse] =
@@ -72,11 +75,19 @@ const Downscale = () => {
   const hasActiveJob =
     jobList?.some(job => job.status === 'running' || job.status === 'queued') ?? false;
 
-  const selectableIds = jobList
-    ?.filter(job => job.status !== 'running' && job.status !== 'queued')
-    .map(job => job.id);
-  const allSelected =
-    !!selectableIds?.length && selectableIds.every(id => selectedIds.has(id));
+  const selectableIds = jobList?.map(job => job.id);
+  const allSelected = !!selectableIds?.length && selectableIds.every(id => selectedIds.has(id));
+
+  // queued/running jobs need stopTaskByName to actually stop the encode -
+  // accept/reject/retry only ever touch the queue doc, so running one of
+  // those on a still-encoding job would just orphan it, not cancel it
+  const cancelableSelectedJobs =
+    jobList?.filter(
+      job => selectedIds.has(job.id) && (job.status === 'queued' || job.status === 'running'),
+    ) ?? [];
+  const reviewableSelectedIds = [...selectedIds].filter(
+    id => !cancelableSelectedJobs.some(job => job.id === id),
+  );
 
   const refreshQueue = () => {
     setRefreshNonce(current => current + 1);
@@ -161,10 +172,56 @@ const Downscale = () => {
   };
 
   const handleBulkAction = async (action: DownscaleBulkAction) => {
-    await updateDownscaleQueueByIds([...selectedIds], action);
+    await updateDownscaleQueueByIds(reviewableSelectedIds, action);
     setSelectedIds(new Set());
     setShowBulkRejectConfirm(false);
     refreshQueue();
+  };
+
+  const handleBulkCancel = async () => {
+    await Promise.all(cancelableSelectedJobs.map(job => stopTaskByName(job.task_id)));
+    setSelectedIds(new Set());
+    setShowBulkRejectConfirm(false);
+    refreshQueue();
+  };
+
+  const handleFilterAction = async (action: DownscaleBulkAction) => {
+    await updateDownscaleQueueByFilter(
+      action,
+      statusFilterFromUrl,
+      channelFilterFromUrl,
+      searchInput,
+      sizeChangeFilterFromUrl,
+    );
+    setFilterActionPending(null);
+    setSelectedIds(new Set());
+    setShowBulkRejectConfirm(false);
+    refreshQueue();
+  };
+
+  const renderFilterActionButton = (action: DownscaleBulkAction, label: string) => {
+    if (filterActionPending === action) {
+      return (
+        <span key={action} className="delete-confirm">
+          <span>Are you sure? </span>
+          <Button
+            label="Confirm"
+            className="danger-button"
+            onClick={() => handleFilterAction(action)}
+          />
+          <Button label="Cancel" onClick={() => setFilterActionPending(null)} />
+        </span>
+      );
+    }
+
+    return (
+      <Button
+        key={action}
+        label={label}
+        className={action === 'reject' || action === 'cancel' ? 'danger-button' : ''}
+        onClick={() => setFilterActionPending(action)}
+      />
+    );
   };
 
   return (
@@ -279,6 +336,42 @@ const Downscale = () => {
           )}
         </h3>
 
+        {!!pagination?.total_hits &&
+          (statusFilterFromUrl === 'pending_review' ||
+          statusFilterFromUrl === 'failed' ||
+          statusFilterFromUrl === 'queued' ||
+          statusFilterFromUrl === 'running' ? (
+            <div className="button-box">
+              {statusFilterFromUrl === 'pending_review' && (
+                <>
+                  {renderFilterActionButton(
+                    'accept',
+                    `Accept All Matching Filter (${pagination.total_hits})`,
+                  )}
+                  {renderFilterActionButton(
+                    'reject',
+                    `Reject All Matching Filter (${pagination.total_hits})`,
+                  )}
+                </>
+              )}
+              {statusFilterFromUrl === 'failed' &&
+                renderFilterActionButton(
+                  'retry',
+                  `Retry All Matching Filter (${pagination.total_hits})`,
+                )}
+              {(statusFilterFromUrl === 'queued' || statusFilterFromUrl === 'running') &&
+                renderFilterActionButton(
+                  'cancel',
+                  `Cancel All Matching Filter (${pagination.total_hits})`,
+                )}
+            </div>
+          ) : (
+            <p className="settings-current">
+              Pick a status filter above (pending review, failed, queued, or running) to enable a
+              bulk action on everything matching it.
+            </p>
+          ))}
+
         <div className="button-box">
           {!!selectableIds?.length && (
             <span className="toggle">
@@ -297,28 +390,39 @@ const Downscale = () => {
 
         {selectedIds.size > 0 && (
           <div className="button-box">
-            <Button
-              label={`Accept Selected (${selectedIds.size})`}
-              onClick={() => handleBulkAction('accept')}
-            />
-            <Button
-              label={`Retry Selected (${selectedIds.size})`}
-              onClick={() => handleBulkAction('retry')}
-            />
-            {showBulkRejectConfirm ? (
+            {reviewableSelectedIds.length > 0 && (
               <>
                 <Button
-                  label={`Confirm Reject (${selectedIds.size})`}
-                  className="danger-button"
-                  onClick={() => handleBulkAction('reject')}
+                  label={`Accept Selected (${reviewableSelectedIds.length})`}
+                  onClick={() => handleBulkAction('accept')}
                 />
-                <Button onClick={() => setShowBulkRejectConfirm(false)}>Cancel</Button>
+                <Button
+                  label={`Retry Selected (${reviewableSelectedIds.length})`}
+                  onClick={() => handleBulkAction('retry')}
+                />
+                {showBulkRejectConfirm ? (
+                  <>
+                    <Button
+                      label={`Confirm Reject (${reviewableSelectedIds.length})`}
+                      className="danger-button"
+                      onClick={() => handleBulkAction('reject')}
+                    />
+                    <Button onClick={() => setShowBulkRejectConfirm(false)}>Cancel</Button>
+                  </>
+                ) : (
+                  <Button
+                    label={`Reject Selected (${reviewableSelectedIds.length})`}
+                    className="danger-button"
+                    onClick={() => setShowBulkRejectConfirm(true)}
+                  />
+                )}
               </>
-            ) : (
+            )}
+            {cancelableSelectedJobs.length > 0 && (
               <Button
-                label={`Reject Selected (${selectedIds.size})`}
+                label={`Cancel Selected (${cancelableSelectedJobs.length})`}
                 className="danger-button"
-                onClick={() => setShowBulkRejectConfirm(true)}
+                onClick={handleBulkCancel}
               />
             )}
           </div>

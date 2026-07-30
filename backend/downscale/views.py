@@ -1,5 +1,6 @@
 """all downscale queue API views"""
 
+from common.src.es_connect import ElasticWrap
 from common.views_base import AdminOnly, ApiBaseView
 from downscale.serializers import (
     DownscaleAggsQuerySerializer,
@@ -15,11 +16,59 @@ from downscale.src.encoder_capability import EncoderCapabilityTest
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
 
+# practical downscale queues stay small (same size cap already used
+# elsewhere for "get everything matching" queries, e.g.
+# DownscaleInteract.get_interrupted/get_all_tmp_filenames)
+BULK_BY_FILTER_MAX = 1000
+
+
+def _build_must_list(validated_query: dict) -> list[dict]:
+    """
+    build the bool-query must clauses for the list/status/channel/search/
+    size_change filters, shared between listing and resolving ids for a
+    bulk-by-filter action
+    """
+    must_list = []
+    status_filter = validated_query.get("status")
+    if status_filter:
+        must_list.append({"term": {"status": {"value": status_filter}}})
+
+    channel_filter = validated_query.get("channel")
+    if channel_filter:
+        must_list.append({"term": {"channel_id": {"value": channel_filter}}})
+
+    search_query = validated_query.get("q")
+    if search_query:
+        must_list.append({"match_phrase_prefix": {"title": search_query}})
+
+    size_change = validated_query.get("size_change")
+    if size_change:
+        # new_size is only ever set once an encode actually finishes
+        # (_finish_success), so requiring > 0 excludes queued/running/
+        # failed jobs rather than treating their unset 0 as "smaller"
+        operator = "<" if size_change == "smaller" else ">"
+        must_list.append(
+            {
+                "script": {
+                    "script": {
+                        "source": (
+                            "doc['new_size'].size() > 0 && "
+                            "doc['new_size'].value > 0 && "
+                            f"doc['new_size'].value {operator} "
+                            "doc['original_size'].value"
+                        )
+                    }
+                }
+            }
+        )
+
+    return must_list
+
 
 class DownscaleApiListView(ApiBaseView):
     """resolves to /api/downscale/
     GET: return the downscale review queue
-    POST: bulk accept/reject/retry jobs by id
+    POST: bulk accept/reject/retry/cancel jobs, by id or by list filter
     """
 
     search_base = "ta_downscale/_search/"
@@ -39,42 +88,7 @@ class DownscaleApiListView(ApiBaseView):
 
         self.data.update({"sort": [{"timestamp": {"order": "desc"}}]})
 
-        must_list = []
-        status_filter = validated_query.get("status")
-        if status_filter:
-            must_list.append({"term": {"status": {"value": status_filter}}})
-
-        channel_filter = validated_query.get("channel")
-        if channel_filter:
-            must_list.append(
-                {"term": {"channel_id": {"value": channel_filter}}}
-            )
-
-        search_query = validated_query.get("q")
-        if search_query:
-            must_list.append({"match_phrase_prefix": {"title": search_query}})
-
-        size_change = validated_query.get("size_change")
-        if size_change:
-            # new_size is only ever set once an encode actually finishes
-            # (_finish_success), so requiring > 0 excludes queued/running/
-            # failed jobs rather than treating their unset 0 as "smaller"
-            operator = "<" if size_change == "smaller" else ">"
-            must_list.append(
-                {
-                    "script": {
-                        "script": {
-                            "source": (
-                                "doc['new_size'].size() > 0 && "
-                                "doc['new_size'].value > 0 && "
-                                f"doc['new_size'].value {operator} "
-                                "doc['original_size'].value"
-                            )
-                        }
-                    }
-                }
-            )
-
+        must_list = _build_must_list(validated_query)
         if must_list:
             self.data["query"] = {"bool": {"must": must_list}}
 
@@ -85,18 +99,27 @@ class DownscaleApiListView(ApiBaseView):
 
     @extend_schema(
         request=DownscaleBulkActionSerializer(),
+        parameters=[DownscaleListQuerySerializer()],
         responses={200: OpenApiResponse(DownscaleBulkResultSerializer())},
     )
     def post(self, request):
-        """bulk accept/reject/retry downscale jobs"""
+        """
+        bulk accept/reject/retry/cancel downscale jobs. Pass explicit ids,
+        or omit ids and pass the same status/channel/q/size_change query
+        params as GET to act on everything currently matching that filter.
+        """
         data_serializer = DownscaleBulkActionSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
 
         action = validated_data["action"]
+        ids = validated_data.get("ids")
+        if not ids:
+            ids = self._get_ids_by_filter(request)
+
         success: list[str] = []
         failed: list[dict] = []
-        for doc_id in validated_data["ids"]:
+        for doc_id in ids:
             review = DownscaleReview(doc_id)
             error = getattr(review, action)()
             if error:
@@ -109,6 +132,23 @@ class DownscaleApiListView(ApiBaseView):
         )
 
         return Response(response_serializer.data)
+
+    @staticmethod
+    def _get_ids_by_filter(request) -> list[str]:
+        """resolve doc ids matching the current list filter query params"""
+        query_serializer = DownscaleListQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        validated_query = query_serializer.validated_data
+
+        data: dict = {"size": BULK_BY_FILTER_MAX, "_source": False}
+        must_list = _build_must_list(validated_query)
+        if must_list:
+            data["query"] = {"bool": {"must": must_list}}
+
+        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
+        return [hit["_id"] for hit in response.get("hits", {}).get("hits", [])]
 
 
 class DownscaleAggsApiView(ApiBaseView):

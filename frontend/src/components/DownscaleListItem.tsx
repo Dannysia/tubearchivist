@@ -128,16 +128,14 @@ const DownscaleListItem = ({
         )}
 
         <div>
-          {!isRunning && !isQueued && (
-            <div className="button-box">
-              <input
-                type="checkbox"
-                checked={isSelected}
-                onChange={() => onToggle(job.id)}
-                title="select for bulk action"
-              />
-            </div>
-          )}
+          <div className="button-box">
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => onToggle(job.id)}
+              title="select for bulk action"
+            />
+          </div>
 
           {isPendingReview && (
             <>

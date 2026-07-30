@@ -15,7 +15,7 @@ from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
-from task.src.task_manager import TaskCommand
+from task.src.task_manager import TaskCommand, TaskManager
 from video.src.index import YoutubeVideo
 from video.src.media_streams import MediaStreamExtractor
 
@@ -624,6 +624,30 @@ class DownscaleReview:
             },
         )
         self.interact.update(task_id=message["task_id"])
+
+    def cancel(self) -> str | None:
+        """
+        send a stop signal for a still-queued or running job. The task
+        checks is_stopped() itself and cleans up (tmp file + queue doc)
+        once it notices - same path a hard restart's auto-resume uses to
+        tell a leftover job apart from one actually in flight
+        """
+        job, status_code = self.interact.get_item()
+        if status_code == 404 or not job:
+            return "job not found"
+
+        if job["status"] not in ("queued", "running"):
+            return f"job is not queued or running, status is {job['status']}"
+
+        task_id = job["task_id"]
+        if not TaskManager().get_task(task_id):
+            # mirrors the guard TaskIDView.post already does before
+            # calling stop() - TaskRedis.set_command raises KeyError on
+            # an unknown task_id instead of failing gracefully
+            return "task not found, may not have started yet"
+
+        TaskCommand().stop(task_id)
+        return None
 
     @staticmethod
     def _move(src: str, dst: str) -> None:

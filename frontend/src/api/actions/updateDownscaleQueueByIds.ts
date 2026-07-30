@@ -1,6 +1,6 @@
 import APIClient from '../../functions/APIClient';
 
-export type DownscaleBulkAction = 'accept' | 'reject' | 'retry';
+export type DownscaleBulkAction = 'accept' | 'reject' | 'retry' | 'cancel';
 
 export type DownscaleBulkResultType = {
   success: string[];

@@ -60,10 +60,18 @@ class DownscaleListQuerySerializer(serializers.Serializer):
 
 
 class DownscaleBulkActionSerializer(serializers.Serializer):
-    """serialize bulk accept/reject/retry request"""
+    """
+    serialize bulk accept/reject/retry/cancel request. ids is optional -
+    when omitted, the action applies to everything matching the query
+    filter instead (see DownscaleListQuerySerializer)
+    """
 
-    ids = serializers.ListField(child=serializers.CharField())
-    action = serializers.ChoiceField(choices=["accept", "reject", "retry"])
+    ids = serializers.ListField(
+        child=serializers.CharField(), required=False
+    )
+    action = serializers.ChoiceField(
+        choices=["accept", "reject", "retry", "cancel"]
+    )
 
 
 class DownscaleBulkResultItemSerializer(serializers.Serializer):
