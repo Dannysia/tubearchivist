@@ -17,7 +17,7 @@ from rest_framework.response import Response
 class DownscaleApiListView(ApiBaseView):
     """resolves to /api/downscale/
     GET: return the downscale review queue
-    POST: bulk accept/reject jobs by id
+    POST: bulk accept/reject/retry jobs by id
     """
 
     search_base = "ta_downscale/_search/"
@@ -50,7 +50,7 @@ class DownscaleApiListView(ApiBaseView):
         responses={200: OpenApiResponse(DownscaleBulkResultSerializer())},
     )
     def post(self, request):
-        """bulk accept/reject downscale jobs"""
+        """bulk accept/reject/retry downscale jobs"""
         data_serializer = DownscaleBulkActionSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
@@ -60,7 +60,7 @@ class DownscaleApiListView(ApiBaseView):
         failed: list[dict] = []
         for doc_id in validated_data["ids"]:
             review = DownscaleReview(doc_id)
-            error = review.accept() if action == "accept" else review.reject()
+            error = getattr(review, action)()
             if error:
                 failed.append({"id": doc_id, "error": error})
             else:

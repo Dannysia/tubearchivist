@@ -37,6 +37,7 @@ const DownscaleListItem = ({
   const isQueued = job.status === 'queued';
   const isRunning = job.status === 'running';
   const isPendingReview = job.status === 'pending_review';
+  const isFailed = job.status === 'failed';
 
   const togglePreview = (which: PreviewType) => {
     setPreview(current => (current === which ? null : which));
@@ -160,6 +161,18 @@ const DownscaleListItem = ({
                 />
               </div>
             </>
+          )}
+
+          {isFailed && (
+            <div className="button-box">
+              <Button
+                label="Retry"
+                onClick={async () => {
+                  await updateDownscaleQueueByIds([job.id], 'retry');
+                  setRefresh();
+                }}
+              />
+            </div>
           )}
 
           {!isPendingReview && !isRunning && !isQueued && (

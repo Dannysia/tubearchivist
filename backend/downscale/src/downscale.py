@@ -15,6 +15,7 @@ from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
+from task.src.task_manager import TaskCommand
 from video.src.index import YoutubeVideo
 from video.src.media_streams import MediaStreamExtractor
 
@@ -467,6 +468,46 @@ class DownscaleReview:
 
         self.interact.delete_item()
         return None
+
+    def retry(self) -> str | None:
+        """
+        user-requested re-queue of a failed job. Target height and
+        source file are re-validated by the worker when it actually
+        runs, same as any other queued job.
+        """
+        job, status_code = self.interact.get_item()
+        if status_code == 404 or not job:
+            return "job not found"
+
+        if job["status"] != "failed":
+            return f"job is not failed, status is {job['status']}"
+
+        self.requeue(job)
+        return None
+
+    def requeue(self, job: dict) -> None:
+        """
+        clean up any leftover tmp file and dispatch a fresh celery task
+        for job, resetting its doc to status=queued. Shared by a
+        user-initiated retry() and ta_startup's auto-resume of jobs
+        interrupted by a restart. The doc flips to queued *before* the
+        task is dispatched so a worker that picks it up immediately
+        can't have its status write clobbered by this call.
+        """
+        tmp_path = job.get("tmp_file_path")
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        self.interact.update(status="queued", message=None, updated=_now())
+        message = TaskCommand().start(
+            "downscale_video",
+            {
+                "youtube_id": job["youtube_id"],
+                "target_height": job["target_height"],
+                "doc_id": self.doc_id,
+            },
+        )
+        self.interact.update(task_id=message["task_id"])
 
     @staticmethod
     def _move(src: str, dst: str) -> None:

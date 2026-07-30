@@ -7,7 +7,9 @@ import Pagination, { PaginationType } from '../components/Pagination';
 import Button from '../components/Button';
 import DownscaleListItem from '../components/DownscaleListItem';
 import loadDownscaleQueue, { DownscaleStatus } from '../api/loader/loadDownscaleQueue';
-import updateDownscaleQueueByIds from '../api/actions/updateDownscaleQueueByIds';
+import updateDownscaleQueueByIds, {
+  DownscaleBulkAction,
+} from '../api/actions/updateDownscaleQueueByIds';
 import loadNotifications from '../api/loader/loadNotifications';
 import { ApiResponseType } from '../functions/APIClient';
 
@@ -109,7 +111,7 @@ const Downscale = () => {
     });
   };
 
-  const handleBulkAction = async (action: 'accept' | 'reject') => {
+  const handleBulkAction = async (action: DownscaleBulkAction) => {
     await updateDownscaleQueueByIds([...selectedIds], action);
     setSelectedIds(new Set());
     refreshQueue();
@@ -153,6 +155,10 @@ const Downscale = () => {
             <Button
               label={`Accept Selected (${selectedIds.size})`}
               onClick={() => handleBulkAction('accept')}
+            />
+            <Button
+              label={`Retry Selected (${selectedIds.size})`}
+              onClick={() => handleBulkAction('retry')}
             />
             <Button
               label={`Reject Selected (${selectedIds.size})`}

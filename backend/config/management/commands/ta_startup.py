@@ -23,6 +23,8 @@ from django_celery_beat.models import (
     IntervalSchedule,
     PeriodicTasks,
 )
+from downscale.src.downscale import DownscaleReview
+from downscale.src.queue_interact import DownscaleInteract
 from task.models import CustomPeriodicTask
 from task.src.config_schedule import ScheduleBuilder
 from task.src.task_manager import TaskManager
@@ -174,32 +176,33 @@ class Command(BaseCommand):
 
     def _clear_downscale_leftovers(self):
         """
-        fail any downscale job still marked running (interrupted by a hard
-        restart) and clear its leftover tmp cache files
+        auto-resume any downscale job left queued or running by a hard
+        restart, then clear cache files not spoken for by any job still
+        in the queue. The celery worker for this container isn't
+        started until after this command finishes, so a job in either
+        of those states now can only be a leftover, never one actually
+        in progress. Jobs already marked failed are left alone for
+        manual review/retry.
         """
-        self.stdout.write("[4b] clear leftover downscale jobs")
-        data = {
-            "query": {"term": {"status": {"value": "running"}}},
-            "script": {
-                "source": (
-                    "ctx._source.status = 'failed';"
-                    "ctx._source.message = 'interrupted by restart';"
-                ),
-                "lang": "painless",
-            },
-        }
-        path = "ta_downscale/_update_by_query?refresh=true"
-        response, status_code = ElasticWrap(path).post(data)
-        if status_code in [200, 201] and response.get("updated"):
-            updated = response["updated"]
+        self.stdout.write("[4b] resume interrupted downscale jobs")
+        interrupted = DownscaleInteract.get_interrupted()
+        for job in interrupted:
+            DownscaleReview(job["id"]).requeue(job)
+
+        if interrupted:
             self.stdout.write(
                 self.style.SUCCESS(
-                    f"    ✓ marked {updated} stuck job(s) as failed"
+                    f"    ✓ resumed {len(interrupted)} interrupted job(s)"
                 )
             )
+        else:
+            self.stdout.write(
+                self.style.SUCCESS("    no interrupted jobs found")
+            )
 
+        keep = DownscaleInteract.get_all_tmp_filenames()
         leftover_files = clear_dl_cache(
-            EnvironmentSettings.CACHE_DIR, subfolder="downscale"
+            EnvironmentSettings.CACHE_DIR, subfolder="downscale", keep=keep
         )
         if leftover_files:
             self.stdout.write(

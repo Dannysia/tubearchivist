@@ -50,10 +50,10 @@ class DownscaleListQuerySerializer(serializers.Serializer):
 
 
 class DownscaleBulkActionSerializer(serializers.Serializer):
-    """serialize bulk accept/reject request"""
+    """serialize bulk accept/reject/retry request"""
 
     ids = serializers.ListField(child=serializers.CharField())
-    action = serializers.ChoiceField(choices=["accept", "reject"])
+    action = serializers.ChoiceField(choices=["accept", "reject", "retry"])
 
 
 class DownscaleBulkResultItemSerializer(serializers.Serializer):

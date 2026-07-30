@@ -59,6 +59,42 @@ class DownscaleInteract(BaseQueueInteract):
         }
 
     @staticmethod
+    def get_interrupted() -> list[dict]:
+        """
+        return all downscale jobs left in status=queued or
+        status=running. Only called from ta_startup, before the celery
+        worker for this container has been started, so a job in either
+        of those states at that point can only be a leftover from a
+        hard restart, never one actually in progress.
+        """
+        data = {
+            "query": {"terms": {"status": ["queued", "running"]}},
+            "size": 1000,
+        }
+        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
+        hits = response["hits"]["hits"]
+        return [{"id": hit["_id"], **hit["_source"]} for hit in hits]
+
+    @staticmethod
+    def get_all_tmp_filenames() -> set[str]:
+        """
+        basenames of tmp_file_path for every job still in the queue,
+        e.g. to protect pending_review output from a cache sweep
+        """
+        data = {
+            "query": {"match_all": {}},
+            "size": 1000,
+            "_source": ["tmp_file_path"],
+        }
+        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
+        hits = response["hits"]["hits"]
+        return {
+            os.path.basename(hit["_source"]["tmp_file_path"])
+            for hit in hits
+            if hit["_source"].get("tmp_file_path")
+        }
+
+    @staticmethod
     def count_running() -> int:
         """count how many downscale jobs are currently running"""
         data = {
