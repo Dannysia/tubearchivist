@@ -1,6 +1,6 @@
 """tests for retrying a failed downscale job"""
 
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from downscale.src.downscale import DownscaleReview
 from downscale.src.queue_interact import DownscaleInteract
@@ -19,11 +19,11 @@ def test_retry_job_not_found():
     """retrying a doc that no longer exists reports an error"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(None, 404)
-    ), patch("downscale.src.downscale.TaskCommand") as mock_task_command:
+    ), patch.object(DownscaleInteract, "update") as mock_update:
         error = DownscaleReview(DOC_ID).retry()
 
     assert error == "job not found"
-    mock_task_command.assert_not_called()
+    mock_update.assert_not_called()
 
 
 def test_retry_job_not_failed():
@@ -31,65 +31,34 @@ def test_retry_job_not_failed():
     job = {**FAILED_JOB, "status": "pending_review"}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)
-    ), patch("downscale.src.downscale.TaskCommand") as mock_task_command:
+    ), patch.object(DownscaleInteract, "update") as mock_update:
         error = DownscaleReview(DOC_ID).retry()
 
     assert error == "job is not failed, status is pending_review"
-    mock_task_command.assert_not_called()
+    mock_update.assert_not_called()
 
 
 def test_retry_requeues_failed_job():
     """
-    a failed job gets a fresh celery task dispatched with its original
-    youtube_id/target_height, and its doc is reset to queued
-
-    the doc must flip to queued *before* the task is dispatched, same as
-    a fresh job: otherwise a worker that picks up the task immediately
-    can write a later status (e.g. failed, on a fast re-fail) that then
-    gets clobbered back to "queued" by a trailing update
+    a failed job's doc is reset to queued with no task_id - it no
+    longer dispatches a celery task itself. Callers (the bulk action
+    view, ta_startup's auto-resume) are responsible for calling
+    dispatch_pending_downscales() once after they're done requeueing,
+    so a batch retry doesn't dispatch once per job
     """
     with patch.object(
         DownscaleInteract, "get_item", return_value=(FAILED_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
         "downscale.src.downscale.os.path.exists", return_value=False
-    ), patch(
-        "downscale.src.downscale.TaskCommand"
-    ) as mock_task_command:
-        mock_task_command.return_value.start.return_value = {
-            "task_id": "new-task-id",
-            "status": "PENDING",
-            "task_name": "downscale_video",
-        }
-
-        manager = Mock()
-        manager.attach_mock(mock_update, "update")
-        manager.attach_mock(mock_task_command.return_value.start, "start")
-
+    ):
         error = DownscaleReview(DOC_ID).retry()
 
     assert error is None
-    mock_task_command.return_value.start.assert_called_once_with(
-        "downscale_video",
-        {
-            "youtube_id": "video1",
-            "target_height": 720,
-            "doc_id": DOC_ID,
-        },
-    )
-
-    assert mock_update.call_count == 2
-    first_kwargs = mock_update.call_args_list[0].kwargs
-    assert first_kwargs["status"] == "queued"
-    assert first_kwargs["message"] is None
-
-    second_kwargs = mock_update.call_args_list[1].kwargs
-    assert second_kwargs == {"task_id": "new-task-id"}
-
-    assert [call[0] for call in manager.mock_calls] == [
-        "update",
-        "start",
-        "update",
-    ]
+    mock_update.assert_called_once()
+    kwargs = mock_update.call_args.kwargs
+    assert kwargs["status"] == "queued"
+    assert kwargs["message"] is None
+    assert kwargs["task_id"] == ""
 
 
 def test_retry_cleans_up_leftover_tmp_file():
@@ -100,15 +69,7 @@ def test_retry_cleans_up_leftover_tmp_file():
         "downscale.src.downscale.os.path.exists", return_value=True
     ), patch(
         "downscale.src.downscale.os.remove"
-    ) as mock_remove, patch(
-        "downscale.src.downscale.TaskCommand"
-    ) as mock_task_command:
-        mock_task_command.return_value.start.return_value = {
-            "task_id": "new-task-id",
-            "status": "PENDING",
-            "task_name": "downscale_video",
-        }
-
+    ) as mock_remove:
         DownscaleReview(DOC_ID).retry()
 
     mock_remove.assert_called_once_with(FAILED_JOB["tmp_file_path"])
@@ -123,17 +84,11 @@ def test_requeue_works_on_queued_or_running_job():
     job = {**FAILED_JOB, "status": "running"}
     with patch.object(DownscaleInteract, "update") as mock_update, patch(
         "downscale.src.downscale.os.path.exists", return_value=False
-    ), patch("downscale.src.downscale.TaskCommand") as mock_task_command:
-        mock_task_command.return_value.start.return_value = {
-            "task_id": "resumed-task-id",
-            "status": "PENDING",
-            "task_name": "downscale_video",
-        }
-
+    ):
         DownscaleReview(DOC_ID).requeue(job)
 
-    assert mock_update.call_count == 2
-    assert mock_update.call_args_list[0].kwargs["status"] == "queued"
-    assert mock_update.call_args_list[1].kwargs == {
-        "task_id": "resumed-task-id"
-    }
+    mock_update.assert_called_once()
+    kwargs = mock_update.call_args.kwargs
+    assert kwargs["status"] == "queued"
+    assert kwargs["message"] is None
+    assert kwargs["task_id"] == ""

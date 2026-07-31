@@ -24,6 +24,7 @@ from common.src.ta_redis import RedisArchivist
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from django.conf import settings
 from download.src.yt_dlp_base import CookieHandler
+from downscale.src.downscale import dispatch_pending_downscales
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.authtoken.models import Token
 from rest_framework.response import Response
@@ -183,6 +184,10 @@ class AppConfigApiView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
         updated_config = AppConfig().update_config(validated_data)
+        # cheap and self-limiting even when unrelated - covers raising
+        # downscale_max_concurrent, which otherwise wouldn't take effect
+        # until the next unrelated job completion
+        dispatch_pending_downscales()
         updated_serializer = AppConfigSerializer(updated_config)
         return Response(updated_serializer.data)
 

@@ -1,20 +1,18 @@
 """all API views for video endpoints"""
 
-from common.serializers import (
-    AsyncTaskResponseSerializer,
-    ErrorResponseSerializer,
-)
+from common.serializers import ErrorResponseSerializer
 from common.src.helper import calc_is_watched
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
+from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
-from task.src.task_manager import TaskCommand
 from video.serializers import (
     CommentItemSerializer,
+    DownscaleQueuedResponseSerializer,
     PlayerSerializer,
     PlaylistNavItemSerializer,
     VideoDownscaleSerializer,
@@ -126,7 +124,7 @@ class VideoDownscaleView(ApiBaseView):
     @extend_schema(
         request=VideoDownscaleSerializer(),
         responses={
-            200: OpenApiResponse(AsyncTaskResponseSerializer()),
+            200: OpenApiResponse(DownscaleQueuedResponseSerializer()),
             400: OpenApiResponse(
                 ErrorResponseSerializer(), description="bad request"
             ),
@@ -180,16 +178,8 @@ class VideoDownscaleView(ApiBaseView):
                 target_height=target_height,
             )
         )
-        message = TaskCommand().start(
-            "downscale_video",
-            {
-                "youtube_id": video_id,
-                "target_height": target_height,
-                "doc_id": doc_id,
-            },
-        )
-        DownscaleInteract(doc_id).update(task_id=message["task_id"])
-        serializer = AsyncTaskResponseSerializer(message)
+        dispatch_pending_downscales()
+        serializer = DownscaleQueuedResponseSerializer({"doc_id": doc_id})
 
         return Response(serializer.data)
 

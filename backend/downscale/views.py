@@ -11,7 +11,10 @@ from downscale.serializers import (
     DownscaleListQuerySerializer,
     DownscaleListSerializer,
 )
-from downscale.src.downscale import DownscaleReview
+from downscale.src.downscale import (
+    DownscaleReview,
+    dispatch_pending_downscales,
+)
 from downscale.src.encoder_capability import EncoderCapabilityTest
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
@@ -126,6 +129,11 @@ class DownscaleApiListView(ApiBaseView):
                 failed.append({"id": doc_id, "error": error})
             else:
                 success.append(doc_id)
+
+        if action == "retry" and success:
+            # retry() only resets a doc to status=queued - one dispatch
+            # pass covers the whole batch rather than one call per job
+            dispatch_pending_downscales()
 
         response_serializer = DownscaleBulkResultSerializer(
             {"success": success, "failed": failed}

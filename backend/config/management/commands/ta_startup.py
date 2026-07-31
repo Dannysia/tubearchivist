@@ -23,7 +23,10 @@ from django_celery_beat.models import (
     IntervalSchedule,
     PeriodicTasks,
 )
-from downscale.src.downscale import DownscaleReview
+from downscale.src.downscale import (
+    DownscaleReview,
+    dispatch_pending_downscales,
+)
 from downscale.src.queue_interact import DownscaleInteract
 from task.models import CustomPeriodicTask
 from task.src.config_schedule import ScheduleBuilder
@@ -190,6 +193,10 @@ class Command(BaseCommand):
             DownscaleReview(job["id"]).requeue(job)
 
         if interrupted:
+            # dispatch is just enqueueing to the broker, so it's fine to
+            # call before the celery worker itself has started - one
+            # pass covers the whole batch rather than once per job
+            dispatch_pending_downscales()
             self.stdout.write(
                 self.style.SUCCESS(
                     f"    ✓ resumed {len(interrupted)} interrupted job(s)"

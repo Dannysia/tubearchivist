@@ -24,6 +24,12 @@ TERMINATE_TIMEOUT = 10
 DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
 DISPATCH_LOCK_TIMEOUT = 30
 DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
+# a concurrency-limited job has nothing to do until a running slot frees
+# up, and that only happens on encode completion - which takes at least
+# a minute in practice - so it doesn't need the same short retry cadence
+# as transient dispatch-lock contention (which keeps the task decorator's
+# own default_retry_delay=20)
+CONCURRENCY_RETRY_DELAY = 60
 
 # hardware (VAAPI) encoder keys all carry a _vaapi suffix; hw vs software
 # is derived from the key rather than stored, so there's nothing to keep
@@ -228,6 +234,56 @@ def _build_ffmpeg_cmd(
     return cmd
 
 
+def dispatch_pending_downscales() -> None:
+    """
+    dispatch celery tasks for queued downscale jobs, filling any free
+    concurrency slots. Safe and cheap to call any time slot availability
+    may have changed - a job finishing (success/failure/cancel), a new
+    job being queued, or downscale_max_concurrent changing in settings -
+    so queued jobs don't need to poll on their own timer asking "is a
+    slot free yet?" the way they used to.
+
+    _reserve_slot() (unchanged) remains the actual source of truth for
+    claiming a slot, via the same DISPATCH_LOCK_KEY - this only decides
+    whether it's worth dispatching a task at all, so it's a hint, not a
+    guarantee. A task dispatched here can still legitimately retry once
+    if another dispatch or a race won first.
+    """
+    lock = RedisBase().conn.lock(
+        DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
+    )
+    if not lock.acquire(
+        blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
+    ):
+        # another dispatch is already in progress - it'll cover
+        # whatever's actually free
+        return
+
+    try:
+        max_concurrent = AppConfig().config["application"][
+            "downscale_max_concurrent"
+        ]
+        if max_concurrent:
+            free_slots = max_concurrent - DownscaleInteract.count_running()
+            if free_slots <= 0:
+                return
+        else:
+            free_slots = None
+
+        for job in DownscaleInteract.get_next_queued(free_slots):
+            message = TaskCommand().start(
+                "downscale_video",
+                {
+                    "youtube_id": job["youtube_id"],
+                    "target_height": job["target_height"],
+                    "doc_id": job["id"],
+                },
+            )
+            DownscaleInteract(job["id"]).update(task_id=message["task_id"])
+    finally:
+        lock.release()
+
+
 class DownscaleRunner:
     """run a single downscale job for a video, called from the celery task"""
 
@@ -298,6 +354,7 @@ class DownscaleRunner:
             DownscaleInteract(self.doc_id).update(
                 status="failed", message=str(err), updated=_now()
             )
+            dispatch_pending_downscales()
 
     def _reserve_slot(self, current_height: int, original_path: str) -> bool:
         """
@@ -341,7 +398,7 @@ class DownscaleRunner:
                     f"{self.youtube_id}: max concurrent downscale jobs "
                     f"({max_concurrent}) reached, waiting for a free slot"
                 )
-                raise self.task.retry()
+                raise self.task.retry(countdown=CONCURRENCY_RETRY_DELAY)
 
             self.tmp_path = os.path.join(
                 EnvironmentSettings.CACHE_DIR,
@@ -407,6 +464,7 @@ class DownscaleRunner:
                 self._terminate(process)
                 self._cleanup_tmp()
                 DownscaleInteract(self.doc_id).delete_item()
+                dispatch_pending_downscales()
                 return
 
             self._drain_pipes(process, duration, title, stderr_lines)
@@ -424,6 +482,7 @@ class DownscaleRunner:
                 message=stderr[-2000:],
                 updated=_now(),
             )
+            dispatch_pending_downscales()
 
     def _drain_pipes(
         self,
@@ -484,6 +543,7 @@ class DownscaleRunner:
                 message="ffmpeg exited cleanly but output is invalid",
                 updated=_now(),
             )
+            dispatch_pending_downscales()
             return
 
         new_size = MediaStreamExtractor(self.tmp_path).get_file_size()
@@ -495,6 +555,7 @@ class DownscaleRunner:
             preset=self.preset,
             updated=_now(),
         )
+        dispatch_pending_downscales()
 
     def _terminate(self, process: subprocess.Popen) -> None:
         """stop the running ffmpeg process"""
@@ -603,27 +664,22 @@ class DownscaleReview:
 
     def requeue(self, job: dict) -> None:
         """
-        clean up any leftover tmp file and dispatch a fresh celery task
-        for job, resetting its doc to status=queued. Shared by a
-        user-initiated retry() and ta_startup's auto-resume of jobs
-        interrupted by a restart. The doc flips to queued *before* the
-        task is dispatched so a worker that picks it up immediately
-        can't have its status write clobbered by this call.
+        clean up any leftover tmp file and reset this job's doc to
+        status=queued with no task_id, ready for
+        dispatch_pending_downscales() to pick up once a slot is free.
+        Shared by a user-initiated retry() and ta_startup's auto-resume
+        of jobs interrupted by a restart - callers are responsible for
+        calling dispatch_pending_downscales() once after they're done
+        requeueing (a caller requeueing many jobs in a loop should only
+        dispatch once at the end, not once per job)
         """
         tmp_path = job.get("tmp_file_path")
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-        self.interact.update(status="queued", message=None, updated=_now())
-        message = TaskCommand().start(
-            "downscale_video",
-            {
-                "youtube_id": job["youtube_id"],
-                "target_height": job["target_height"],
-                "doc_id": self.doc_id,
-            },
+        self.interact.update(
+            status="queued", message=None, task_id="", updated=_now()
         )
-        self.interact.update(task_id=message["task_id"])
 
     def cancel(self) -> str | None:
         """

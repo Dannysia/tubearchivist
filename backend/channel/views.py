@@ -16,6 +16,7 @@ from common.serializers import ErrorResponseSerializer
 from common.src.es_connect import IndexPaginate
 from common.src.urlparser import Parser
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
+from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -23,7 +24,6 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from rest_framework.response import Response
-from task.src.task_manager import TaskCommand
 from task.tasks import index_channel_playlists, subscribe_to
 from video.serializers import VideoDownscaleSerializer
 
@@ -284,7 +284,7 @@ class ChannelDownscaleView(ApiBaseView):
                 )
                 continue
 
-            doc_id = DownscaleInteract().create(
+            DownscaleInteract().create(
                 DownscaleInteract.build_queued_doc(
                     youtube_id=youtube_id,
                     video_json_data=video,
@@ -292,16 +292,13 @@ class ChannelDownscaleView(ApiBaseView):
                     target_height=target_height,
                 )
             )
-            message = TaskCommand().start(
-                "downscale_video",
-                {
-                    "youtube_id": youtube_id,
-                    "target_height": target_height,
-                    "doc_id": doc_id,
-                },
-            )
-            DownscaleInteract(doc_id).update(task_id=message["task_id"])
             queued.append(youtube_id)
+
+        if queued:
+            # one dispatch pass after the whole batch, not one per video -
+            # dispatch_pending_downscales() already fills every free slot
+            # in a single call
+            dispatch_pending_downscales()
 
         serializer = ChannelDownscaleSerializer(
             {"queued": queued, "skipped": skipped}

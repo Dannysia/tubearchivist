@@ -95,6 +95,42 @@ class DownscaleInteract(BaseQueueInteract):
         }
 
     @staticmethod
+    def get_next_queued(limit: int | None) -> list[dict]:
+        """
+        oldest still-queued, not-yet-dispatched jobs, oldest first, up to
+        limit. Pass None for unlimited concurrency, capped the same way
+        get_interrupted() caps "get everything" queries.
+
+        Also excludes anything with a task_id already set - a job stays
+        status=queued from the moment it's dispatched until its task
+        actually reaches _reserve_slot() and flips it to running, so
+        status=queued alone can't tell "never dispatched" apart from
+        "dispatched a moment ago, task hasn't started yet". Without this,
+        two dispatch_pending_downscales() calls close enough together
+        (e.g. two jobs finishing within the same second) could both pick
+        the same job and start two celery tasks for one doc.
+        """
+        size = limit if limit is not None else 1000
+        if size <= 0:
+            return []
+
+        data = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"status": {"value": "queued"}}},
+                        {"term": {"task_id": {"value": ""}}},
+                    ]
+                }
+            },
+            "sort": [{"timestamp": {"order": "asc"}}],
+            "size": size,
+        }
+        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
+        hits = response["hits"]["hits"]
+        return [{"id": hit["_id"], **hit["_source"]} for hit in hits]
+
+    @staticmethod
     def count_running() -> int:
         """count how many downscale jobs are currently running"""
         data = {
