@@ -15,7 +15,6 @@ import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
 } from '../api/actions/updateDownscaleQueueByIds';
 import updateDownscaleQueueByFilter from '../api/actions/updateDownscaleQueueByFilter';
-import stopTaskByName from '../api/actions/stopTaskByName';
 import loadNotifications from '../api/loader/loadNotifications';
 import { ApiResponseType } from '../functions/APIClient';
 
@@ -78,9 +77,10 @@ const Downscale = () => {
   const selectableIds = jobList?.map(job => job.id);
   const allSelected = !!selectableIds?.length && selectableIds.every(id => selectedIds.has(id));
 
-  // queued/running jobs need stopTaskByName to actually stop the encode -
-  // accept/reject/retry only ever touch the queue doc, so running one of
-  // those on a still-encoding job would just orphan it, not cancel it
+  // queued/running jobs need the 'cancel' action to actually stop the
+  // encode - accept/reject/retry only ever touch the queue doc, so
+  // running one of those on a still-encoding job would just orphan it,
+  // not cancel it
   const cancelableSelectedJobs =
     jobList?.filter(
       job => selectedIds.has(job.id) && (job.status === 'queued' || job.status === 'running'),
@@ -179,7 +179,10 @@ const Downscale = () => {
   };
 
   const handleBulkCancel = async () => {
-    await Promise.all(cancelableSelectedJobs.map(job => stopTaskByName(job.task_id)));
+    await updateDownscaleQueueByIds(
+      cancelableSelectedJobs.map(job => job.id),
+      'cancel',
+    );
     setSelectedIds(new Set());
     setShowBulkRejectConfirm(false);
     refreshQueue();

@@ -627,10 +627,14 @@ class DownscaleReview:
 
     def cancel(self) -> str | None:
         """
-        send a stop signal for a still-queued or running job. The task
-        checks is_stopped() itself and cleans up (tmp file + queue doc)
-        once it notices - same path a hard restart's auto-resume uses to
-        tell a leftover job apart from one actually in flight
+        stop a still-queued or running job. A queued job has no process
+        or tmp file yet, so its doc is deleted immediately rather than
+        waiting for the task to notice on its own next retry (up to
+        default_retry_delay=20s later). A running job's ffmpeg process
+        can only be torn down from inside the task itself, so that one
+        still goes through the existing poll-and-notice cleanup path -
+        same one a hard restart's auto-resume uses to tell a leftover
+        job apart from one actually in flight
         """
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
@@ -647,6 +651,10 @@ class DownscaleReview:
             return "task not found, may not have started yet"
 
         TaskCommand().stop(task_id)
+
+        if job["status"] == "queued":
+            self.interact.delete_item()
+
         return None
 
     @staticmethod

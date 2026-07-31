@@ -49,7 +49,7 @@ def test_size_change_smaller_uses_less_than():
 
 
 def test_size_change_larger_uses_greater_than():
-    """"larger" is the mirror image - > instead of <, same > 0 guard"""
+    """ "larger" is the mirror image - > instead of <, same > 0 guard"""
     [clause] = _build_must_list({"size_change": "larger"})
     source = clause["script"]["script"]["source"]
 

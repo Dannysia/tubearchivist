@@ -4,7 +4,6 @@ import Routes from '../configuration/routes/RouteList';
 import Button from './Button';
 import VideoThumbnail from './VideoThumbail';
 import humanFileSize from '../functions/humanFileSize';
-import stopTaskByName from '../api/actions/stopTaskByName';
 import updateDownscaleQueueByIds from '../api/actions/updateDownscaleQueueByIds';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
@@ -192,7 +191,7 @@ const DownscaleListItem = ({
                 label="Cancel"
                 className="danger-button"
                 onClick={async () => {
-                  await stopTaskByName(job.task_id);
+                  await updateDownscaleQueueByIds([job.id], 'cancel');
                   setRefresh();
                 }}
               />

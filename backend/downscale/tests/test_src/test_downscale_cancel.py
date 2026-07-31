@@ -1,14 +1,21 @@
 """
 tests for cancelling a queued/running downscale job.
 
-regression coverage for the live bug found 2026-07-30: a queued job
-retrying on a concurrency limit calls TaskManager.init() on every retry
-re-entry, which used to silently clobber a pending STOP command before
-the task ever checked is_stopped() - see test_task_manager.py for the
-fix itself. These tests cover DownscaleReview.cancel()'s own guards:
-right status, and the task actually being known to TaskManager before
-TaskCommand().stop() is called (TaskRedis.set_command raises KeyError on
-an unknown task_id instead of failing gracefully).
+regression coverage for two live bugs found 2026-07-30:
+1. a queued job retrying on a concurrency limit calls TaskManager.init()
+   on every retry re-entry, which used to silently clobber a pending
+   STOP command before the task ever checked is_stopped() - see
+   test_task_manager.py for that fix.
+2. even once the STOP command survives, a queued job only notices it on
+   its own next retry (up to default_retry_delay=20s later), so a large
+   batch of cancelled-but-still-queued jobs could sit around for
+   minutes. Since a queued job has no process or tmp file yet, its doc
+   is now deleted immediately instead of waiting for the task to notice.
+
+These tests cover DownscaleReview.cancel()'s guards (right status, task
+actually known to TaskManager before TaskCommand().stop() is called -
+TaskRedis.set_command raises KeyError on an unknown task_id) and the
+queued-deletes-immediately/running-waits-for-the-task split.
 """
 
 from unittest.mock import patch
@@ -64,11 +71,15 @@ def test_cancel_rejects_non_cancelable_status():
     mock_task_manager.assert_not_called()
 
 
-def test_cancel_stops_a_queued_job():
-    """a queued job with a known task sends the real STOP signal"""
+def test_cancel_stops_and_immediately_deletes_a_queued_job():
+    """
+    a queued job with a known task sends the real STOP signal *and* its
+    doc is deleted right away - it has no process/tmp file yet, so
+    there's nothing to lose by not waiting for its own retry to notice
+    """
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
-    ), patch(
+    ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command, patch(
         "downscale.src.downscale.TaskManager"
@@ -81,13 +92,19 @@ def test_cancel_stops_a_queued_job():
 
     assert error is None
     mock_task_command.return_value.stop.assert_called_once_with("task-1")
+    mock_delete.assert_called_once()
 
 
-def test_cancel_stops_a_running_job():
-    """a running job with a known task sends the real STOP signal"""
+def test_cancel_stops_a_running_job_without_deleting_its_doc():
+    """
+    a running job sends the real STOP signal but its doc is left alone -
+    ffmpeg is still writing to the tmp file, so only the task itself
+    (which actually owns that subprocess) can safely terminate it and
+    clean up, via its existing poll loop
+    """
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
-    ), patch(
+    ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command, patch(
         "downscale.src.downscale.TaskManager"
@@ -100,18 +117,19 @@ def test_cancel_stops_a_running_job():
 
     assert error is None
     mock_task_command.return_value.stop.assert_called_once_with("task-1")
+    mock_delete.assert_not_called()
 
 
 def test_cancel_fails_gracefully_when_task_not_yet_known():
     """
     a task_id TaskManager has never heard of (not yet started, or a
-    stale/synthetic id) must not reach TaskCommand().stop() -
-    TaskRedis.set_command raises a bare KeyError for an unknown task_id,
-    which would otherwise surface as an uncaught 500
+    stale/synthetic id) must not reach TaskCommand().stop() or delete
+    anything - TaskRedis.set_command raises a bare KeyError for an
+    unknown task_id, which would otherwise surface as an uncaught 500
     """
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
-    ), patch(
+    ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command, patch(
         "downscale.src.downscale.TaskManager"
@@ -122,3 +140,4 @@ def test_cancel_fails_gracefully_when_task_not_yet_known():
 
     assert error == "task not found, may not have started yet"
     mock_task_command.return_value.stop.assert_not_called()
+    mock_delete.assert_not_called()
