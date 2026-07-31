@@ -23,9 +23,7 @@ def _mock_lock(acquired=True):
 
 def test_dispatches_up_to_the_number_of_free_slots():
     """max_concurrent=2, 1 already running -> exactly 1 free slot"""
-    with patch(
-        "downscale.src.downscale.RedisBase"
-    ) as mock_redis_base, patch(
+    with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
         DownscaleInteract, "count_running", return_value=1
@@ -60,9 +58,7 @@ def test_dispatches_up_to_the_number_of_free_slots():
 
 def test_no_free_slots_skips_the_query_entirely():
     """already at the concurrency limit -> don't even ask for queued jobs"""
-    with patch(
-        "downscale.src.downscale.RedisBase"
-    ) as mock_redis_base, patch(
+    with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
         DownscaleInteract, "count_running", return_value=2
@@ -84,9 +80,7 @@ def test_no_free_slots_skips_the_query_entirely():
 
 def test_unlimited_concurrency_dispatches_everything_queued():
     """downscale_max_concurrent falsy -> no cap, get_next_queued(None)"""
-    with patch(
-        "downscale.src.downscale.RedisBase"
-    ) as mock_redis_base, patch(
+    with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
         DownscaleInteract, "count_running"
@@ -94,7 +88,9 @@ def test_unlimited_concurrency_dispatches_everything_queued():
         DownscaleInteract, "get_next_queued", return_value=[JOB_A, JOB_B]
     ) as mock_get_next, patch(
         "downscale.src.downscale.TaskCommand"
-    ) as mock_task_command, patch.object(DownscaleInteract, "update"):
+    ) as mock_task_command, patch.object(
+        DownscaleInteract, "update"
+    ):
         mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": None}
@@ -135,9 +131,7 @@ def test_lock_contention_does_nothing():
 
 def test_lock_is_released_even_when_no_slots_are_free():
     """the lock must never be left held on an early return"""
-    with patch(
-        "downscale.src.downscale.RedisBase"
-    ) as mock_redis_base, patch(
+    with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
         DownscaleInteract, "count_running", return_value=5

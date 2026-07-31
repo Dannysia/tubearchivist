@@ -700,6 +700,14 @@ class DownscaleReview:
             return f"job is not queued or running, status is {job['status']}"
 
         task_id = job["task_id"]
+        if not task_id:
+            # queued and never dispatched (still waiting on
+            # dispatch_pending_downscales() for a free concurrency slot)
+            # - no celery task exists yet, so there's nothing to signal,
+            # just delete it directly
+            self.interact.delete_item()
+            return None
+
         if not TaskManager().get_task(task_id):
             # mirrors the guard TaskIDView.post already does before
             # calling stop() - TaskRedis.set_command raises KeyError on

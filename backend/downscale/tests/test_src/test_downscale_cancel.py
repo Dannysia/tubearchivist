@@ -1,7 +1,7 @@
 """
 tests for cancelling a queued/running downscale job.
 
-regression coverage for two live bugs found 2026-07-30:
+regression coverage for three live bugs found 2026-07-30:
 1. a queued job retrying on a concurrency limit calls TaskManager.init()
    on every retry re-entry, which used to silently clobber a pending
    STOP command before the task ever checked is_stopped() - see
@@ -11,11 +11,17 @@ regression coverage for two live bugs found 2026-07-30:
    batch of cancelled-but-still-queued jobs could sit around for
    minutes. Since a queued job has no process or tmp file yet, its doc
    is now deleted immediately instead of waiting for the task to notice.
+3. after dispatch_pending_downscales() started deferring dispatch until
+   a slot is free, most of a large backlog sits with task_id="" (never
+   dispatched yet) rather than always having a real task_id - cancel()
+   was treating that the same as an unknown/stale task_id (a real
+   error) instead of "nothing to signal, just delete it".
 
 These tests cover DownscaleReview.cancel()'s guards (right status, task
 actually known to TaskManager before TaskCommand().stop() is called -
 TaskRedis.set_command raises KeyError on an unknown task_id) and the
-queued-deletes-immediately/running-waits-for-the-task split.
+never-dispatched/queued-deletes-immediately/running-waits-for-the-task
+split.
 """
 
 from unittest.mock import patch
@@ -69,6 +75,31 @@ def test_cancel_rejects_non_cancelable_status():
     assert error == "job is not queued or running, status is pending_review"
     mock_task_command.assert_not_called()
     mock_task_manager.assert_not_called()
+
+
+def test_cancel_deletes_a_never_dispatched_queued_job():
+    """
+    regression test: with dispatch_pending_downscales(), a queued job
+    only gets a task_id once it's actually dispatched - most of a large
+    backlog sits with task_id="" waiting for a free slot. That must not
+    be treated the same as an unknown/stale task_id (which is a real
+    error) - there's simply no task yet to signal, so cancelling one of
+    these should just delete it directly, same as any other queued job
+    """
+    job = {**QUEUED_JOB, "task_id": ""}
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(job, 200)
+    ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
+        "downscale.src.downscale.TaskCommand"
+    ) as mock_task_command, patch(
+        "downscale.src.downscale.TaskManager"
+    ) as mock_task_manager:
+        error = DownscaleReview(DOC_ID).cancel()
+
+    assert error is None
+    mock_delete.assert_called_once()
+    mock_task_manager.assert_not_called()
+    mock_task_command.return_value.stop.assert_not_called()
 
 
 def test_cancel_stops_and_immediately_deletes_a_queued_job():
