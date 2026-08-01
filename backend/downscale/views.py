@@ -24,6 +24,32 @@ from rest_framework.response import Response
 # DownscaleInteract.get_interrupted/get_all_tmp_filenames)
 BULK_BY_FILTER_MAX = 1000
 
+# unfiltered list view: lead with what's actionable right now - running,
+# then pending_review (done encoding, waiting on accept/reject), then
+# failed (needs a retry/dismiss decision) - ahead of the passive queued
+# backlog, newest first within each group. Only applied with no filters,
+# since filtering to a single status already makes the grouping a no-op.
+_STATUS_SORT = [
+    {
+        "_script": {
+            "type": "number",
+            "order": "asc",
+            "script": {
+                "lang": "painless",
+                "source": (
+                    "def s = doc['status'].value;"
+                    "if (s == 'running') return 0;"
+                    "else if (s == 'pending_review') return 1;"
+                    "else if (s == 'failed') return 2;"
+                    "else if (s == 'queued') return 3;"
+                    "else return 4;"
+                ),
+            },
+        }
+    },
+    {"timestamp": {"order": "desc"}},
+]
+
 
 def _build_must_list(validated_query: dict) -> list[dict]:
     """
@@ -89,11 +115,12 @@ class DownscaleApiListView(ApiBaseView):
         query_serializer.is_valid(raise_exception=True)
         validated_query = query_serializer.validated_data
 
-        self.data.update({"sort": [{"timestamp": {"order": "desc"}}]})
-
         must_list = _build_must_list(validated_query)
         if must_list:
             self.data["query"] = {"bool": {"must": must_list}}
+            self.data["sort"] = [{"timestamp": {"order": "desc"}}]
+        else:
+            self.data["sort"] = _STATUS_SORT
 
         self.get_document_list(request)
         serializer = DownscaleListSerializer(self.response)

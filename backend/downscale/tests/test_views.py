@@ -8,7 +8,9 @@ here rather than via HTTP - this project's tests exercise src/-layer
 logic, not the Django view/HTTP layer itself.
 """
 
-from downscale.views import _build_must_list
+import re
+
+from downscale.views import _STATUS_SORT, _build_must_list
 
 
 def test_no_filters_gives_empty_must_list():
@@ -78,3 +80,22 @@ def test_all_filters_combine_with_and_semantics():
     assert {"term": {"channel_id": {"value": "UC123"}}} in must_list
     assert {"match_phrase_prefix": {"title": "trailer"}} in must_list
     assert any("script" in clause for clause in must_list)
+
+
+def test_status_sort_ranks_running_pending_review_failed_then_queued():
+    """
+    unfiltered list view: running < pending_review < failed < queued <
+    everything else, timestamp desc is only the tiebreaker
+    """
+    script_clause, timestamp_clause = _STATUS_SORT
+    source = script_clause["_script"]["script"]["source"]
+
+    ranks = dict(re.findall(r"s == '(\w+)'\) return (\d+)", source))
+    ranks = {status: int(rank) for status, rank in ranks.items()}
+
+    assert ranks["running"] < ranks["pending_review"]
+    assert ranks["pending_review"] < ranks["failed"]
+    assert ranks["failed"] < ranks["queued"]
+    assert "else return 4" in source
+    assert script_clause["_script"]["order"] == "asc"
+    assert timestamp_clause == {"timestamp": {"order": "desc"}}
