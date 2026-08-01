@@ -23,10 +23,7 @@ from django_celery_beat.models import (
     IntervalSchedule,
     PeriodicTasks,
 )
-from downscale.src.downscale import (
-    DownscaleReview,
-    dispatch_pending_downscales,
-)
+from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from task.models import CustomPeriodicTask
 from task.src.config_schedule import ScheduleBuilder
@@ -190,9 +187,15 @@ class Command(BaseCommand):
         self.stdout.write("[4b] resume interrupted downscale jobs")
         interrupted = DownscaleInteract.get_interrupted()
         for job in interrupted:
-            DownscaleReview(job["id"]).requeue(job)
+            tmp_path = job.get("tmp_file_path")
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
 
         if interrupted:
+            # one query resets every interrupted job's status/task_id at
+            # once instead of a per-job ES round-trip - matters once
+            # this is resetting hundreds of jobs on startup
+            DownscaleInteract().requeue_interrupted()
             # dispatch is just enqueueing to the broker, so it's fine to
             # call before the celery worker itself has started - one
             # pass covers the whole batch rather than once per job

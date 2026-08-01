@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime
 
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.queue_interact import BaseQueueInteract
 
 
@@ -65,14 +65,17 @@ class DownscaleInteract(BaseQueueInteract):
         status=running. Only called from ta_startup, before the celery
         worker for this container has been started, so a job in either
         of those states at that point can only be a leftover from a
-        hard restart, never one actually in progress.
+        hard restart, never one actually in progress. Paginated in
+        batches of 1000 rather than a single capped query, since
+        requeue_interrupted()'s bulk reset of the same backlog isn't
+        capped and a large enough restart backlog could otherwise
+        silently drop jobs past the first 1000 from the tmp-file cleanup
+        and the reported count.
         """
-        data = {
-            "query": {"terms": {"status": ["queued", "running"]}},
-            "size": 1000,
-        }
-        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
-        hits = response["hits"]["hits"]
+        data = {"query": {"terms": {"status": ["queued", "running"]}}}
+        hits = IndexPaginate(
+            "ta_downscale", data, size=1000, keep_source=True
+        ).get_results()
         return [{"id": hit["_id"], **hit["_source"]} for hit in hits]
 
     @staticmethod
@@ -140,6 +143,24 @@ class DownscaleInteract(BaseQueueInteract):
         }
         response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
         return response["hits"]["total"]["value"]
+
+    def requeue_interrupted(self) -> None:
+        """
+        bulk-reset every job left in status=queued/running (e.g. by a
+        hard restart) back to status=queued with no task_id, in a single
+        ES update_by_query call rather than one round-trip per job - the
+        startup auto-resume sweep can be resetting hundreds of jobs at
+        once.
+        """
+        now = int(datetime.now().timestamp())
+        must_list = [{"terms": {"status": ["queued", "running"]}}]
+        script_source = (
+            "ctx._source.status = 'queued';"
+            "ctx._source.message = null;"
+            "ctx._source.task_id = '';"
+            f"ctx._source.updated = {now};"
+        )
+        self._update_by_query(must_list, [], script_source)
 
     @staticmethod
     def get_active_for_video(

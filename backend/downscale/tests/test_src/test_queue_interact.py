@@ -10,18 +10,24 @@ def _es_response(hits: list[dict]) -> dict:
 
 
 def test_get_interrupted_maps_hits_to_docs():
-    """queued/running docs come back with their id merged into the doc"""
+    """
+    queued/running docs come back with their id merged into the doc,
+    paginated in batches of 1000 rather than a single capped query - a
+    restart backlog past 1000 jobs must not be silently truncated
+    """
     hits = [
         {"_id": "doc1", "_source": {"status": "queued", "youtube_id": "a"}},
         {"_id": "doc2", "_source": {"status": "running", "youtube_id": "b"}},
     ]
-    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
-        mock_wrap.return_value.get.return_value = (_es_response(hits), 200)
+    with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
+        mock_paginate.return_value.get_results.return_value = hits
 
         result = DownscaleInteract.get_interrupted()
 
-    query = mock_wrap.return_value.get.call_args.kwargs["data"]["query"]
-    assert query == {"terms": {"status": ["queued", "running"]}}
+    args, kwargs = mock_paginate.call_args
+    assert args[0] == "ta_downscale"
+    assert args[1]["query"] == {"terms": {"status": ["queued", "running"]}}
+    assert kwargs == {"size": 1000, "keep_source": True}
     assert result == [
         {"id": "doc1", "status": "queued", "youtube_id": "a"},
         {"id": "doc2", "status": "running", "youtube_id": "b"},
@@ -30,8 +36,8 @@ def test_get_interrupted_maps_hits_to_docs():
 
 def test_get_interrupted_empty():
     """no queued/running docs returns an empty list"""
-    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
-        mock_wrap.return_value.get.return_value = (_es_response([]), 200)
+    with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
+        mock_paginate.return_value.get_results.return_value = []
 
         result = DownscaleInteract.get_interrupted()
 
@@ -105,6 +111,34 @@ def test_get_next_queued_zero_or_negative_limit_skips_the_query():
         assert DownscaleInteract.get_next_queued(-1) == []
 
     mock_wrap.assert_not_called()
+
+
+def test_requeue_interrupted_uses_a_single_update_by_query():
+    """
+    regression test: resetting a large interrupted backlog on startup
+    must be one ES call, not one per job - the script resets
+    status/message/task_id in bulk for anything still queued/running
+    """
+    with patch("common.src.queue_interact.ElasticWrap") as mock_wrap:
+        mock_wrap.return_value.post.return_value = ({}, 200)
+
+        DownscaleInteract().requeue_interrupted()
+
+    mock_wrap.assert_called_once_with(
+        "ta_downscale/_update_by_query?refresh=true"
+    )
+    data = mock_wrap.return_value.post.call_args.args[0]
+    assert data["query"] == {
+        "bool": {
+            "must": [{"terms": {"status": ["queued", "running"]}}],
+            "must_not": [],
+        }
+    }
+    script_source = data["script"]["source"]
+    assert "ctx._source.status = 'queued';" in script_source
+    assert "ctx._source.message = null;" in script_source
+    assert "ctx._source.task_id = '';" in script_source
+    assert "ctx._source.updated = " in script_source
 
 
 def test_get_all_tmp_filenames_returns_basenames():
