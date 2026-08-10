@@ -67,10 +67,25 @@ def test_update_subscribed_uses_minutes():
     )
 
 
+def test_downscale_reap_leases_uses_minutes():
+    """
+    the lease reaper runs every minute - a remote worker's job would
+    otherwise hang in status=running for up to an hour past its 60s
+    lease before anything noticed the worker died
+    """
+    assert (
+        ScheduleBuilder.UNITS["downscale_reap_leases"]
+        == IntervalSchedule.MINUTES
+    )
+
+
+MINUTE_SCHEDULED_TASKS = {"update_subscribed", "downscale_reap_leases"}
+
+
 def test_other_tasks_default_to_hours():
     """every other task falls back to the hourly interval unit"""
     for task_name in ScheduleBuilder.SCHEDULES:
-        if task_name == "update_subscribed":
+        if task_name in MINUTE_SCHEDULED_TASKS:
             continue
         assert (
             ScheduleBuilder.UNITS.get(task_name, IntervalSchedule.HOURS)

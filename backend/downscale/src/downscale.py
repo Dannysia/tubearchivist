@@ -6,6 +6,7 @@ functionality:
 
 import os
 import select
+import shlex
 import shutil
 import subprocess
 import time
@@ -15,6 +16,7 @@ from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
+from redis.exceptions import LockError
 from task.src.task_manager import TaskCommand, TaskManager
 from video.src.index import YoutubeVideo
 from video.src.media_streams import MediaStreamExtractor
@@ -30,6 +32,25 @@ DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 # as transient dispatch-lock contention (which keeps the task decorator's
 # own default_retry_delay=20)
 CONCURRENCY_RETRY_DELAY = 60
+
+
+def _release_lock(lock) -> None:
+    """
+    release the shared dispatch lock, tolerating one whose TTL already
+    expired before we got here - redis-py raises LockError in that
+    case. By the time release() runs, the critical section is already
+    done; letting that exception propagate out of a `finally` block
+    would replace the caller's actual return value (or respond with an
+    uncaught 500 to an otherwise-successful request) purely because of
+    lock-cleanup bookkeeping, not because anything the caller did was
+    wrong. A pathologically long critical section (many candidates to
+    skip) is the realistic way to hit this - see worker.claim().
+    """
+    try:
+        lock.release()
+    except LockError:
+        print(f"downscale: lock {DISPATCH_LOCK_KEY} already expired")
+
 
 # hardware (VAAPI) encoder keys all carry a _vaapi suffix; hw vs software
 # is derived from the key rather than stored, so there's nothing to keep
@@ -263,12 +284,17 @@ def dispatch_pending_downscales() -> None:
         max_concurrent = AppConfig().config["application"][
             "downscale_max_concurrent"
         ]
-        if max_concurrent:
+        if max_concurrent is None:
+            free_slots = None
+        elif max_concurrent == 0:
+            # 0 means local encoding is disabled outright (the
+            # remote-only mode) - distinct from None, which means
+            # unlimited
+            return
+        else:
             free_slots = max_concurrent - DownscaleInteract.count_running()
             if free_slots <= 0:
                 return
-        else:
-            free_slots = None
 
         for job in DownscaleInteract.get_next_queued(free_slots):
             message = TaskCommand().start(
@@ -281,7 +307,7 @@ def dispatch_pending_downscales() -> None:
             )
             DownscaleInteract(job["id"]).update(task_id=message["task_id"])
     finally:
-        lock.release()
+        _release_lock(lock)
 
 
 class DownscaleRunner:
@@ -298,6 +324,7 @@ class DownscaleRunner:
         self.encoder_key: str | None = None
         self.quality: int | None = None
         self.preset: str | None = None
+        self.cmd: list[str] | None = None
 
     def run(self) -> None:
         """entry point. self.doc_id already exists in status=queued"""
@@ -391,7 +418,7 @@ class DownscaleRunner:
                 "downscale_max_concurrent"
             ]
             if (
-                max_concurrent
+                max_concurrent is not None
                 and DownscaleInteract.count_running() >= max_concurrent
             ):
                 print(
@@ -419,7 +446,7 @@ class DownscaleRunner:
             )
             return True
         finally:
-            lock.release()
+            _release_lock(lock)
 
     def _encode(self, original_path: str, duration: float, title: str) -> None:
         """run ffmpeg, polling for progress and a stop signal"""
@@ -444,7 +471,7 @@ class DownscaleRunner:
         self.quality = quality
         self.preset = preset if encoder_key in PRESET_APPLIES else None
 
-        cmd = _build_ffmpeg_cmd(
+        self.cmd = _build_ffmpeg_cmd(
             original_path,
             self.target_height,
             encoder_key,
@@ -454,7 +481,7 @@ class DownscaleRunner:
             vaapi_device,
         )
         process = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            self.cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )  # pylint: disable=consider-using-with
 
         stderr_lines: list[str] = []
@@ -553,6 +580,7 @@ class DownscaleRunner:
             encoder=self.encoder_key,
             quality=self.quality,
             preset=self.preset,
+            ffmpeg_args=shlex.join(self.cmd) if self.cmd else "",
             updated=_now(),
         )
         dispatch_pending_downscales()
@@ -625,6 +653,7 @@ class DownscaleReview:
             "encoder": job.get("encoder"),
             "quality": job.get("quality"),
             "preset": job.get("preset"),
+            "ffmpeg_args": job.get("ffmpeg_args"),
         }
 
         video.add_streams(media_path=original_path)
@@ -698,6 +727,16 @@ class DownscaleReview:
 
         if job["status"] not in ("queued", "running"):
             return f"job is not queued or running, status is {job['status']}"
+
+        if job["status"] == "running" and job.get("worker"):
+            # remote-held job: there's no celery task to signal, only a
+            # worker polling on its own schedule. Flip the flag and
+            # leave the doc in place - the worker picks it up on its
+            # next heartbeat and acks by deleting the job itself. If
+            # the worker is already dead, the lease reaper's
+            # stop_requested branch cleans up once the lease goes stale
+            self.interact.update(stop_requested=True)
+            return None
 
         task_id = job["task_id"]
         if not task_id:

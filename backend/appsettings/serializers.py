@@ -76,7 +76,7 @@ class AppConfigAppSerializer(
     enable_snapshot = serializers.BooleanField()
     enable_cast = serializers.BooleanField()
     downscale_max_concurrent = serializers.IntegerField(
-        allow_null=True, min_value=1
+        allow_null=True, min_value=0
     )
     downscale_encoder = serializers.ChoiceField(
         choices=[

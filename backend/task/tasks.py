@@ -22,6 +22,7 @@ from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import VideoDownloader
 from downscale.src.downscale import DownscaleRunner
+from downscale.src.worker import reap_stale_leases
 from task.src.notify import Notifications
 from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskManager
@@ -380,3 +381,9 @@ def downscale_video(self, youtube_id: str, target_height: int, doc_id: str):
 def version_check():
     """check for new updates"""
     ReleaseVersion().check()
+
+
+@shared_task(name="downscale_reap_leases")
+def downscale_reap_leases():
+    """requeue/clean up remote downscale jobs with a stale lease"""
+    reap_stale_leases()

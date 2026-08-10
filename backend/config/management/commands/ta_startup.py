@@ -185,6 +185,8 @@ class Command(BaseCommand):
         manual review/retry.
         """
         self.stdout.write("[4b] resume interrupted downscale jobs")
+        self._backfill_downscale_worker_fields()
+
         interrupted = DownscaleInteract.get_interrupted()
         for job in interrupted:
             tmp_path = job.get("tmp_file_path")
@@ -221,6 +223,36 @@ class Command(BaseCommand):
         else:
             self.stdout.write(self.style.SUCCESS("    no files found"))
 
+    def _backfill_downscale_worker_fields(self) -> None:
+        """
+        add the remote-worker fields (worker/last_heartbeat/progress/
+        stop_requested/ffmpeg_args) to any downscale queue doc that
+        predates them. Deliberately not one of the numbered _mig_*
+        migrations below, which run after this method and are skippable
+        via TA_MIG_SKIP_* - get_interrupted()/requeue_interrupted()
+        (called right after this) and count_running() all key off
+        worker=="" to tell a local job from a remote one, so a doc
+        missing the field entirely would be invisible to this very
+        startup sweep and to the concurrency counter, with nothing else
+        ever going to notice it again (the lease reaper only looks at
+        worker != ""). This has to run first and can't be optional.
+        """
+        self._run_migration(
+            index_name="ta_downscale",
+            desc="add remote-worker fields to downscale queue docs",
+            query={"bool": {"must_not": [{"exists": {"field": "worker"}}]}},
+            script={
+                "source": (
+                    "ctx._source.worker = '';"
+                    "ctx._source.last_heartbeat = 0;"
+                    "ctx._source.progress = 0.0;"
+                    "ctx._source.stop_requested = false;"
+                    "ctx._source.ffmpeg_args = '';"
+                ),
+                "lang": "painless",
+            },
+        )
+
     def _version_check(self):
         """remove new release key if updated now"""
         self.stdout.write("[5] check for first run after update")
@@ -256,7 +288,12 @@ class Command(BaseCommand):
         self.stdout.write("[8] create initial schedules")
         builder = ScheduleBuilder()
 
-        for task_name in ("check_reindex", "thumbnail_check", "version_check"):
+        for task_name in (
+            "check_reindex",
+            "thumbnail_check",
+            "version_check",
+            "downscale_reap_leases",
+        ):
             existing = CustomPeriodicTask.objects.filter(
                 name=task_name
             ).first()

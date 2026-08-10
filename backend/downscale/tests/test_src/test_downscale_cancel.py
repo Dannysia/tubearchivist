@@ -40,6 +40,13 @@ QUEUED_JOB = {
 
 RUNNING_JOB = {**QUEUED_JOB, "status": "running"}
 
+REMOTE_RUNNING_JOB = {
+    **QUEUED_JOB,
+    "status": "running",
+    "task_id": "",
+    "worker": "gaming-pc",
+}
+
 
 def test_cancel_job_not_found():
     """cancelling a doc that no longer exists reports an error"""
@@ -172,3 +179,47 @@ def test_cancel_fails_gracefully_when_task_not_yet_known():
     assert error == "task not found, may not have started yet"
     mock_task_command.return_value.stop.assert_not_called()
     mock_delete.assert_not_called()
+
+
+def test_cancel_sets_stop_requested_for_a_remote_held_job():
+    """
+    a remote-held job has no celery task to signal - cancel() flips
+    stop_requested and leaves the doc in place instead of touching
+    TaskCommand/TaskManager or deleting anything. The worker notices on
+    its next heartbeat and acks by deleting the job itself
+    """
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(REMOTE_RUNNING_JOB, 200)
+    ), patch.object(DownscaleInteract, "update") as mock_update, patch.object(
+        DownscaleInteract, "delete_item"
+    ) as mock_delete, patch(
+        "downscale.src.downscale.TaskCommand"
+    ) as mock_task_command, patch(
+        "downscale.src.downscale.TaskManager"
+    ) as mock_task_manager:
+        error = DownscaleReview(DOC_ID).cancel()
+
+    assert error is None
+    mock_update.assert_called_once_with(stop_requested=True)
+    mock_delete.assert_not_called()
+    mock_task_command.assert_not_called()
+    mock_task_manager.assert_not_called()
+
+
+def test_cancel_of_a_queued_never_claimed_job_ignores_the_worker_branch():
+    """
+    a queued job always carries worker="" until claimed - the remote
+    branch must only trigger for status=running, not merely "no
+    task_id", so a never-dispatched queued job still deletes immediately
+    """
+    job = {**QUEUED_JOB, "task_id": "", "worker": ""}
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(job, 200)
+    ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
+        "downscale.src.downscale.TaskCommand"
+    ) as mock_task_command:
+        error = DownscaleReview(DOC_ID).cancel()
+
+    assert error is None
+    mock_delete.assert_called_once()
+    mock_task_command.return_value.stop.assert_not_called()

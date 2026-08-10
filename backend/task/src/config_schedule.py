@@ -21,12 +21,17 @@ class ScheduleBuilder:
         "thumbnail_check": 24,
         "run_backup": 168,
         "version_check": 24,
+        "downscale_reap_leases": 1,
     }
     # tasks not listed here default to hourly intervals. update_subscribed
     # is a lightweight ticker that only checks which subscriptions are due,
     # so it's safe to run much more frequently than a full rescan.
+    # downscale_reap_leases is a lease reaper - a remote worker's job
+    # would otherwise hang in status=running for up to an hour after its
+    # worker dies, well past the 60s lease it's supposed to hold.
     UNITS = {
         "update_subscribed": IntervalSchedule.MINUTES,
+        "downscale_reap_leases": IntervalSchedule.MINUTES,
     }
     MSG = "message:setting"
 

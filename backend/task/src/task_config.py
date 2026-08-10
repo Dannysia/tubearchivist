@@ -122,6 +122,13 @@ VERSION_CHECK: TaskItemConfig = {
     "api_stop": False,
 }
 
+DOWNSCALE_REAP_LEASES: TaskItemConfig = {
+    "title": "Reap Stale Downscale Leases",
+    "group": "",
+    "api_start": False,
+    "api_stop": False,
+}
+
 TASK_CONFIG: dict[str, TaskItemConfig] = {
     "update_subscribed": UPDATE_SUBSCRIBED,
     "download_pending": DOWNLOAD_PENDING,
@@ -138,4 +145,5 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "subscribe_to": SUBSCRIBE_TO,
     "version_check": VERSION_CHECK,
     "downscale_video": DOWNSCALE_VIDEO,
+    "downscale_reap_leases": DOWNSCALE_REAP_LEASES,
 }

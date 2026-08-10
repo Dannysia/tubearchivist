@@ -68,6 +68,39 @@ def test_concurrency_limit_retries_with_longer_countdown():
     task.retry.assert_called_once_with(countdown=CONCURRENCY_RETRY_DELAY)
 
 
+def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
+    """
+    defense in depth: even if a local celery task somehow got dispatched
+    while downscale_max_concurrent=0 (e.g. a leftover from before the
+    setting was changed), _reserve_slot() must not treat 0 as falsy/no
+    limit - it should retry forever waiting for a slot that never opens,
+    same as any other exhausted concurrency limit
+    """
+    task = _mock_task()
+    runner = _make_runner(task)
+
+    with patch(
+        "downscale.src.downscale.RedisBase"
+    ) as mock_redis_base, patch.object(
+        DownscaleInteract, "get_active_for_video", return_value=None
+    ), patch.object(
+        DownscaleInteract, "count_running", return_value=0
+    ), patch(
+        "downscale.src.downscale.AppConfig"
+    ) as mock_app_config:
+        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_app_config.return_value.config = {
+            "application": {"downscale_max_concurrent": 0}
+        }
+
+        try:
+            runner._reserve_slot(current_height=1080, original_path="/x.mp4")
+        except RuntimeError:
+            pass
+
+    task.retry.assert_called_once_with(countdown=CONCURRENCY_RETRY_DELAY)
+
+
 def test_dispatch_lock_contention_uses_default_retry_cadence():
     """
     failing to acquire the dispatch lock is short-lived contention

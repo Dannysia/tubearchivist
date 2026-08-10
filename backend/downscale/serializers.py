@@ -31,6 +31,8 @@ class DownscaleItemSerializer(serializers.Serializer):
     encoder = serializers.CharField(required=False, allow_null=True)
     quality = serializers.IntegerField(required=False, allow_null=True)
     preset = serializers.CharField(required=False, allow_null=True)
+    ffmpeg_args = serializers.CharField(required=False, allow_null=True)
+    progress = serializers.FloatField(required=False, allow_null=True)
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -101,6 +103,67 @@ class DownscaleAggsQuerySerializer(serializers.Serializer):
         choices=["queued", "running", "pending_review", "failed", "cancelled"],
         required=False,
     )
+
+
+class WorkerClaimRequestSerializer(serializers.Serializer):
+    """serialize a remote worker's claim request"""
+
+    worker = serializers.CharField()
+    encoders = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        help_text="for logging/debugging only, TA does not act on it",
+    )
+
+
+class WorkerClaimResponseSerializer(serializers.Serializer):
+    """serialize the job handed to a remote worker on a successful claim"""
+
+    id = serializers.CharField()
+    youtube_id = serializers.CharField()
+    title = serializers.CharField()
+    target_height = serializers.IntegerField()
+    quality_hint = serializers.IntegerField()
+    source_url = serializers.CharField()
+
+
+class WorkerJobActionRequestSerializer(serializers.Serializer):
+    """serialize the worker identity carried by every job-scoped request"""
+
+    worker = serializers.CharField()
+
+
+class WorkerHeartbeatRequestSerializer(WorkerJobActionRequestSerializer):
+    """serialize a remote worker's heartbeat/progress update"""
+
+    progress = serializers.FloatField(min_value=0, max_value=1)
+
+
+class WorkerHeartbeatResponseSerializer(serializers.Serializer):
+    """serialize the heartbeat response - whether the worker should stop"""
+
+    stop = serializers.BooleanField()
+
+
+class WorkerFinishRequestSerializer(WorkerJobActionRequestSerializer):
+    """serialize a remote worker's finish report"""
+
+    encoder = serializers.CharField()
+    quality = serializers.IntegerField(allow_null=True)
+    preset = serializers.CharField(allow_null=True, required=False)
+    ffmpeg_args = serializers.CharField()
+
+
+class WorkerFailRequestSerializer(WorkerJobActionRequestSerializer):
+    """serialize a remote worker's failure report"""
+
+    message = serializers.CharField(allow_blank=True)
+
+
+class WorkerErrorSerializer(serializers.Serializer):
+    """serialize a worker API error response"""
+
+    error = serializers.CharField()
 
 
 class DownscaleAggBucketSerializer(serializers.Serializer):

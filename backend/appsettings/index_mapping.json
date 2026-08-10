@@ -247,6 +247,10 @@
                         },
                         "preset": {
                             "type": "keyword"
+                        },
+                        "ffmpeg_args": {
+                            "type": "keyword",
+                            "index": false
                         }
                     }
                 },
@@ -574,6 +578,24 @@
             "expected_map": {
                 "channel_id": {
                     "type": "keyword"
+                },
+                "worker": {
+                    "type": "keyword"
+                },
+                "last_heartbeat": {
+                    "type": "date",
+                    "format": "epoch_second"
+                },
+                "progress": {
+                    "type": "float",
+                    "index": false
+                },
+                "stop_requested": {
+                    "type": "boolean"
+                },
+                "ffmpeg_args": {
+                    "type": "keyword",
+                    "index": false
                 },
                 "channel_name": {
                     "type": "text",

@@ -37,6 +37,7 @@ class DownscaleRecordSerializer(serializers.Serializer):
     encoder = serializers.CharField(required=False, allow_null=True)
     quality = serializers.IntegerField(required=False, allow_null=True)
     preset = serializers.CharField(required=False, allow_null=True)
+    ffmpeg_args = serializers.CharField(required=False, allow_null=True)
 
 
 class PlayerSerializer(serializers.Serializer):

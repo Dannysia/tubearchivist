@@ -11,9 +11,9 @@ def _es_response(hits: list[dict]) -> dict:
 
 def test_get_interrupted_maps_hits_to_docs():
     """
-    queued/running docs come back with their id merged into the doc,
-    paginated in batches of 1000 rather than a single capped query - a
-    restart backlog past 1000 jobs must not be silently truncated
+    queued/running local docs come back with their id merged into the
+    doc, paginated in batches of 1000 rather than a single capped query
+    - a restart backlog past 1000 jobs must not be silently truncated
     """
     hits = [
         {"_id": "doc1", "_source": {"status": "queued", "youtube_id": "a"}},
@@ -26,7 +26,14 @@ def test_get_interrupted_maps_hits_to_docs():
 
     args, kwargs = mock_paginate.call_args
     assert args[0] == "ta_downscale"
-    assert args[1]["query"] == {"terms": {"status": ["queued", "running"]}}
+    assert args[1]["query"] == {
+        "bool": {
+            "must": [
+                {"terms": {"status": ["queued", "running"]}},
+                {"term": {"worker": {"value": ""}}},
+            ]
+        }
+    }
     assert kwargs == {"size": 1000, "keep_source": True}
     assert result == [
         {"id": "doc1", "status": "queued", "youtube_id": "a"},
@@ -117,7 +124,8 @@ def test_requeue_interrupted_uses_a_single_update_by_query():
     """
     regression test: resetting a large interrupted backlog on startup
     must be one ES call, not one per job - the script resets
-    status/message/task_id in bulk for anything still queued/running
+    status/message/task_id in bulk for anything still queued/running.
+    Remote-held jobs (worker != "") are excluded from the sweep.
     """
     with patch("common.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.post.return_value = ({}, 200)
@@ -130,7 +138,10 @@ def test_requeue_interrupted_uses_a_single_update_by_query():
     data = mock_wrap.return_value.post.call_args.args[0]
     assert data["query"] == {
         "bool": {
-            "must": [{"terms": {"status": ["queued", "running"]}}],
+            "must": [
+                {"terms": {"status": ["queued", "running"]}},
+                {"term": {"worker": {"value": ""}}},
+            ],
             "must_not": [],
         }
     }
@@ -164,3 +175,130 @@ def test_get_all_tmp_filenames_skips_docs_without_tmp_path():
         result = DownscaleInteract.get_all_tmp_filenames()
 
     assert result == set()
+
+
+def test_count_running_excludes_remote_jobs():
+    """
+    downscale_max_concurrent protects the TA host's own CPU, so remote
+    (worker != "") running jobs must not count against it
+    """
+    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
+        mock_wrap.return_value.get.return_value = (
+            {"hits": {"total": {"value": 3}}},
+            200,
+        )
+
+        result = DownscaleInteract.count_running()
+
+    data = mock_wrap.return_value.get.call_args.kwargs["data"]
+    assert data["query"] == {
+        "bool": {
+            "must": [
+                {"term": {"status": {"value": "running"}}},
+                {"term": {"worker": {"value": ""}}},
+            ]
+        }
+    }
+    assert result == 3
+
+
+def test_build_queued_doc_defaults_worker_fields_for_a_local_job():
+    """
+    a freshly queued job explicitly carries worker="" (not just an
+    absent field) - the count_running/get_interrupted/requeue_interrupted
+    local-vs-remote filters all rely on an exact term match against it
+    """
+    video_json_data = {
+        "channel": {"channel_id": "UC123", "channel_name": "chan"},
+        "title": "title",
+        "vid_thumb_url": None,
+        "media_url": "a/b.mp4",
+        "media_size": 100,
+    }
+
+    doc = DownscaleInteract.build_queued_doc(
+        "video1", video_json_data, current_height=1080, target_height=720
+    )
+
+    assert doc["worker"] == ""
+    assert doc["last_heartbeat"] == 0
+    assert doc["progress"] == 0.0
+    assert doc["stop_requested"] is False
+    assert doc["ffmpeg_args"] == ""
+
+
+def test_create_keys_the_doc_id_off_youtube_id():
+    """
+    doc_id is derived from doc["youtube_id"], not randomly generated -
+    see docs/downscale-dedup/README.md. Verified against the ElasticWrap
+    path used, since there's no uuid call left to assert on.
+    """
+    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
+        mock_wrap.return_value.put.return_value = ({}, 200)
+
+        doc_id = DownscaleInteract().create({"youtube_id": "video1"})
+
+    assert doc_id == "video1"
+    mock_wrap.assert_called_once_with("ta_downscale/_doc/video1")
+
+
+def test_create_is_deterministic_across_repeated_calls_for_one_video():
+    """
+    two create() calls for the same video (e.g. a racing double
+    submission, or a retry after a different target_height) write to the
+    same doc path rather than generating a new id each time
+    """
+    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
+        mock_wrap.return_value.put.return_value = ({}, 200)
+
+        first_id = DownscaleInteract().create(
+            {"youtube_id": "video1", "target_height": 720}
+        )
+        second_id = DownscaleInteract().create(
+            {"youtube_id": "video1", "target_height": 480}
+        )
+
+    assert first_id == second_id
+    paths = [call.args[0] for call in mock_wrap.call_args_list]
+    assert paths == ["ta_downscale/_doc/video1", "ta_downscale/_doc/video1"]
+
+
+def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
+    """
+    only remote (worker != "") running jobs with a heartbeat older than
+    the threshold are stale leases - a job that never set worker (local)
+    or is heartbeating on time is excluded
+    """
+    hits = [
+        {
+            "_id": "doc1",
+            "_source": {
+                "status": "running",
+                "worker": "gaming-pc",
+                "last_heartbeat": 10,
+            },
+        }
+    ]
+    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
+        mock_wrap.return_value.get.return_value = (_es_response(hits), 200)
+
+        result = DownscaleInteract.get_stale_leases(100)
+
+    data = mock_wrap.return_value.get.call_args.kwargs["data"]
+    assert data["query"] == {
+        "bool": {
+            "must": [
+                {"term": {"status": {"value": "running"}}},
+                {"range": {"last_heartbeat": {"lt": 100}}},
+            ],
+            "must_not": [{"term": {"worker": {"value": ""}}}],
+        }
+    }
+    assert result == [
+        {
+            "id": "doc1",
+            "status": "running",
+            "worker": "gaming-pc",
+            "last_heartbeat": 10,
+        }
+    ]

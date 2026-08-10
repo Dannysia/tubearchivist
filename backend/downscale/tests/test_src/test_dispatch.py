@@ -106,6 +106,34 @@ def test_unlimited_concurrency_dispatches_everything_queued():
     assert mock_task_command.return_value.start.call_count == 2
 
 
+def test_max_concurrent_zero_disables_local_dispatch_entirely():
+    """
+    downscale_max_concurrent=0 is the remote-only mode: dispatch nothing
+    locally (not even a query for queued jobs), distinct from None which
+    means unlimited. This used to be indistinguishable from unlimited
+    because `if max_concurrent:` treats 0 as falsy.
+    """
+    with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
+        "downscale.src.downscale.AppConfig"
+    ) as mock_app_config, patch.object(
+        DownscaleInteract, "count_running"
+    ) as mock_count_running, patch.object(
+        DownscaleInteract, "get_next_queued"
+    ) as mock_get_next, patch(
+        "downscale.src.downscale.TaskCommand"
+    ) as mock_task_command:
+        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_app_config.return_value.config = {
+            "application": {"downscale_max_concurrent": 0}
+        }
+
+        dispatch_pending_downscales()
+
+    mock_count_running.assert_not_called()
+    mock_get_next.assert_not_called()
+    mock_task_command.return_value.start.assert_not_called()
+
+
 def test_lock_contention_does_nothing():
     """
     another dispatch already in progress -> back off entirely rather

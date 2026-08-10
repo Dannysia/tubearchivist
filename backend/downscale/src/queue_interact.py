@@ -1,7 +1,6 @@
 """interact with items in the downscale review queue"""
 
 import os
-import uuid
 from datetime import datetime
 
 from common.src.env_settings import EnvironmentSettings
@@ -15,8 +14,12 @@ class DownscaleInteract(BaseQueueInteract):
     INDEX_NAME = "ta_downscale"
 
     def create(self, doc: dict) -> str:
-        """create a new downscale job doc, return its id"""
-        doc_id = uuid.uuid4().hex
+        """create a new downscale job doc, return its id. Deterministic
+        (keyed on youtube_id) rather than random, so a racing duplicate
+        submission for the same video overwrites the same document
+        instead of creating a sibling - see docs/downscale-dedup/README.md
+        """
+        doc_id = doc["youtube_id"]
         path = f"ta_downscale/_doc/{doc_id}"
         ElasticWrap(path).put(doc, refresh=True)
         self.doc_id = doc_id
@@ -54,6 +57,11 @@ class DownscaleInteract(BaseQueueInteract):
             "new_size": 0,
             "tmp_file_path": tmp_path,
             "task_id": task_id,
+            "worker": "",
+            "last_heartbeat": 0,
+            "progress": 0.0,
+            "stop_requested": False,
+            "ffmpeg_args": "",
             "timestamp": now,
             "updated": now,
         }
@@ -61,18 +69,29 @@ class DownscaleInteract(BaseQueueInteract):
     @staticmethod
     def get_interrupted() -> list[dict]:
         """
-        return all downscale jobs left in status=queued or
+        return all local downscale jobs left in status=queued or
         status=running. Only called from ta_startup, before the celery
         worker for this container has been started, so a job in either
         of those states at that point can only be a leftover from a
-        hard restart, never one actually in progress. Paginated in
-        batches of 1000 rather than a single capped query, since
-        requeue_interrupted()'s bulk reset of the same backlog isn't
-        capped and a large enough restart backlog could otherwise
-        silently drop jobs past the first 1000 from the tmp-file cleanup
-        and the reported count.
+        hard restart, never one actually in progress. Remote-held jobs
+        (worker != "") are excluded - they survive a TA restart just
+        fine, and the lease reaper is what cleans those up if their
+        worker really is gone. Paginated in batches of 1000 rather than
+        a single capped query, since requeue_interrupted()'s bulk reset
+        of the same backlog isn't capped and a large enough restart
+        backlog could otherwise silently drop jobs past the first 1000
+        from the tmp-file cleanup and the reported count.
         """
-        data = {"query": {"terms": {"status": ["queued", "running"]}}}
+        data = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"terms": {"status": ["queued", "running"]}},
+                        {"term": {"worker": {"value": ""}}},
+                    ]
+                }
+            }
+        }
         hits = IndexPaginate(
             "ta_downscale", data, size=1000, keep_source=True
         ).get_results()
@@ -135,9 +154,21 @@ class DownscaleInteract(BaseQueueInteract):
 
     @staticmethod
     def count_running() -> int:
-        """count how many downscale jobs are currently running"""
+        """
+        count how many downscale jobs are currently running locally.
+        Remote jobs (worker != "") are excluded - downscale_max_concurrent
+        exists to protect the TA host's own CPU and has nothing to say
+        about a remote worker's hardware.
+        """
         data = {
-            "query": {"term": {"status": {"value": "running"}}},
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"status": {"value": "running"}}},
+                        {"term": {"worker": {"value": ""}}},
+                    ]
+                }
+            },
             "size": 0,
             "track_total_hits": True,
         }
@@ -146,14 +177,17 @@ class DownscaleInteract(BaseQueueInteract):
 
     def requeue_interrupted(self) -> None:
         """
-        bulk-reset every job left in status=queued/running (e.g. by a
-        hard restart) back to status=queued with no task_id, in a single
-        ES update_by_query call rather than one round-trip per job - the
-        startup auto-resume sweep can be resetting hundreds of jobs at
-        once.
+        bulk-reset every local job left in status=queued/running (e.g.
+        by a hard restart) back to status=queued with no task_id, in a
+        single ES update_by_query call rather than one round-trip per
+        job - the startup auto-resume sweep can be resetting hundreds of
+        jobs at once. Remote-held jobs (worker != "") are left alone.
         """
         now = int(datetime.now().timestamp())
-        must_list = [{"terms": {"status": ["queued", "running"]}}]
+        must_list = [
+            {"terms": {"status": ["queued", "running"]}},
+            {"term": {"worker": {"value": ""}}},
+        ]
         script_source = (
             "ctx._source.status = 'queued';"
             "ctx._source.message = null;"
@@ -189,3 +223,29 @@ class DownscaleInteract(BaseQueueInteract):
             return None
 
         return {"id": hits[0]["_id"], **hits[0]["_source"]}
+
+    @staticmethod
+    def get_stale_leases(stale_before: int) -> list[dict]:
+        """
+        remote-held (worker != "") running jobs whose last_heartbeat is
+        older than stale_before - a crashed or powered-off worker never
+        renewed its lease. Callers branch per-job on stop_requested:
+        with it set the user already cancelled and the worker just never
+        acked, without it the job goes back to the queue. Capped like
+        every other "get everything matching" query in this module.
+        """
+        data = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"status": {"value": "running"}}},
+                        {"range": {"last_heartbeat": {"lt": stale_before}}},
+                    ],
+                    "must_not": [{"term": {"worker": {"value": ""}}}],
+                }
+            },
+            "size": 1000,
+        }
+        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
+        hits = response["hits"]["hits"]
+        return [{"id": hit["_id"], **hit["_source"]} for hit in hits]
