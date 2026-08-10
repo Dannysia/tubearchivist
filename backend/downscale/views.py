@@ -7,6 +7,7 @@ from downscale.serializers import (
     DownscaleAggsSerializer,
     DownscaleBulkActionSerializer,
     DownscaleBulkResultSerializer,
+    DownscaleEncoderAggsSerializer,
     DownscaleEncoderTestSerializer,
     DownscaleListQuerySerializer,
     DownscaleListSerializer,
@@ -54,8 +55,8 @@ _STATUS_SORT = [
 def _build_must_list(validated_query: dict) -> list[dict]:
     """
     build the bool-query must clauses for the list/status/channel/search/
-    size_change filters, shared between listing and resolving ids for a
-    bulk-by-filter action
+    size_change/encoder filters, shared between listing and resolving ids
+    for a bulk-by-filter action
     """
     must_list = []
     status_filter = validated_query.get("status")
@@ -65,6 +66,10 @@ def _build_must_list(validated_query: dict) -> list[dict]:
     channel_filter = validated_query.get("channel")
     if channel_filter:
         must_list.append({"term": {"channel_id": {"value": channel_filter}}})
+
+    encoder_filter = validated_query.get("encoder")
+    if encoder_filter:
+        must_list.append({"term": {"encoder": {"value": encoder_filter}}})
 
     search_query = validated_query.get("q")
     if search_query:
@@ -186,9 +191,39 @@ class DownscaleApiListView(ApiBaseView):
         return [hit["_id"] for hit in response.get("hits", {}).get("hits", [])]
 
 
+CHANNEL_AGGS_KEY = "channel_downscale"
+ENCODER_AGGS_KEY = "encoder_downscale"
+
+
+def _build_aggs_query(field_filter: str) -> tuple[str, dict]:
+    """
+    build the aggs block for the queue's channel/encoder filter dropdown,
+    returning (agg_key, agg_body) - the caller needs agg_key to pull the
+    matching bucket set back out of the ES response. encoder is a plain
+    terms agg (a single string key); channel is multi_terms since the
+    frontend needs both a display name and a separately filterable id.
+    encoder is only ever set once a job finishes (see _finish_success()/
+    worker.finish()), so this naturally excludes queued/running jobs
+    rather than surfacing an empty-string bucket for them.
+    """
+    if field_filter == "encoder":
+        return ENCODER_AGGS_KEY, {"terms": {"field": "encoder", "size": 30}}
+
+    return CHANNEL_AGGS_KEY, {
+        "multi_terms": {
+            "size": 30,
+            "terms": [
+                {"field": "channel_name.keyword"},
+                {"field": "channel_id"},
+            ],
+            "order": {"_count": "desc"},
+        }
+    }
+
+
 class DownscaleAggsApiView(ApiBaseView):
     """resolves to /api/downscale/aggs/
-    GET: get channel aggregations for the downscale queue
+    GET: get channel or encoder aggregations for the downscale queue
     """
 
     search_base = "ta_downscale/_search"
@@ -199,7 +234,7 @@ class DownscaleAggsApiView(ApiBaseView):
         responses={200: OpenApiResponse(DownscaleAggsSerializer())},
     )
     def get(self, request):
-        """get aggs"""
+        """get aggs, field=channel (default) or field=encoder"""
         query_serializer = DownscaleAggsQuerySerializer(
             data=request.query_params
         )
@@ -210,26 +245,15 @@ class DownscaleAggsApiView(ApiBaseView):
         if status_filter:
             self.data["query"] = {"term": {"status": {"value": status_filter}}}
 
-        self.data.update(
-            {
-                "aggs": {
-                    "channel_downscale": {
-                        "multi_terms": {
-                            "size": 30,
-                            "terms": [
-                                {"field": "channel_name.keyword"},
-                                {"field": "channel_id"},
-                            ],
-                            "order": {"_count": "desc"},
-                        }
-                    }
-                }
-            }
-        )
+        field_filter = validated_query.get("field") or "channel"
+        agg_key, agg_body = _build_aggs_query(field_filter)
+        self.data["aggs"] = {agg_key: agg_body}
         self.get_aggs()
-        serializer = DownscaleAggsSerializer(
-            self.response["channel_downscale"]
-        )
+
+        if field_filter == "encoder":
+            serializer = DownscaleEncoderAggsSerializer(self.response[agg_key])
+        else:
+            serializer = DownscaleAggsSerializer(self.response[agg_key])
 
         return Response(serializer.data)
 

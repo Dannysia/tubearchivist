@@ -58,6 +58,14 @@ class DownscaleListQuerySerializer(serializers.Serializer):
         required=False,
         help_text="only jobs where the encode finished smaller/larger",
     )
+    encoder = serializers.CharField(
+        required=False,
+        help_text=(
+            "exact encoder string (e.g. av1_nvenc, h264_vaapi) - only set "
+            "once a job has actually run, so this excludes queued/running "
+            "jobs regardless of match"
+        ),
+    )
     page = serializers.IntegerField(required=False)
 
 
@@ -102,6 +110,11 @@ class DownscaleAggsQuerySerializer(serializers.Serializer):
     status = serializers.ChoiceField(
         choices=["queued", "running", "pending_review", "failed", "cancelled"],
         required=False,
+    )
+    field = serializers.ChoiceField(
+        choices=["channel", "encoder"],
+        required=False,
+        help_text="which field to aggregate on, defaults to channel",
     )
 
 
@@ -167,7 +180,10 @@ class WorkerErrorSerializer(serializers.Serializer):
 
 
 class DownscaleAggBucketSerializer(serializers.Serializer):
-    """serialize bucket"""
+    """
+    serialize a channel bucket - key is a (channel_name, channel_id) pair,
+    the shape multi_terms always returns
+    """
 
     key = serializers.ListField(child=serializers.CharField())
     key_as_string = serializers.CharField()
@@ -180,3 +196,22 @@ class DownscaleAggsSerializer(serializers.Serializer):
     doc_count_error_upper_bound = serializers.IntegerField()
     sum_other_doc_count = serializers.IntegerField()
     buckets = DownscaleAggBucketSerializer(many=True)
+
+
+class DownscaleEncoderAggBucketSerializer(serializers.Serializer):
+    """
+    serialize an encoder bucket - a plain single-field terms agg, so key
+    is just the encoder string itself, unlike the channel bucket's
+    multi_terms pair
+    """
+
+    key = serializers.CharField()
+    doc_count = serializers.IntegerField()
+
+
+class DownscaleEncoderAggsSerializer(serializers.Serializer):
+    """serialize downscale encoder bucket aggregations"""
+
+    doc_count_error_upper_bound = serializers.IntegerField()
+    sum_other_doc_count = serializers.IntegerField()
+    buckets = DownscaleEncoderAggBucketSerializer(many=True)

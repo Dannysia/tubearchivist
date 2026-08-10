@@ -10,7 +10,11 @@ logic, not the Django view/HTTP layer itself.
 
 import re
 
-from downscale.views import _STATUS_SORT, _build_must_list
+from downscale.views import (
+    _STATUS_SORT,
+    _build_aggs_query,
+    _build_must_list,
+)
 
 
 def test_no_filters_gives_empty_must_list():
@@ -33,6 +37,12 @@ def test_channel_filter():
 def test_search_filter():
     assert _build_must_list({"q": "trailer"}) == [
         {"match_phrase_prefix": {"title": "trailer"}}
+    ]
+
+
+def test_encoder_filter():
+    assert _build_must_list({"encoder": "av1_nvenc"}) == [
+        {"term": {"encoder": {"value": "av1_nvenc"}}}
     ]
 
 
@@ -72,14 +82,43 @@ def test_all_filters_combine_with_and_semantics():
             "channel": "UC123",
             "q": "trailer",
             "size_change": "smaller",
+            "encoder": "av1_nvenc",
         }
     )
 
-    assert len(must_list) == 4
+    assert len(must_list) == 5
     assert {"term": {"status": {"value": "pending_review"}}} in must_list
     assert {"term": {"channel_id": {"value": "UC123"}}} in must_list
     assert {"match_phrase_prefix": {"title": "trailer"}} in must_list
+    assert {"term": {"encoder": {"value": "av1_nvenc"}}} in must_list
     assert any("script" in clause for clause in must_list)
+
+
+def test_build_aggs_query_defaults_to_channel_multi_terms():
+    """
+    no field filter (or an unrecognized one) falls back to the original
+    channel multi_terms agg, for backward compatibility with the one
+    query shape that predates the field selector
+    """
+    agg_key, agg_body = _build_aggs_query("channel")
+
+    assert agg_key == "channel_downscale"
+    assert agg_body["multi_terms"]["terms"] == [
+        {"field": "channel_name.keyword"},
+        {"field": "channel_id"},
+    ]
+
+
+def test_build_aggs_query_encoder_uses_a_plain_terms_agg():
+    """
+    encoder has no separate id/name split like channel does - the
+    encoder string itself is both the display value and the filter
+    value, so a plain single-field terms agg is enough
+    """
+    agg_key, agg_body = _build_aggs_query("encoder")
+
+    assert agg_key == "encoder_downscale"
+    assert agg_body == {"terms": {"field": "encoder", "size": 30}}
 
 
 def test_status_sort_ranks_running_pending_review_failed_then_queued():

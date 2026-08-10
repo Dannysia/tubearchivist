@@ -10,7 +10,12 @@ import loadDownscaleQueue, {
   DownscaleSizeChange,
   DownscaleStatus,
 } from '../api/loader/loadDownscaleQueue';
-import loadDownscaleAggs, { DownscaleAggsType } from '../api/loader/loadDownscaleAggs';
+import loadDownscaleAggs, {
+  DownscaleAggsType,
+  DownscaleEncoderAggsType,
+  loadDownscaleEncoderAggs,
+} from '../api/loader/loadDownscaleAggs';
+import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders';
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
 } from '../api/actions/updateDownscaleQueueByIds';
@@ -51,6 +56,7 @@ const Downscale = () => {
   const statusFilterFromUrl = searchParams.get('status') as DownscaleStatus | null;
   const channelFilterFromUrl = searchParams.get('channel');
   const sizeChangeFilterFromUrl = searchParams.get('size_change') as DownscaleSizeChange | null;
+  const encoderFilterFromUrl = searchParams.get('encoder');
 
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -61,13 +67,17 @@ const Downscale = () => {
     useState<ApiResponseType<DownscaleResponseType>>();
   const [downscaleAggsResponse, setDownscaleAggsResponse] =
     useState<ApiResponseType<DownscaleAggsType>>();
+  const [downscaleEncoderAggsResponse, setDownscaleEncoderAggsResponse] =
+    useState<ApiResponseType<DownscaleEncoderAggsType>>();
   const [progressByTaskId, setProgressByTaskId] = useState<Record<string, number>>({});
 
   const { data: downscaleResponseData } = downscaleResponse ?? {};
   const { data: downscaleAggsResponseData } = downscaleAggsResponse ?? {};
+  const { data: downscaleEncoderAggsResponseData } = downscaleEncoderAggsResponse ?? {};
   const jobList = downscaleResponseData?.data;
   const pagination = downscaleResponseData?.paginate;
   const channelAggsList = downscaleAggsResponseData?.buckets;
+  const encoderAggsList = downscaleEncoderAggsResponseData?.buckets;
 
   const channel_filter_name = jobList?.length ? jobList[0].channel_name : '';
 
@@ -101,6 +111,7 @@ const Downscale = () => {
         channelFilterFromUrl,
         searchInput,
         sizeChangeFilterFromUrl,
+        encoderFilterFromUrl,
       );
       setDownscaleResponse(response);
     })();
@@ -110,6 +121,7 @@ const Downscale = () => {
     channelFilterFromUrl,
     searchInput,
     sizeChangeFilterFromUrl,
+    encoderFilterFromUrl,
     refreshNonce,
   ]);
 
@@ -117,6 +129,13 @@ const Downscale = () => {
     (async () => {
       const response = await loadDownscaleAggs(statusFilterFromUrl);
       setDownscaleAggsResponse(response);
+    })();
+  }, [statusFilterFromUrl, refreshNonce]);
+
+  useEffect(() => {
+    (async () => {
+      const response = await loadDownscaleEncoderAggs(statusFilterFromUrl);
+      setDownscaleEncoderAggsResponse(response);
     })();
   }, [statusFilterFromUrl, refreshNonce]);
 
@@ -195,6 +214,7 @@ const Downscale = () => {
       channelFilterFromUrl,
       searchInput,
       sizeChangeFilterFromUrl,
+      encoderFilterFromUrl,
     );
     setFilterActionPending(null);
     setSelectedIds(new Set());
@@ -323,6 +343,33 @@ const Downscale = () => {
             <option value="smaller">got smaller</option>
             <option value="larger">got larger</option>
           </select>
+          {encoderAggsList && encoderAggsList.length > 0 && (
+            <select
+              name="encoder_filter"
+              id="encoder_filter"
+              value={encoderFilterFromUrl || 'all'}
+              onChange={event => {
+                const value = event.currentTarget.value;
+                const params = searchParams;
+                if (value !== 'all') {
+                  params.set('encoder', value);
+                } else {
+                  params.delete('encoder');
+                }
+                setSearchParams(params);
+                setSelectedIds(new Set());
+                setShowBulkRejectConfirm(false);
+              }}
+            >
+              <option value="all">all encoders</option>
+              {encoderAggsList.map(encoderBucket => (
+                <option key={encoderBucket.key} value={encoderBucket.key}>
+                  {ALL_ENCODER_LABELS[encoderBucket.key] ?? encoderBucket.key} (
+                  {encoderBucket.doc_count})
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <h3>
@@ -331,9 +378,16 @@ const Downscale = () => {
               Filtered by channel: <i>{channel_filter_name}</i>
             </>
           )}
-          {sizeChangeFilterFromUrl && (
+          {encoderFilterFromUrl && (
             <>
               {channelFilterFromUrl && ' - '}
+              Filtered by encoder:{' '}
+              <i>{ALL_ENCODER_LABELS[encoderFilterFromUrl] ?? encoderFilterFromUrl}</i>
+            </>
+          )}
+          {sizeChangeFilterFromUrl && (
+            <>
+              {(channelFilterFromUrl || encoderFilterFromUrl) && ' - '}
               Filtered by size change: <i>{sizeChangeFilterFromUrl}</i>
             </>
           )}

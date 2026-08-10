@@ -10,6 +10,7 @@ const loadDownscaleQueue = async (
   channelId: string | null,
   search: string,
   sizeChange: DownscaleSizeChange | null,
+  encoder: string | null,
 ) => {
   const searchParams = new URLSearchParams();
 
@@ -18,6 +19,7 @@ const loadDownscaleQueue = async (
   if (channelId) searchParams.append('channel', channelId);
   if (search) searchParams.append('q', search);
   if (sizeChange) searchParams.append('size_change', sizeChange);
+  if (encoder) searchParams.append('encoder', encoder);
 
   const endpoint = `/api/downscale/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
 
