@@ -33,7 +33,10 @@ import updateCustomPlaylist from '../api/actions/updateCustomPlaylist';
 import loadCommentsbyVideoId, { CommentsResponseType } from '../api/loader/loadCommentsbyVideoId';
 import CommentBox from '../components/CommentBox';
 import Button from '../components/Button';
-import { ALL_ENCODER_LABELS, ALL_QUALITY_LABELS } from '../configuration/constants/DownscaleEncoders';
+import {
+  ALL_ENCODER_LABELS,
+  ALL_QUALITY_LABELS,
+} from '../configuration/constants/DownscaleEncoders';
 import getApiUrl from '../configuration/getApiUrl';
 import loadVideoNav, { VideoNavResponseType } from '../api/loader/loadVideoNav';
 import useIsAdmin from '../functions/useIsAdmin';
