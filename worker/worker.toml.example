@@ -1,0 +1,22 @@
+# TubeArchivist remote downscale worker config.
+# Copy to worker.toml next to the script and fill in your values.
+# See docs/remote-downscale/worker.md for the full design.
+
+[server]
+url = "http://tubearchivist.local:8000"
+token = "…"                 # TA API token (Settings → API)
+
+[worker]
+name = "gaming-pc"          # unique per worker; used for job ownership
+temp_dir = "/mnt/c/ta-work" # or C:\ta-work under native Windows
+poll_interval = 30          # seconds between claim attempts when idle
+heartbeat_interval = 10     # must be well under the server's 60s lease
+
+[encode]
+ffmpeg_path = "ffmpeg.exe"
+# ffprobe_path = "ffprobe.exe" # optional; defaults to ffmpeg_path with
+                                # "ffmpeg" swapped for "ffprobe"
+encoder = "av1_nvenc"       # any -c:v value this ffmpeg supports
+preset = "p5"               # NVENC p1 (fastest) … p7 (best)
+cq = 30                     # NVENC constant-quality target (AV1: 0–63)
+extra_args = []             # escape hatch, appended to the video args
