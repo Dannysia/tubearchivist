@@ -33,7 +33,7 @@ import updateCustomPlaylist from '../api/actions/updateCustomPlaylist';
 import loadCommentsbyVideoId, { CommentsResponseType } from '../api/loader/loadCommentsbyVideoId';
 import CommentBox from '../components/CommentBox';
 import Button from '../components/Button';
-import { ENCODER_LABELS, QUALITY_LABELS } from '../configuration/constants/DownscaleEncoders';
+import { ALL_ENCODER_LABELS, ALL_QUALITY_LABELS } from '../configuration/constants/DownscaleEncoders';
 import getApiUrl from '../configuration/getApiUrl';
 import loadVideoNav, { VideoNavResponseType } from '../api/loader/loadVideoNav';
 import useIsAdmin from '../functions/useIsAdmin';
@@ -576,9 +576,9 @@ const Video = () => {
                 {video.downscale.encoder && (
                   <>
                     <span className="space-carrot">|</span>
-                    {ENCODER_LABELS[video.downscale.encoder] ?? video.downscale.encoder}
+                    {ALL_ENCODER_LABELS[video.downscale.encoder] ?? video.downscale.encoder}
                     {video.downscale.quality != null &&
-                      ` ${QUALITY_LABELS[video.downscale.encoder] ?? 'quality'} ${video.downscale.quality}`}
+                      ` ${ALL_QUALITY_LABELS[video.downscale.encoder] ?? 'quality'} ${video.downscale.quality}`}
                     {video.downscale.preset && `, preset ${video.downscale.preset}`}
                   </>
                 )}
