@@ -165,6 +165,20 @@ class WorkerFinishRequestSerializer(WorkerJobActionRequestSerializer):
     quality = serializers.IntegerField(allow_null=True)
     preset = serializers.CharField(allow_null=True, required=False)
     ffmpeg_args = serializers.CharField()
+    container = serializers.RegexField(
+        r"^[a-zA-Z0-9]{1,5}$",
+        required=False,
+        allow_null=True,
+        help_text=(
+            "extension (no dot) of the container the worker actually "
+            "produced, e.g. mkv. tmp_file_path is fixed to .mp4 at enqueue "
+            "time, before it's known whether a local or remote encode runs "
+            "the job, so a worker producing something else has to say so "
+            "here. Omit when the output really is .mp4. Restricted to "
+            "alphanumerics so it can only ever swap an extension, never "
+            "redirect the path"
+        ),
+    )
 
 
 class WorkerFailRequestSerializer(WorkerJobActionRequestSerializer):

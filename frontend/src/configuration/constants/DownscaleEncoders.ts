@@ -32,21 +32,33 @@ export const QUALITY_LABELS: Record<string, string> = {
 
 // not locally selectable (no NVENC hardware on the TA host) - a remote
 // worker reports its own encoder string as-is (see
-// docs/remote-downscale/worker.md), using ffmpeg's actual -c:v names
-// rather than TA's internal h264/h265/av1 aliases, hence "hevc_nvenc"
-// rather than "h265_nvenc" here. Kept out of ENCODER_LABELS so these
-// never show up as options in the local downscale_encoder dropdown.
+// docs/remote-downscale/worker.md), never TA's internal h264/h265/av1
+// aliases. Kept out of ENCODER_LABELS so these never show up as options
+// in the local downscale_encoder dropdown.
+//
+// Both naming conventions appear here on purpose, because the string
+// depends on which tool the worker drives: ffmpeg suffixes the encoder
+// (av1_nvenc, and "hevc" rather than "h265"), HandBrake prefixes it
+// (nvenc_av1). The shipped worker drives HandBrakeCLI, so it reports the
+// prefixed form; the suffixed form stays mapped for jobs finished by an
+// ffmpeg-driven worker, past or future.
 export const NVENC_ENCODER_LABELS: Record<string, string> = {
   h264_nvenc: 'H.264 (Hardware - NVENC)',
   hevc_nvenc: 'H.265 (Hardware - NVENC)',
   av1_nvenc: 'AV1 (Hardware - NVENC)',
+  nvenc_h264: 'H.264 (Hardware - NVENC)',
+  nvenc_h265: 'H.265 (Hardware - NVENC)',
+  nvenc_av1: 'AV1 (Hardware - NVENC)',
 };
 
-// NVENC's constant-quality mode (-rc vbr -cq N -b:v 0, see worker.md)
+// constant quality either way - ffmpeg's -cq, HandBrake's -q
 export const NVENC_QUALITY_LABELS: Record<string, string> = {
   h264_nvenc: 'CQ',
   hevc_nvenc: 'CQ',
   av1_nvenc: 'CQ',
+  nvenc_h264: 'CQ',
+  nvenc_h265: 'CQ',
+  nvenc_av1: 'CQ',
 };
 
 // display-only union of local + remote encoders, for anywhere (like the

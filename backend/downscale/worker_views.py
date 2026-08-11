@@ -176,6 +176,7 @@ class DownscaleWorkerFinishView(ApiBaseView):
             validated["quality"],
             validated.get("preset"),
             validated["ffmpeg_args"],
+            validated.get("container"),
         )
         if error:
             return Response({"error": error}, status=409)

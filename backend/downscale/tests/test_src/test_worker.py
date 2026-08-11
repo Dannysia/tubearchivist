@@ -566,6 +566,111 @@ def test_finish_marks_pending_review_and_records_the_report():
     mock_dispatch.assert_called_once()
 
 
+def test_finish_renames_to_the_container_the_worker_reported():
+    """
+    regression test: tmp_file_path is hardcoded to .mp4 at enqueue time
+    (queue_interact.build_queued_doc), before it's known whether a
+    local or remote encode runs the job. A worker producing .mkv
+    (worker.md's "Output container") reports that here, and the doc has
+    to end up pointing at the file that actually exists - otherwise
+    pending_review advertises a .mp4 path for MKV bytes and
+    DownscaleReview.accept()'s container matching never sees a
+    mismatch to act on
+    """
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
+    ), patch.object(DownscaleInteract, "update") as mock_update, patch(
+        "downscale.src.worker._get_height", return_value=720
+    ), patch(
+        "downscale.src.worker.MediaStreamExtractor"
+    ) as mock_extractor, patch(
+        "downscale.src.worker.os.path.exists", return_value=True
+    ), patch(
+        "downscale.src.worker.os.replace"
+    ) as mock_replace, patch(
+        "downscale.src.worker.dispatch_pending_downscales"
+    ):
+        mock_extractor.return_value.get_file_size.return_value = 9999
+
+        error = worker.finish(
+            DOC_ID,
+            WORKER,
+            "nvenc_av1",
+            24,
+            "slow",
+            "HandBrakeCLI …",
+            container="mkv",
+        )
+
+    assert error is None
+    expected = "/cache/downscale/video1_720p.mkv"
+    mock_replace.assert_called_once_with(
+        RUNNING_JOB["tmp_file_path"], expected
+    )
+    # the probe has to run against the renamed file, not the stale name
+    mock_extractor.assert_called_once_with(expected)
+    assert mock_update.call_args.kwargs["tmp_file_path"] == expected
+
+
+def test_finish_leaves_the_path_alone_for_a_matching_container():
+    """the common case - a worker whose output really is .mp4"""
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
+    ), patch.object(DownscaleInteract, "update") as mock_update, patch(
+        "downscale.src.worker._get_height", return_value=720
+    ), patch(
+        "downscale.src.worker.MediaStreamExtractor"
+    ) as mock_extractor, patch(
+        "downscale.src.worker.os.path.exists", return_value=True
+    ), patch(
+        "downscale.src.worker.os.replace"
+    ) as mock_replace, patch(
+        "downscale.src.worker.dispatch_pending_downscales"
+    ):
+        mock_extractor.return_value.get_file_size.return_value = 9999
+
+        error = worker.finish(
+            DOC_ID, WORKER, "av1_nvenc", 30, "p5", "ffmpeg …", container="mp4"
+        )
+
+    assert error is None
+    mock_replace.assert_not_called()
+    assert (
+        mock_update.call_args.kwargs["tmp_file_path"]
+        == RUNNING_JOB["tmp_file_path"]
+    )
+
+
+def test_finish_without_a_container_keeps_the_existing_path():
+    """
+    container is optional - a worker that doesn't send one is taken at
+    its word that tmp_file_path already describes the upload
+    """
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
+    ), patch.object(DownscaleInteract, "update") as mock_update, patch(
+        "downscale.src.worker._get_height", return_value=720
+    ), patch(
+        "downscale.src.worker.MediaStreamExtractor"
+    ) as mock_extractor, patch(
+        "downscale.src.worker.os.replace"
+    ) as mock_replace, patch(
+        "downscale.src.worker.dispatch_pending_downscales"
+    ):
+        mock_extractor.return_value.get_file_size.return_value = 9999
+
+        error = worker.finish(
+            DOC_ID, WORKER, "av1_nvenc", 30, "p5", "ffmpeg …"
+        )
+
+    assert error is None
+    mock_replace.assert_not_called()
+    assert (
+        mock_update.call_args.kwargs["tmp_file_path"]
+        == RUNNING_JOB["tmp_file_path"]
+    )
+
+
 def test_finish_discards_instead_of_pending_review_when_already_cancelled():
     """
     regression test: a cancel that raced in after the worker's last

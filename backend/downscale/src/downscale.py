@@ -638,7 +638,7 @@ class DownscaleReview:
             )
             return "original file missing"
 
-        self._move(tmp_path, original_path)
+        new_path = self._replace_original(tmp_path, original_path, video)
 
         existing = video.json_data.get("downscale") or {}
         video.json_data["downscale"] = {
@@ -656,11 +656,42 @@ class DownscaleReview:
             "ffmpeg_args": job.get("ffmpeg_args"),
         }
 
-        video.add_streams(media_path=original_path)
+        video.add_streams(media_path=new_path)
         video.upload_to_es()
 
         self.interact.delete_item()
         return None
+
+    def _replace_original(
+        self, tmp_path: str, original_path: str, video: YoutubeVideo
+    ) -> str:
+        """
+        replace the original file with tmp_path, matching tmp_path's
+        actual container extension rather than assuming original_path's.
+        A downscaled candidate isn't always the same container as the
+        source - a remote worker may encode to .mkv for HDR10 static
+        metadata support that MP4 muxing doesn't reliably carry (see
+        docs/downscale-hdr/README.md). Returns the path the file
+        actually ended up at, and updates video.json_data["media_url"]
+        when the extension changed - everything downstream (the player,
+        future downscale submissions, cache paths) reads media_url from
+        ES rather than assuming a fixed extension, so this is the only
+        place that needs to know about a container swap.
+        """
+        tmp_ext = os.path.splitext(tmp_path)[1]
+        original_ext = os.path.splitext(original_path)[1]
+        if tmp_ext == original_ext:
+            self._move(tmp_path, original_path)
+            return original_path
+
+        new_path = os.path.splitext(original_path)[0] + tmp_ext
+        self._move(tmp_path, new_path)
+        if os.path.exists(original_path):
+            os.remove(original_path)
+
+        media_url = video.json_data["media_url"]
+        video.json_data["media_url"] = os.path.splitext(media_url)[0] + tmp_ext
+        return new_path
 
     def reject(self) -> str | None:
         """discard the downscaled candidate, original stays untouched"""

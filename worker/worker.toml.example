@@ -1,6 +1,7 @@
 # TubeArchivist remote downscale worker config.
 # Copy to worker.toml next to the script and fill in your values.
-# See docs/remote-downscale/worker.md for the full design.
+# See docs/remote-downscale/worker.md for the full design and
+# docs/downscale-hdr/README.md for why encoding goes through HandBrakeCLI.
 
 [server]
 url = "http://tubearchivist.local:8000"
@@ -13,10 +14,41 @@ poll_interval = 30          # seconds between claim attempts when idle
 heartbeat_interval = 10     # must be well under the server's 60s lease
 
 [encode]
+# used only to derive ffprobe's path (source probing/HDR detection) -
+# encoding itself goes through HandBrakeCLI below, ffmpeg.exe is never
+# invoked directly by this script
 ffmpeg_path = "ffmpeg.exe"
-# ffprobe_path = "ffprobe.exe" # optional; defaults to ffmpeg_path with
-                                # "ffmpeg" swapped for "ffprobe"
-encoder = "av1_nvenc"       # any -c:v value this ffmpeg supports
-preset = "p5"               # NVENC p1 (fastest) … p7 (best)
-cq = 30                     # NVENC constant-quality target (AV1: 0–63)
-extra_args = []             # escape hatch, appended to the video args
+# ffprobe_path = "ffprobe.exe" # optional override; defaults to
+                                # ffmpeg_path with "ffmpeg" swapped for
+                                # "ffprobe"
+
+handbrake_path = "HandBrakeCLI.exe"
+
+# HandBrake's own encoder identifiers, NOT ffmpeg's - note the prefix
+# (nvenc_av1) rather than ffmpeg's suffix (av1_nvenc). AV1 NVENC needs
+# HandBrake 1.7+ and an Ada Lovelace or newer GPU (a 5090 clears both).
+# Run `HandBrakeCLI --encoder-list` to confirm what your install exposes.
+encoder = "nvenc_av1"
+
+# HandBrake's own preset/tune vocabulary, not ffmpeg's p1-p7 - NOT
+# verified against a live HandBrakeCLI in this repo (no access to a real
+# install/GPU while writing this). Run
+# `HandBrakeCLI --encoder-preset-list=nvenc_av1` and
+# `HandBrakeCLI --encoder-tune-list=nvenc_av1` on the actual machine and
+# adjust these two values before relying on them.
+preset = "slow"
+# tune = "hq"
+
+# HandBrake's -q/--quality constant-quality value. Verify the exact
+# range/scale for nvenc_av1 the same way (HandBrake 1.10 refined the
+# NVENC constant-quality range - what "good" looks like may not match
+# older guides).
+#
+# Must be a whole number. HandBrake itself accepts a fractional -q
+# (22.5 is idiomatic for x264/x265), but TA stores quality as an
+# integer and rejects anything else, so the worker refuses to start on
+# a fractional value rather than failing a job after encoding it.
+quality = 24
+
+extra_args = []             # escape hatch, appended to the HandBrakeCLI
+                             # invocation as-is

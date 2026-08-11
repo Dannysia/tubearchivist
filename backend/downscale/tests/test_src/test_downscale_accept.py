@@ -54,6 +54,48 @@ def test_accept_copies_ffmpeg_args_onto_the_video():
     assert video.json_data["downscale"]["encoder"] == "h264"
 
 
+def test_accept_matches_the_candidates_container_when_it_differs():
+    """
+    a remote worker may encode to .mkv (e.g. for HDR10 static metadata
+    support MP4 muxing doesn't reliably carry) while the original source
+    is .mp4 - accept() must rename to match the candidate's actual
+    container rather than force it onto the original's extension (which
+    would silently mismatch the file's real content), and update
+    media_url in ES to match.
+
+    The .mkv tmp_file_path below is a state the pipeline really
+    reaches, not a hypothetical: build_queued_doc() hardcodes .mp4 at
+    enqueue time and worker.finish() corrects it from the container the
+    worker reports (see test_worker.py's
+    test_finish_renames_to_the_container_the_worker_reported). Without
+    that correction this test would pass while the real path stayed
+    broken.
+    """
+    job = {**PENDING_JOB, "tmp_file_path": "/cache/downscale/video1_480p.mkv"}
+    video = _mock_video({"media_url": "video1.mp4"})
+
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(job, 200)
+    ), patch.object(DownscaleInteract, "delete_item"), patch(
+        "downscale.src.downscale.os.path.exists", return_value=True
+    ), patch(
+        "downscale.src.downscale.os.remove"
+    ) as mock_remove, patch(
+        "downscale.src.downscale.YoutubeVideo", return_value=video
+    ), patch.object(
+        DownscaleReview, "_move"
+    ) as mock_move:
+        error = DownscaleReview(DOC_ID).accept()
+
+    assert error is None
+    assert video.json_data["media_url"] == "video1.mkv"
+    mock_move.assert_called_once()
+    moved_src, moved_dst = mock_move.call_args.args
+    assert moved_src == job["tmp_file_path"]
+    assert moved_dst.endswith("video1.mkv")
+    mock_remove.assert_called_once()
+
+
 def test_accept_preserves_missing_ffmpeg_args_as_none():
     """a job accepted before this field existed has nothing to copy"""
     job = {**PENDING_JOB}

@@ -244,6 +244,39 @@ def upload_result(doc_id: str, worker: str, stream) -> str | None:
     return None
 
 
+def _match_uploaded_container(tmp_path: str, container: str | None) -> str:
+    """
+    rename the uploaded file to the container the worker actually
+    produced, returning the path it now lives at.
+
+    tmp_file_path is decided once, at enqueue time
+    (queue_interact.build_queued_doc), with a hardcoded .mp4 suffix -
+    before it's known whether a local celery encode or a remote worker
+    will run the job. A remote worker may well produce .mkv instead
+    (see worker.md's "Output container"), and nothing between claim and
+    here would otherwise notice: upload_result() streams the body onto
+    that same fixed path, so the doc ends up advertising a .mp4 path
+    for a file that is really MKV, all the way through pending_review
+    and into accept(). Correcting it here - the first point the real
+    output's container is known - means the persisted tmp_file_path
+    describes the bytes on disk for the whole review window, and
+    DownscaleReview.accept()'s container matching has something real to
+    match on.
+    """
+    if not container:
+        return tmp_path
+
+    # container is validated as bare alphanumerics by
+    # WorkerFinishRequestSerializer, so this can only swap the
+    # extension - it can never escape the downscale cache dir
+    new_path = f"{os.path.splitext(tmp_path)[0]}.{container.lower()}"
+    if new_path == tmp_path or not os.path.exists(tmp_path):
+        return tmp_path
+
+    os.replace(tmp_path, new_path)
+    return new_path
+
+
 def finish(
     doc_id: str,
     worker: str,
@@ -251,6 +284,7 @@ def finish(
     quality: int,
     preset: str | None,
     ffmpeg_args: str,
+    container: str | None = None,
 ) -> str | None:
     """
     mirrors DownscaleRunner._finish_success(): probe the uploaded
@@ -273,6 +307,8 @@ def finish(
         _discard(doc_id, tmp_path)
         return None
 
+    tmp_path = _match_uploaded_container(tmp_path, container)
+
     new_height = _get_height(tmp_path)
     if not new_height:
         if os.path.exists(tmp_path):
@@ -280,6 +316,7 @@ def finish(
         DownscaleInteract(doc_id).update(
             status="failed",
             message="ffmpeg finished but output is invalid",
+            tmp_file_path=tmp_path,
             worker="",
             last_heartbeat=0,
             updated=_now(),
@@ -291,6 +328,7 @@ def finish(
     DownscaleInteract(doc_id).update(
         status="pending_review",
         new_size=new_size,
+        tmp_file_path=tmp_path,
         encoder=encoder,
         quality=quality,
         preset=preset,
