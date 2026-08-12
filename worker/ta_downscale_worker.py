@@ -13,13 +13,19 @@ directly - HandBrake has solved HDR10 static metadata preservation
 through an NVENC re-encode in production for years (automatic mastering-
 display/content-light-level passthrough), which is meaningfully more
 battle-tested than this script hand-rolling ffmpeg color-metadata flags
-itself. ffmpeg/ffprobe are still used, but only for source probing (HDR
-detection), not for the actual encode. See docs/downscale-hdr/README.md
-for the full reasoning and docs/remote-downscale/worker.md for the
-overall design.
+itself.
+
+Each job therefore runs three tools: HandBrakeCLI encodes to MKV,
+ffmpeg stream-copies that into the MP4 TA actually stores, and ffprobe
+checks what HDR metadata survived. The MKV-then-MP4 detour exists
+because HandBrake's NVENC metadata handling is documented for MKV while
+TubeArchivist is MP4-only outside this feature - see ENCODE_CONTAINER
+below, docs/downscale-hdr/README.md for the reasoning, and
+docs/remote-downscale/windows-host-setup.md for how to verify it on
+real hardware.
 
 Third-party Python dependency: requests. External binaries this script
-shells out to: ffprobe (probing only) and HandBrakeCLI (encoding).
+shells out to: HandBrakeCLI (encode), ffmpeg (remux), ffprobe (probe).
 """
 
 import argparse
@@ -45,13 +51,31 @@ CHUNK_SIZE = 4 * 1024 * 1024  # 4 MiB, source-download streaming reads
 # anyway by the time this elapses.
 NETWORK_RETRY_ABANDON_SECONDS = 120
 
-# .mkv, not .mp4: HandBrake only preserves HDR10 static metadata at the
-# container level for NVENC (not in the bitstream itself), and MKV is
-# the container that's reliably read for it - see
-# docs/downscale-hdr/README.md. Reported to TA on finish, which renames
-# the upload to match and lets accept() replace the original with the
-# right extension - the source's own container is irrelevant here.
-OUTPUT_CONTAINER = "mkv"
+# a stream copy runs at disk speed, so this is a "something is wedged"
+# backstop rather than a real expectation - a 20 GB remux over a slow
+# disk still lands well inside it
+REMUX_TIMEOUT = 1800
+
+# HandBrake encodes to MKV, then the result is remuxed to MP4 before
+# upload. Both halves of that are deliberate:
+#
+# - MKV for the encode, because HandBrake writes HDR10 static metadata
+#   only at the container level when using NVENC (not into the
+#   bitstream), and MKV is the container that behavior is documented
+#   for - see docs/downscale-hdr/README.md.
+# - MP4 for what TA actually stores, because TA is MP4-only well beyond
+#   this feature: the filesystem scanner only sees *.mp4 (and deletes
+#   indexed videos it can't see), reindex rebuilds media_url with a
+#   hardcoded .mp4, subtitle paths are derived by string-replacing
+#   ".mp4", and metadata embedding goes through mutagen's MP4-specific
+#   API. Handing TA an .mkv means silent, permanent media loss.
+#
+# The remux is a stream copy, not a re-encode - no quality cost, seconds
+# of work. Whether it carries HandBrake's container-level HDR10 metadata
+# across is the one thing that can't be settled without a real NVENC
+# encode, so handle_job probes before and after and logs the answer.
+ENCODE_CONTAINER = "mkv"
+OUTPUT_CONTAINER = "mp4"
 
 
 class WorkerAbandon(Exception):
@@ -210,9 +234,10 @@ def _sibling_binary(ffmpeg_path: str, name: str) -> str:
 
 def _ffprobe_path(config: dict) -> str:
     """
-    ffmpeg_path is only used to anchor this derivation now - encoding
-    goes through HandBrakeCLI, ffmpeg.exe itself is never invoked
-    directly by this script, only ffprobe.exe for source probing
+    ffprobe lives next to ffmpeg in the standard Windows builds, so its
+    path is derived from ffmpeg_path unless overridden. Both binaries
+    are genuinely used: ffmpeg for the MKV->MP4 remux, ffprobe for HDR
+    metadata probing. Neither does any encoding - that's HandBrakeCLI.
     """
     return config["encode"].get("ffprobe_path") or _sibling_binary(
         config["encode"]["ffmpeg_path"], "ffprobe"
@@ -232,26 +257,29 @@ HDR_STATIC_METADATA_SIDE_DATA_TYPES = {
 }
 
 
-def _is_nvenc(encoder: str) -> bool:
+def probe_hdr_static_metadata(config: dict, path: str) -> set[str]:
     """
-    HandBrake's own NVENC identifiers are prefixed (nvenc_h264/nvenc_h265/
-    nvenc_av1), the opposite convention from ffmpeg's suffixed
-    h264_nvenc/hevc_nvenc/av1_nvenc - this checks HandBrake's naming,
-    since that's what encode.encoder now holds
-    """
-    return encoder.startswith("nvenc_")
+    the HDR10 static metadata types (mastering display colour volume,
+    content light level) present on a file's first video stream, as a
+    set - empty when there are none, or when the probe itself failed
+    (an unreadable value isn't evidence of absence, but it isn't
+    evidence of presence either, and this only drives logging).
 
+    Checks stream *and* frame side data, because the two carry the
+    metadata in different places and ffprobe reports them separately:
 
-def probe_has_hdr_static_metadata(config: dict, src_path: str) -> bool:
-    """
-    True if the source's first video stream carries HDR10 static
-    metadata (mastering display color volume and/or content light
-    level). HandBrake preserves this automatically - at the container
-    level (not the bitstream itself) specifically for NVENC, per its own
-    documentation - so this is informational now (handle_job() logs it),
-    not a refusal gate. False (not raised) on any probe failure - an
-    unreadable/absent value isn't evidence of HDR, it's just missing
-    information. See docs/downscale-hdr/README.md.
+    - written into container elements (what HandBrake does for NVENC),
+      ffprobe surfaces it as stream-level side data
+    - written into the bitstream as SEI (what software encoders like
+      x265 and SVT-AV1 do), it appears only as frame-level side data
+
+    Checking -show_streams alone - which this did originally - silently
+    misses every SEI-carried source, i.e. most HDR that wasn't produced
+    by a hardware encoder. Verified both ways against real files; see
+    docs/downscale-hdr/README.md.
+
+    -read_intervals %+#1 limits frame parsing to the first frame, so
+    this stays cheap on a multi-GB input.
     """
     cmd = [
         _ffprobe_path(config),
@@ -260,26 +288,132 @@ def probe_has_hdr_static_metadata(config: dict, src_path: str) -> bool:
         "-select_streams",
         "v:0",
         "-show_streams",
+        "-show_frames",
+        "-read_intervals",
+        "%+#1",
         "-of",
         "json",
-        _win_path_arg(src_path),
+        _win_path_arg(path),
     ]
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=30, check=True
+            cmd, capture_output=True, text=True, timeout=60, check=True
         )
-        streams = json.loads(result.stdout).get("streams") or []
+        probed = json.loads(result.stdout)
     except (subprocess.SubprocessError, ValueError, OSError) as exc:
         log(f"could not probe HDR static metadata: {exc}")
-        return False
+        return set()
 
-    if not streams:
-        return False
+    found = set()
+    containers = (probed.get("streams") or []) + (probed.get("frames") or [])
+    for container in containers:
+        for entry in container.get("side_data_list") or []:
+            side_data_type = entry.get("side_data_type")
+            if side_data_type in HDR_STATIC_METADATA_SIDE_DATA_TYPES:
+                found.add(side_data_type)
 
-    side_data = streams[0].get("side_data_list") or []
-    return any(
-        entry.get("side_data_type") in HDR_STATIC_METADATA_SIDE_DATA_TYPES
-        for entry in side_data
+    return found
+
+
+# --------------------------------------------------------------------------
+# remux (ffmpeg)
+
+
+def build_remux_cmd(
+    config: dict, encoded_path: str, out_path: str
+) -> list[str]:
+    """
+    build the ffmpeg argv that rewraps HandBrake's MKV as MP4.
+
+    -c copy makes this a stream copy: the encoded bitstream is written
+    through untouched, so there is no second generation of quality loss
+    and no GPU work - only the container changes.
+
+    -map 0:v:0 -map 0:a? takes the video stream and any audio, and
+    deliberately leaves subtitle streams behind: MKV accepts subtitle
+    codecs MP4 has no place for, which would fail the copy outright. TA
+    keeps subtitles as sidecar .vtt files rather than muxed-in streams,
+    so there is nothing to lose here.
+
+    +faststart moves the moov atom to the front, which is what lets TA's
+    player start playback before the whole file has been fetched.
+    """
+    return [
+        config["encode"]["ffmpeg_path"],
+        "-v",
+        "error",
+        "-y",
+        "-i",
+        _win_path_arg(encoded_path),
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+        _win_path_arg(out_path),
+    ]
+
+
+def run_remux(
+    config: dict, encoded_path: str, out_path: str
+) -> tuple[bool, str]:
+    """
+    run the remux, returning (ok, error_output). A stream copy is fast
+    but not instant on a multi-GB file, so callers keep a heartbeat
+    running across it - long enough to lose a lease otherwise.
+    """
+    cmd = build_remux_cmd(config, encoded_path, out_path)
+    log(f"remuxing: {shlex.join(cmd)}")
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=REMUX_TIMEOUT
+        )
+    except (subprocess.SubprocessError, OSError) as exc:
+        return False, f"remux to {OUTPUT_CONTAINER} failed to run: {exc}"
+
+    if result.returncode != 0:
+        return False, f"remux exited {result.returncode}: {result.stderr}"
+
+    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+        return False, "remux produced no output"
+
+    return True, ""
+
+
+def log_hdr_metadata_outcome(
+    config: dict, youtube_id: str, encoded_path: str, out_path: str
+) -> None:
+    """
+    report whether the remux carried HDR10 static metadata across.
+
+    This is the one part of the pipeline that couldn't be settled by
+    reading documentation: HandBrake writes the metadata into the MKV
+    container for NVENC, and whether ffmpeg reproduces it as MP4
+    mdcv/clli boxes on a stream copy is a question about a specific
+    ffmpeg build and a specific encoder. Rather than assume either way,
+    probe both files and say what actually happened - so the answer
+    shows up in the worker's own log on the first real HDR job instead
+    of being discovered later as washed-out playback.
+    """
+    encoded_hdr = probe_hdr_static_metadata(config, encoded_path)
+    if not encoded_hdr:
+        return
+
+    final_hdr = probe_hdr_static_metadata(config, out_path)
+    if final_hdr >= encoded_hdr:
+        log(
+            f"{youtube_id}: HDR10 static metadata survived the remux "
+            f"({', '.join(sorted(final_hdr))})"
+        )
+        return
+
+    log(
+        f"{youtube_id}: WARNING - HDR10 static metadata lost in the remux "
+        f"to {OUTPUT_CONTAINER}: {', '.join(sorted(encoded_hdr - final_hdr))}"
+        " - see docs/remote-downscale/windows-host-setup.md"
     )
 
 
@@ -803,18 +937,20 @@ def sweep_temp_dir(temp_dir: str) -> None:
 
 def _job_paths(
     temp_dir: str, youtube_id: str, target_height: int
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """
-    the (source, output) temp paths for a job - single source of truth,
-    so handle_job and cleanup_job_temp can't disagree about the output's
-    name. Getting that wrong doesn't fail loudly, it just silently
-    leaves multi-GB files behind on every job.
+    the (source, encoded, output) temp paths for a job - single source
+    of truth, so handle_job and cleanup_job_temp can't disagree about
+    what a job leaves lying around. Getting that wrong doesn't fail
+    loudly, it just silently strands multi-GB files on every job.
+
+    Three files, not two: HandBrake's MKV and the remuxed MP4 coexist
+    on disk until cleanup, so temp_dir needs room for source + encode +
+    remux at once.
     """
     src_path = os.path.join(temp_dir, f"{youtube_id}.src")
-    out_path = os.path.join(
-        temp_dir, f"{youtube_id}_{target_height}p.out.{OUTPUT_CONTAINER}"
-    )
-    return src_path, out_path
+    base = os.path.join(temp_dir, f"{youtube_id}_{target_height}p.out")
+    return src_path, f"{base}.{ENCODE_CONTAINER}", f"{base}.{OUTPUT_CONTAINER}"
 
 
 def cleanup_job_temp(temp_dir: str, youtube_id: str, target_height: int):
@@ -825,6 +961,72 @@ def cleanup_job_temp(temp_dir: str, youtube_id: str, target_height: int):
 
 # --------------------------------------------------------------------------
 # one job
+
+
+def deliver_result(
+    job: dict,
+    session,
+    base_url: str,
+    config: dict,
+    encoded_path: str,
+    out_path: str,
+    encode_args: str,
+) -> None:
+    """
+    everything after a successful encode: remux to MP4, upload, finish.
+
+    One heartbeat covers all three. It starts before the remux rather
+    than before the upload, because a stream copy of a multi-GB file is
+    quick but not free and has no progress ticks of its own - long
+    enough without a heartbeat to lose the lease and have the job reaped
+    out from under this worker mid-remux.
+    """
+    worker_name = config["worker"]["name"]
+    job_id = job["id"]
+    youtube_id = job["youtube_id"]
+
+    log(f"encoded {youtube_id}, remuxing to {OUTPUT_CONTAINER}")
+    pulse = LeaseHeartbeat(
+        session,
+        base_url,
+        worker_name,
+        job_id,
+        config["worker"]["heartbeat_interval"],
+        progress_fn=lambda: 1.0,
+    )
+    pulse.start()
+    try:
+        remuxed, remux_error = run_remux(config, encoded_path, out_path)
+        if pulse.aborted:
+            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+        if not remuxed:
+            log(f"remux failed for {youtube_id}")
+            report_fail(
+                session, base_url, worker_name, job_id, remux_error[-2000:]
+            )
+            return
+
+        log_hdr_metadata_outcome(config, youtube_id, encoded_path, out_path)
+
+        log(f"uploading {youtube_id}")
+        upload_result(session, base_url, worker_name, job_id, out_path, pulse)
+        if pulse.aborted:
+            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+
+        log(f"finishing {youtube_id}")
+        send_finish(
+            session,
+            base_url,
+            worker_name,
+            job_id,
+            config["encode"]["encoder"],
+            config["encode"]["quality"],
+            config["encode"].get("preset"),
+            encode_args,
+            OUTPUT_CONTAINER,
+        )
+    finally:
+        pulse.stop()
 
 
 def handle_job(job: dict, session, base_url: str, config: dict) -> None:
@@ -844,19 +1046,16 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
 
     log(f"claimed {youtube_id} -> {target_height}p")
 
-    src_path, out_path = _job_paths(temp_dir, youtube_id, target_height)
+    src_path, encoded_path, out_path = _job_paths(
+        temp_dir, youtube_id, target_height
+    )
     download_source(session, base_url, worker_name, job, src_path)
 
-    if _is_nvenc(
-        config["encode"]["encoder"]
-    ) and probe_has_hdr_static_metadata(config, src_path):
-        log(
-            f"{youtube_id}: source has HDR10 static metadata - HandBrake "
-            "preserves it at the MKV container level for NVENC (not the "
-            "bitstream itself)"
-        )
+    source_hdr = probe_hdr_static_metadata(config, src_path)
+    if source_hdr:
+        log(f"{youtube_id}: source has {', '.join(sorted(source_hdr))}")
 
-    cmd = build_handbrake_cmd(config, src_path, out_path, target_height)
+    cmd = build_handbrake_cmd(config, src_path, encoded_path, target_height)
     encode_args = shlex.join(cmd)
     log(f"encoding {youtube_id}: {encode_args}")
 
@@ -886,35 +1085,9 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
         report_fail(session, base_url, worker_name, job_id, message)
         return
 
-    log(f"encoded {youtube_id}, uploading")
-    pulse = LeaseHeartbeat(
-        session,
-        base_url,
-        worker_name,
-        job_id,
-        heartbeat_interval,
-        progress_fn=lambda: 1.0,
+    deliver_result(
+        job, session, base_url, config, encoded_path, out_path, encode_args
     )
-    pulse.start()
-    try:
-        upload_result(session, base_url, worker_name, job_id, out_path, pulse)
-        if pulse.aborted:
-            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
-
-        log(f"finishing {youtube_id}")
-        send_finish(
-            session,
-            base_url,
-            worker_name,
-            job_id,
-            config["encode"]["encoder"],
-            config["encode"]["quality"],
-            config["encode"].get("preset"),
-            encode_args,
-            OUTPUT_CONTAINER,
-        )
-    finally:
-        pulse.stop()
 
 
 # --------------------------------------------------------------------------

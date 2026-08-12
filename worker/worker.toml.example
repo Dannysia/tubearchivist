@@ -14,9 +14,9 @@ poll_interval = 30          # seconds between claim attempts when idle
 heartbeat_interval = 10     # must be well under the server's 60s lease
 
 [encode]
-# used only to derive ffprobe's path (source probing/HDR detection) -
-# encoding itself goes through HandBrakeCLI below, ffmpeg.exe is never
-# invoked directly by this script
+# ffmpeg stream-copies HandBrake's MKV into the MP4 TubeArchivist
+# stores (no re-encode), and anchors the ffprobe path below. Encoding
+# itself goes through HandBrakeCLI.
 ffmpeg_path = "ffmpeg.exe"
 # ffprobe_path = "ffprobe.exe" # optional override; defaults to
                                 # ffmpeg_path with "ffmpeg" swapped for
