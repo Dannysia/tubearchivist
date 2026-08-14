@@ -238,7 +238,7 @@ const SettingsApplication = () => {
     setEnableCast(appSettingsConfigData?.application.enable_cast || false);
 
     // Downscale
-    setDownscaleMaxConcurrent(appSettingsConfigData?.application.downscale_max_concurrent || null);
+    setDownscaleMaxConcurrent(appSettingsConfigData?.application.downscale_max_concurrent ?? null);
     setDownscaleEncoder(appSettingsConfigData?.application.downscale_encoder || 'h264');
     setDownscaleCrf(appSettingsConfigData?.application.downscale_crf ?? null);
     setDownscalePreset(appSettingsConfigData?.application.downscale_preset || 'veryfast');
@@ -1048,6 +1048,10 @@ const SettingsApplication = () => {
                       same time.
                       <ul>
                         <li>Leave empty for no additional limit.</li>
+                        <li>
+                          Set to 0 to disable local downscaling entirely. Remote workers are
+                          unaffected and keep picking up queued jobs.
+                        </li>
                         <li>
                           Still bounded by the Celery worker's overall concurrency, and shares
                           worker slots with downloads and other background tasks.

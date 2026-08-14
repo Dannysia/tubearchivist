@@ -289,7 +289,14 @@ def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
         "bool": {
             "must": [
                 {"term": {"status": {"value": "running"}}},
-                {"range": {"last_heartbeat": {"lt": 100}}},
+                {
+                    "range": {
+                        "last_heartbeat": {
+                            "lt": 100,
+                            "format": "epoch_second",
+                        }
+                    }
+                },
             ],
             "must_not": [{"term": {"worker": {"value": ""}}}],
         }
@@ -302,3 +309,24 @@ def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
             "last_heartbeat": 10,
         }
     ]
+
+
+def test_get_stale_leases_range_declares_epoch_second_format():
+    """
+    regression test: last_heartbeat is mapped date/epoch_second, but ES
+    reads a bare numeric on a date field as epoch *millis*. Without an
+    explicit format the threshold is read ~1000x too small (an epoch
+    second value lands in Jan 1970), so the range matches nothing, no
+    lease is ever reaped, and a cancelled remote job whose worker never
+    acked hangs in status=running forever
+    """
+    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
+        mock_wrap.return_value.get.return_value = (_es_response([]), 200)
+
+        DownscaleInteract.get_stale_leases(1786690206)
+
+    data = mock_wrap.return_value.get.call_args.kwargs["data"]
+    clause = next(c for c in data["query"]["bool"]["must"] if "range" in c)[
+        "range"
+    ]["last_heartbeat"]
+    assert clause["format"] == "epoch_second"

@@ -239,7 +239,19 @@ class DownscaleInteract(BaseQueueInteract):
                 "bool": {
                     "must": [
                         {"term": {"status": {"value": "running"}}},
-                        {"range": {"last_heartbeat": {"lt": stale_before}}},
+                        # last_heartbeat is mapped date/epoch_second, but
+                        # ES reads a bare numeric on a date field as epoch
+                        # *millis* - without an explicit format every
+                        # epoch-second value looks like Jan 1970 and the
+                        # range never matches anything
+                        {
+                            "range": {
+                                "last_heartbeat": {
+                                    "lt": stale_before,
+                                    "format": "epoch_second",
+                                }
+                            }
+                        },
                     ],
                     "must_not": [{"term": {"worker": {"value": ""}}}],
                 }
