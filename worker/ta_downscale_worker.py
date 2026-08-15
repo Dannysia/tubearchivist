@@ -425,9 +425,20 @@ def build_handbrake_cmd(
     config: dict, src_path: str, out_path: str, target_height: int
 ) -> list[str]:
     """
-    build the HandBrakeCLI argv. --keep-display-aspect + only --height
-    set is HandBrake's equivalent of ffmpeg's scale=-2:H - auto-computed
-    width preserving aspect ratio.
+    build the HandBrakeCLI argv. --non-anamorphic + only --height set is
+    HandBrake's equivalent of ffmpeg's scale=-2:H - auto-computed width
+    preserving aspect ratio, square pixels.
+
+    NOT --keep-display-aspect: that flag only takes effect under
+    --custom-anamorphic (see `HandBrakeCLI -h`) and is a silent no-op
+    otherwise. Confirmed on real hardware 2026-08-14: --height 720
+    --keep-display-aspect alone left storage width at the source's
+    (3840 on a 4K source) and faked the display size via a 1:3 pixel
+    aspect ratio instead of actually downscaling - every job encoded
+    before this fix produced anamorphic output at ~3x the intended
+    pixel count, not a real resize. --non-anamorphic forces 1:1 pixels,
+    which is what makes an unset --width actually auto-compute a
+    proportional value instead of defaulting to the source's.
     """
     encode = config["encode"]
     cmd = [
@@ -442,7 +453,7 @@ def build_handbrake_cmd(
         str(encode["quality"]),
         "--height",
         str(target_height),
-        "--keep-display-aspect",
+        "--non-anamorphic",
     ]
     if encode.get("preset"):
         cmd += ["--encoder-preset", str(encode["preset"])]
@@ -922,15 +933,28 @@ def try_delete(session, base_url, worker_name, job_id) -> None:
 def sweep_temp_dir(temp_dir: str) -> None:
     """
     crash-safe by construction: all state lives on the server, so on
-    startup any leftover file from a previous crash is just discarded
+    startup any leftover file from a previous crash is just discarded.
+
+    temp_dir is expected to already be this worker's own subdirectory
+    (see main() - it's temp_dir/<worker name>, not the raw config
+    value), so this never touches another concurrently-running worker's
+    files even when multiple workers share the same configured parent
+    temp_dir. Per-file try/except is still worth it even so: a fresh
+    restart of this same worker can race its own just-exited process for
+    a file handle on Windows (see windows-host-setup.md §8) - log and
+    move on rather than crash startup over a file that'll just get
+    cleaned up next time.
     """
     os.makedirs(temp_dir, exist_ok=True)
     removed = 0
     for name in os.listdir(temp_dir):
         path = os.path.join(temp_dir, name)
         if os.path.isfile(path):
-            os.remove(path)
-            removed += 1
+            try:
+                os.remove(path)
+                removed += 1
+            except OSError as exc:
+                log(f"sweep failed for {path}, leaving for next sweep: {exc}")
     if removed:
         log(f"swept {removed} leftover file(s) from {temp_dir}")
 
@@ -954,9 +978,19 @@ def _job_paths(
 
 
 def cleanup_job_temp(temp_dir: str, youtube_id: str, target_height: int):
+    """
+    Best-effort: a file HandBrake/ffmpeg still holds open raises
+    PermissionError on Windows (see windows-host-setup.md §8). This runs
+    from the main loop's `finally`, so letting that propagate would kill
+    the whole worker over one leftover temp file - log and move on;
+    sweep_temp_dir() picks up anything left behind on the next startup.
+    """
     for path in _job_paths(temp_dir, youtube_id, target_height):
-        if os.path.exists(path):
-            os.remove(path)
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except OSError as exc:
+            log(f"cleanup failed for {path}, leaving for next sweep: {exc}")
 
 
 # --------------------------------------------------------------------------
@@ -1109,6 +1143,14 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
+    # Own subdirectory per worker name, so two workers sharing the same
+    # configured temp_dir never sweep or overwrite each other's files -
+    # discovered 2026-08-14 running two workers concurrently: a restart
+    # of one crashed trying to sweep a file the other had open
+    # mid-encode (see sweep_temp_dir's docstring).
+    config["worker"]["temp_dir"] = os.path.join(
+        config["worker"]["temp_dir"], config["worker"]["name"]
+    )
     session = build_session(config)
     base_url = config["server"]["url"]
     worker_name = config["worker"]["name"]
