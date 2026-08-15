@@ -187,17 +187,23 @@ HandBrakeCLI.exe
   -i <src> -o <out>.mkv
   -e nvenc_av1
   -q 24
-  --height <target_height> --keep-display-aspect
+  --height <target_height> --non-anamorphic
   --encoder-preset slow
   [--encoder-tune <tune>]
   [extra_args...]
 ```
 
-`--height` + `--keep-display-aspect` is HandBrake's equivalent of
-ffmpeg's `scale=-2:H` — auto-computed width preserving aspect ratio.
-HDR10 static metadata, color primaries/transfer/matrix all get carried
-through automatically by HandBrake itself; nothing in this command needs
-to ask for that explicitly.
+`--height` + `--non-anamorphic` is HandBrake's equivalent of ffmpeg's
+`scale=-2:H` — auto-computed width preserving aspect ratio, square
+pixels. **Not** `--keep-display-aspect`: that flag only takes effect
+under `--custom-anamorphic` and is a silent no-op otherwise — confirmed
+on real hardware, every job encoded before this was caught came out
+anamorphic (storage width left at the source's, aspect faked via a
+non-1:1 pixel aspect ratio instead of a real resize). See
+[windows-host-setup.md](windows-host-setup.md) §3/§11 for the full
+story. HDR10 static metadata, color primaries/transfer/matrix all get
+carried through automatically by HandBrake itself; nothing in this
+command needs to ask for that explicitly.
 
 The exact argv is captured (`shlex.join`) and reported in the finish
 call — it becomes the job's/video's permanent `ffmpeg_args` record (the

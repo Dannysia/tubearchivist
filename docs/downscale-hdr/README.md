@@ -230,10 +230,14 @@ tooling. Verified against HandBrake's actual current documentation
 
   The remux (`ffmpeg -c copy`) resolves both: HandBrake still writes
   into the container it's documented for, and TA still gets the only
-  container it supports. Whether the rewrap carries container-level
-  metadata across is verified per-job and logged - see
-  [windows-host-setup.md](../remote-downscale/windows-host-setup.md) §6.
-  Bitstream-carried (SEI) metadata is confirmed to survive it intact.
+  container it supports. **Confirmed on real hardware 2026-08-15**:
+  the rewrap carries container-level metadata across intact (mastering
+  display + content light level, values matching source exactly, on
+  the gyan.dev ffmpeg build in use here) - see
+  [windows-host-setup.md](../remote-downscale/windows-host-setup.md) §6/§11
+  for the full HDR10 and HLG round-trip results. Bitstream-carried
+  (SEI) metadata is confirmed to survive it intact too, both there and
+  in the code-level test noted below.
 
 Local encoding is explicitly unaffected by any of this - it still runs
 raw ffmpeg exactly as before, and the flag-level plan below remains the
@@ -346,7 +350,11 @@ below), for the worker's HandBrake switch:**
   and the pipeline working at all.
 - `build_handbrake_cmd()`: produces the expected argv shape for a sample
   config (`-i <src> -o <out> -e nvenc_av1 -q N --height H
-  --keep-display-aspect --encoder-preset ...`).
+  --non-anamorphic --encoder-preset ...`). Originally used
+  `--keep-display-aspect` here, which turned out to be a silent no-op
+  outside `--custom-anamorphic` mode — every job encoded before this was
+  caught came out anamorphic. See
+  [windows-host-setup.md](../remote-downscale/windows-host-setup.md) §3/§11.
 - `_read_handbrake_output()` (the part with the most real uncertainty,
   since HandBrakeCLI's actual live output wasn't available to test
   against): driven by a real subprocess emitting `\r`-repainted

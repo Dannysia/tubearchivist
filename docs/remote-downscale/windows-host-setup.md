@@ -1,6 +1,10 @@
 # Remote downscale — Windows worker host setup & verification
 
-Status: **written against the shipped code, never run on real hardware.**
+Status: **run against real hardware since 2026-08-14** (RTX 5090, WSL2 +
+Windows binaries). §1-9 have all been walked through and corrected where
+the original guesses were wrong (§3 in particular — the original example
+command used a flag that silently didn't downscale, see the callout
+there). §11 has the settings that actually shipped and why.
 
 This is the runbook for bringing the worker up on the gaming PC (Windows
 + RTX 5090) for the first time. It exists because a handful of things in
@@ -122,11 +126,26 @@ clip at a few values and look at them:
 
 ```powershell
 HandBrakeCLI -i "C:\some\source.mp4" -o "C:\ta-work\q24.mkv" `
-  -e nvenc_av1 -q 24 --height 1080 --keep-display-aspect `
+  -e nvenc_av1 -q 24 --height 1080 --non-anamorphic `
   --start-at seconds:60 --stop-at seconds:60
 ```
 
 Repeat for 22 / 26 / 28, compare size and appearance, pick one.
+
+> **Anamorphic trap — use `--non-anamorphic`, not `--keep-display-aspect`.**
+> `--keep-display-aspect` only takes effect under `--custom-anamorphic`
+> and is a **silent no-op** otherwise — confirmed on real hardware
+> 2026-08-14. With just `--height` set, it leaves storage width at the
+> *source's* width and fakes the target aspect ratio with a non-1:1
+> pixel aspect ratio instead of actually resizing: a 4K source
+> "downscaled" to 720p this way came out `3840x720`, PAR `1:3` — three
+> times the real pixel count of a true 720p frame, all cost and no
+> savings. `--non-anamorphic` forces PAR 1:1, which is what makes an
+> unset `--width` actually auto-compute a proportional value. Every job
+> the worker produced before this was caught was silently anamorphic;
+> none had been accepted into the library yet when it was found. Verify
+> with `ffprobe -show_entries stream=width,height,sample_aspect_ratio`
+> on the output before trusting any new preset/quality trial.
 
 > **`quality` must be a whole number.** HandBrake accepts fractional
 > `-q` (22.5 is idiomatic for x265), but TA stores quality as an integer
@@ -209,7 +228,16 @@ forever.
 
 ---
 
-## 6. Verify the HDR round trip ← **the important one**
+## 6. Verify the HDR round trip — **CLOSED, verified 2026-08-15**
+
+**Result: HDR10 (PQ) and HLG both survive the full pipeline intact.**
+Tested against real HDR sources from
+[haasn/hdr-tests](https://github.com/haasn/hdr-tests) — the mpv/libplacebo
+project's HDR tone-mapping test corpus, a convenient source of genuinely
+HDR-tagged clips for exactly this kind of verification. Full results and
+the specific clips used are in §11. The steps below are kept as the
+general verification procedure for testing *other* sources later — the
+open question they were written to resolve is answered.
 
 Do this **before** a large run, on a genuinely HDR source. Find one:
 
@@ -362,4 +390,149 @@ Worth stating plainly, so they aren't mistaken for tested behavior:
   HandBrakeCLI output (§7).
 - **Windows file-locking behavior** during cleanup and the `wslpath`
   translation path are both reasoned-about, not exercised.
-- The **HDR rewrap question** in §6 — the reason this document exists.
+- The **HDR rewrap question** in §6 — the reason this document exists —
+  is now **closed**, see §11. (Two earlier candidates downloaded via
+  yt-dlp both turned out to be SDR on inspection, unrelated to this
+  worker; genuinely HDR-tagged test content was found afterward.)
+
+---
+
+## 11. Final tuned settings (production, as of 2026-08-14)
+
+The values actually running in `worker.toml` / `worker2.toml`, and why,
+superseding the guesses in §3-4 above:
+
+| Setting | Value | Why |
+|---|---|---|
+| `encoder` | `nvenc_av1_10bit` | 5.1% smaller than `nvenc_av1` at identical `-q` on a real 8-bit source (A/B tested) — 10-bit reduces quantization error per plane independent of source bit depth, no playback-compatibility cost since HandBrake's preset/tune lists are identical between the two. |
+| `preset` | `slowest` | See below. |
+| `quality` (`-q`) | `32` | Tuned against real 720p game-capture content (flat/high-contrast UI, worst case for AV1 CQ). See table below — **content-dependent, re-trial for other content types.** |
+| audio | stream-copy (`-E copy` + `--audio-copy-mask` + `--audio-fallback av_aac`) | Without it, HandBrake silently transcodes already-lossy Opus to AAC for no size benefit — pure quality loss. |
+| decode | `--enable-hw-decoding nvdec` | Moves decode off the CPU onto NVDEC. ~15% slower wall-clock solo (engine handoff overhead), but frees the CPU for concurrent workers — output is byte-identical either way, this is a CPU-headroom trade, not a quality one. |
+| `--non-anamorphic` | always | **Not optional.** See the trap called out in §3 — without it, output isn't actually downscaled. |
+
+### Preset: `slow` → `slowest`
+
+HandBrake does **not** expose ffmpeg's `av1_nvenc` preset naming
+(`p1`-`p7`) for `nvenc_av1` at all — confirmed via
+`HandBrakeCLI --encoder-preset-list=nvenc_av1` on this machine, which
+lists exactly seven named tiers: `fastest / faster / fast / medium /
+slow / slower / slowest`. There is no `p6`/`p7` to target directly;
+`slowest` is simply the ceiling of that list.
+
+The original tuning pass (2026-08-13) A/B'd `slow` against
+`slower`/`slowest` on a real game-capture clip and found `<0.2%` size
+difference for `+17%` encode time — judged not worth it *when
+optimizing for wall-clock throughput*. Changed to `slowest` on
+2026-08-14: this is a hardware encode with GPU headroom to spare, and
+the constraint isn't wall-clock time, so the right call is to take
+whatever quality the ceiling preset offers even when the measured delta
+is small, rather than to leave quality on the table to save a nearly-free
+17%.
+
+### `-q` trial results (720p, game-capture content — NOT universal)
+
+60-second-clip trial against a real 720p Factorio gameplay source
+(~1.26 Mbps video, flat-shaded/high-contrast UI — a worst case for AV1
+NVENC's CQ scale):
+
+| `-q` | size vs. source | visual result |
+|---|---|---|
+| 24 (original guessed default) | **+73% to +144%** | shipped on the first bad batch — never trust an untested default |
+| 28 | ~95% | barely smaller, no real savings |
+| **32** | **-30%** | clean — UI text fully legible, no visible blocking — **current default** |
+| 36 | -47% | still clean, more aggressive |
+| 40 | -47%+ | mild blockiness on dark textures |
+
+Confirmed still content-dependent in production: 11 of 12 real library
+jobs at `q=32` shrank 56-86%, but one high-motion trailer
+("Factorio - Trailer 2014") still *grew* +13.7% even after the
+anamorphic fix. Live-action / high-motion content has not had its own
+trial yet — re-run this same process (§3) before trusting `q=32` there.
+
+For a broader (non-project-specific) reference point on where other
+NVENC AV1 deployments land — HandBrake publishes no official NVENC
+numbers, so this is community precedent, not documented guidance —
+see the CQ-value research summarized in this repo's chat history around
+2026-08-14: a real deployed tool ([jellyfin-encoder]) uses AV1 CQ 28
+(archival-leaning) / 35 (medium) / 45 (max savings) at a 720p target;
+archival-focused ffmpeg guides for `av1_nvenc` lean toward CQ 24-25.
+Our `q=32` sits between jellyfin-encoder's medium and archival tiers.
+
+[jellyfin-encoder]: https://github.com/GeiserX/jellyfin-encoder
+
+### Rejected/inconclusive experiments (don't re-try without new evidence)
+
+- **`--multi-pass`**: byte-identical output with/without it on a real
+  clip, for NVENC AV1 CQ mode. No-op, not added.
+- **`-x spatial-aq=1:temporal-aq=1:aq-strength=8`**: didn't error, but
+  changed output size (+7.6%) in a way that couldn't be distinguished
+  from HandBrake mishandling unsupported encopts for NVENC vs. a real
+  AQ effect. Not adopted without a clearer signal.
+
+### HDR round trip — full results (closes §6, 2026-08-15)
+
+Test source: [haasn/hdr-tests](https://github.com/haasn/hdr-tests), the
+mpv/libplacebo project's HDR tone-mapping test corpus — a git repo of
+short clips deliberately tagged with real HDR10/HLG metadata, useful
+here purely as a source of genuinely-HDR content to verify against
+(nothing else about that repo is relevant to this project). Cloning it
+needs `git-lfs` for four specific files (`landing_*.mkv`,
+`tonemap_flicker.mkv`); everything else is plain git and works without
+it.
+
+Both real-hardware trials ran the exact production command
+(`nvenc_av1_10bit`, `-q 32`, `--encoder-preset slowest`,
+`--enable-hw-decoding nvdec`, `--non-anamorphic`, `-E copy` audio) end
+to end: HandBrakeCLI encode → MKV → ffmpeg stream-copy remux → MP4,
+verified with `ffprobe` at every stage.
+
+**HDR10/PQ** — `01. Black Clipping_1_HDR10.mp4` (HEVC, 3840x2160,
+`smpte2084`/`bt2020`, real Mastering-display + Content-light-level SEI):
+
+| | source | output |
+|---|---|---|
+| `color_transfer` / `color_primaries` | smpte2084 / bt2020 | **identical** |
+| Mastering display metadata | r(0.68,0.32) g(0.265,0.69) b(0.15,0.06) | **identical**, at both container level and bitstream/SEI level |
+| Content light level | max_cll=1000, max_fall=400 | **identical** (`max_content=1000, max_average=400`), both levels |
+| size | 47.4MB | 5.15MB (**-89.1%**) |
+
+Confirms the design's core bet (§0): HandBrake writes NVENC's HDR10
+static metadata into the MKV container, and the ffmpeg stream-copy
+remux to MP4 carries it through without loss, on the ffmpeg build in
+use here (gyan.dev 9.0-full). If you're on a different/older ffmpeg
+build and see it dropped, §6's steps still apply.
+
+**HLG** — `snow-fades.mp4` (HEVC, 3840x2160, `arib-std-b67`/`bt2020`,
+AAC audio):
+
+| | source | output |
+|---|---|---|
+| `color_transfer` / `color_primaries` / `color_space` | arib-std-b67 / bt2020 / bt2020nc | **identical** |
+| static metadata | none (expected — HLG carries none by design) | none |
+| resolution | 3840x2160 | 1280x720, PAR 1:1 — clean 16:9, matches naive scaling exactly |
+| audio | AAC 128884 bps | AAC 128839 bps (copy, negligible container rounding) |
+| size | 3.37MB | 1.47MB (**-56.4%**) |
+
+A second HLG-named file in the same repo, `Grayscale BT.2100 HLG.mkv`,
+was checked but **not** used for this test — despite the name, its
+actual `color_transfer` tag is `bt2020-10`, not `arib-std-b67`; treat
+its filename as describing test *intent*, not a reliable tag to probe
+for. A third file, `snow.hevc`, is a raw HEVC elementary stream with
+malformed/absent packet timestamps — ffmpeg's raw demuxer can't
+establish real duration from it (`c:v copy` remux fails outright;
+re-encoding it gets exactly one usable frame). Not pursued further:
+it's a pathological test asset, not a shape of input this worker will
+ever see from TA (sources always arrive as properly-muxed files).
+
+**Side finding: HandBrake's auto-crop is on by default.** The HDR10
+test clip has real ~28-56px black borders (confirmed via
+`ffmpeg -vf cropdetect`); HandBrake trimmed them before scaling, so
+`--height 720` produced `1314x720` instead of the naively-expected
+`1280x720` for a 16:9 4K source. This is desirable behavior — no bits
+spent encoding padding — but means output width won't always match a
+plain `source_width * 720 / source_height` calculation when a source
+has letterboxing. Not a recurrence of the anamorphic bug (§3): PAR
+stayed 1:1 in both cases, this is a genuinely different frame size
+after real content was cropped, not a fake aspect ratio. Worth knowing
+before treating an unexpected output width as a red flag.
