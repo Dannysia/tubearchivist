@@ -9,6 +9,7 @@ from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import IndexPaginate
 from common.src.helper import ignore_filelist, rand_sleep
+from download.src.queue_interact import PendingInteract
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo, index_new_video
 from video.src.meta_embed import IndexFromEmbed
@@ -106,24 +107,21 @@ class Scanner:
             file_path = os.path.join(self.VIDEOS, media_url)
             if self.prefer_local:
                 # try index from embed
-                json_data = IndexFromEmbed(
-                    file_path, use_user_conf=True, config=self.config
-                ).run_index()
-                if json_data:
+                success = self._index_from_embed(file_path, youtube_id)
+                if success:
                     continue
 
             try:
                 # try index from remote
-                json_data = index_new_video(youtube_id)
+                index_new_video(youtube_id)
+                self._cleanup(youtube_id)
                 Comments(youtube_id).build_json(upload=True)
                 YoutubeVideo(youtube_id).embed_metadata()
                 rand_sleep(self.config)
             except ValueError as err:
                 # fallback from index from embed
-                json_data = IndexFromEmbed(
-                    file_path, use_user_conf=True, config=self.config
-                ).run_index()
-                if json_data:
+                success = self._index_from_embed(file_path, youtube_id)
+                if success:
                     continue
 
                 if self.ignore_error:
@@ -132,6 +130,21 @@ class Scanner:
                     continue
 
                 raise ValueError from err
+
+    def _index_from_embed(self, file_path: str, youtube_id: str) -> bool:
+        """index from embedded metadata"""
+        json_data = IndexFromEmbed(
+            file_path, use_user_conf=True, config=self.config
+        ).run_index()
+        if json_data:
+            self._cleanup(youtube_id)
+
+        return bool(json_data)
+
+    @staticmethod
+    def _cleanup(youtube_id: str) -> None:
+        """clean up from queue"""
+        PendingInteract(youtube_id=youtube_id).delete_item(print_error=False)
 
     def _notify(self, total, youtube_id, idx):
         """send notification"""

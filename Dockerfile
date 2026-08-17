@@ -102,4 +102,5 @@ EXPOSE 8000
 
 RUN chmod +x ./run.sh
 
-CMD ["/bin/tini", "--", "./run.sh"]
+ENTRYPOINT ["/bin/tini", "--"]
+CMD ["./run.sh"]

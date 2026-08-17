@@ -22,10 +22,10 @@ class BaseQueueInteract:
         response, status_code = ElasticWrap(path).get()
         return response.get("_source"), status_code
 
-    def delete_item(self) -> None:
+    def delete_item(self, print_error: bool = True) -> None:
         """delete single item from the queue"""
         path = f"{self.INDEX_NAME}/_doc/{self.doc_id}"
-        ElasticWrap(path).delete(refresh=True)
+        ElasticWrap(path).delete(refresh=True, print_error=print_error)
 
     def update(self, **fields) -> None:
         """partial update of a single item doc"""
