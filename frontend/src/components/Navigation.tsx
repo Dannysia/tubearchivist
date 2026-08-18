@@ -18,16 +18,19 @@ const Navigation = () => {
 
   return (
     <div className="boxed-content">
-      <Link to={Routes.Home}>
-        <div className="top-banner"></div>
-      </Link>
       <div className="top-nav">
+        <Link to={Routes.Home} className="nav-logo">
+          <div></div>
+        </Link>
         <div className="nav-items">
-          <NavigationItem label="home" navigateTo={Routes.Home} />
-          <NavigationItem label="channels" navigateTo={Routes.Channels} />
-          <NavigationItem label="playlists" navigateTo={Routes.Playlists} />
-
-          {isAdmin && <NavigationItem label="downloads" navigateTo={Routes.Downloads} />}
+          <div className="nav-item-group">
+            <NavigationItem label="home" navigateTo={Routes.Home} />
+            <NavigationItem label="channels" navigateTo={Routes.Channels} />
+          </div>
+          <div className="nav-item-group">
+            <NavigationItem label="playlists" navigateTo={Routes.Playlists} />
+            {isAdmin && <NavigationItem label="downloads" navigateTo={Routes.Downloads} />}
+          </div>
         </div>
         <div className="nav-icons">
           <Link to={Routes.Search}>
