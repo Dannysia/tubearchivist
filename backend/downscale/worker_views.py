@@ -8,7 +8,6 @@ by a different worker - the signal for the worker to abandon the job.
 """
 
 from common.views_base import AdminOnly, ApiBaseView
-from django.http import FileResponse
 from downscale.serializers import (
     WorkerClaimRequestSerializer,
     WorkerClaimResponseSerializer,
@@ -65,31 +64,6 @@ class DownscaleWorkerClaimView(ApiBaseView):
 
         response_serializer = WorkerClaimResponseSerializer(claimed)
         return Response(response_serializer.data)
-
-
-class DownscaleWorkerSourceView(ApiBaseView):
-    """resolves to /api/downscale/worker/jobs/<id>/source/
-    GET: stream the original media file for a claimed job
-    """
-
-    permission_classes = [AdminOnly]
-
-    @extend_schema(
-        responses={
-            200: OpenApiResponse(description="original media file"),
-            409: OpenApiResponse(WorkerErrorSerializer()),
-        },
-    )
-    def get(self, request, doc_id):
-        """stream the source file for a claimed job"""
-        worker_name = _get_worker_name(request)
-        path, error = worker_logic.get_source_path(doc_id, worker_name)
-        if error:
-            return Response({"error": error}, status=409)
-
-        return FileResponse(
-            open(path, "rb")
-        )  # pylint: disable=consider-using-with
 
 
 class DownscaleWorkerHeartbeatView(ApiBaseView):

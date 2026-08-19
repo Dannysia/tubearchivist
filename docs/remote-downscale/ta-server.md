@@ -38,10 +38,13 @@ reaped-and-requeued job simply rejects the old worker's late calls.
 
 Worker identification: endpoints with a JSON body (`heartbeat`, `finish`,
 `fail`) take `worker` as a required body field. Endpoints with no JSON
-body — `source` (GET), `result` (PUT, raw bytes), and the `DELETE` — take
-it from an `X-TA-Worker` header instead. There's no dual body-or-header
-fallback on any single endpoint; each uses whichever channel actually
-carries a payload.
+body — `result` (PUT, raw bytes) and the `DELETE` — take it from an
+`X-TA-Worker` header instead. There's no dual body-or-header fallback on
+any single endpoint; each uses whichever channel actually carries a
+payload.
+
+The source file itself isn't served through this job-scoped API at all
+(see below) - there's nothing to identify a worker to there.
 
 ### `POST /api/downscale/worker/claim/`
 
@@ -83,7 +86,7 @@ Response `200`:
   "title": "…",
   "target_height": 720,
   "quality_hint": 23,
-  "source_url": "/api/downscale/worker/jobs/<id>/source/"
+  "source_url": "/youtube/<channel_id>/<youtube_id>.mp4"
 }
 ```
 
@@ -91,12 +94,22 @@ Response `200`:
 the worker maps quality onto its own encoder (see README "Key decisions").
 Response `204` when nothing is claimable.
 
-### `GET /api/downscale/worker/jobs/<id>/source/`
-
-Streams the original media file. First implementation: Django
-`FileResponse`. If that measurably hurts (it shouldn't for one worker on a
-LAN), switch to `X-Accel-Redirect` so nginx serves the bytes after Django
-authorizes the request.
+`source_url` is TA's plain nginx-served static path (the same one a normal
+browser download uses), not a job-scoped API endpoint - a real earlier
+implementation streamed it through Django `FileResponse`, and on
+production hardware that measurably hurt: each ASGI worker process (see
+`docker_assets/backend_start.py`'s `uvicorn.run(..., workers=4)`) that
+served a source file retained memory equal to roughly the full file size
+for as long as that worker process ran - confirmed via `malloc_trim`
+against a live process that it was genuinely live/referenced memory, not
+just reclaimable heap fragmentation, and confirmed absent when the same
+bytes were served by nginx's `/youtube/` alias directly instead. Ownership
+isn't checked on this path the way every other job-scoped endpoint checks
+it - that's an accepted tradeoff, not an oversight: the same file is
+already reachable by any authenticated user through the normal download
+path regardless of job state, so a per-job check here was never a real
+access boundary. `auth_request /api/ping/` (nginx.conf) still requires the
+same `Authorization: Token …` the worker already sends.
 
 ### `POST /api/downscale/worker/jobs/<id>/heartbeat/`
 

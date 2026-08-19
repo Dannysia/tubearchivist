@@ -25,11 +25,6 @@ urlpatterns = [
         name="api-downscale-worker-claim",
     ),
     path(
-        "worker/jobs/<str:doc_id>/source/",
-        worker_views.DownscaleWorkerSourceView.as_view(),
-        name="api-downscale-worker-source",
-    ),
-    path(
         "worker/jobs/<str:doc_id>/heartbeat/",
         worker_views.DownscaleWorkerHeartbeatView.as_view(),
         name="api-downscale-worker-heartbeat",

@@ -168,28 +168,20 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
         "title": job["title"],
         "target_height": target_height,
         "quality_hint": quality_hint,
-        "source_url": f"/api/downscale/worker/jobs/{doc_id}/source/",
+        # the plain nginx-served static path, not a job-scoped API
+        # endpoint: Django's FileResponse over the ASGI/uvicorn worker
+        # pool was found to retain the full file size in the serving
+        # process's memory (confirmed live, not reclaimable, via
+        # malloc_trim) for as long as that worker process runs, with no
+        # such growth when nginx serves the same bytes directly via its
+        # /youtube/ alias. Ownership isn't checked here the way the old
+        # job-scoped endpoint checked it - the same file is already
+        # reachable by any authenticated user through the normal
+        # download path regardless of job state, so that check was
+        # never a real access boundary, just an incidental side effect
+        # of routing through a job-scoped view.
+        "source_url": f"/youtube/{video.json_data['media_url']}",
     }
-
-
-def get_source_path(doc_id: str, worker: str) -> tuple[str | None, str | None]:
-    """resolve the original media path for a claimed job, ownership-checked"""
-    job, error = _own_job(doc_id, worker)
-    if error:
-        return None, error
-
-    video = YoutubeVideo(job["youtube_id"])
-    video.get_from_es()
-    if not video.json_data:
-        return None, "video no longer exists"
-
-    original_path = os.path.join(
-        EnvironmentSettings.MEDIA_DIR, video.json_data["media_url"]
-    )
-    if not os.path.exists(original_path):
-        return None, "source file missing"
-
-    return original_path, None
 
 
 def heartbeat(

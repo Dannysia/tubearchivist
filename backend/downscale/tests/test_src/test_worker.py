@@ -129,7 +129,7 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
         "title": "good",
         "target_height": 480,
         "quality_hint": 30,
-        "source_url": "/api/downscale/worker/jobs/doc-good/source/",
+        "source_url": "/youtube/video-good.mp4",
     }
 
 
@@ -347,60 +347,6 @@ def test_heartbeat_reports_stop_when_stop_requested():
 
     assert error is None
     assert result == {"stop": True}
-
-
-# --- get_source_path() --------------------------------------------------
-
-
-def test_get_source_path_rejects_when_not_owned():
-    with patch.object(DownscaleInteract, "get_item", return_value=(None, 404)):
-        path, error = worker.get_source_path(DOC_ID, WORKER)
-
-    assert path is None
-    assert error == "job not found"
-
-
-def test_get_source_path_reports_missing_video():
-    video = MagicMock()
-    video.json_data = None
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
-    ), patch("downscale.src.worker.YoutubeVideo", return_value=video):
-        path, error = worker.get_source_path(DOC_ID, WORKER)
-
-    assert path is None
-    assert error == "video no longer exists"
-
-
-def test_get_source_path_reports_missing_file():
-    video = MagicMock()
-    video.json_data = {"media_url": "video1.mp4"}
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
-    ), patch("downscale.src.worker.YoutubeVideo", return_value=video), patch(
-        "downscale.src.worker.os.path.exists", return_value=False
-    ):
-        path, error = worker.get_source_path(DOC_ID, WORKER)
-
-    assert path is None
-    assert error == "source file missing"
-
-
-def test_get_source_path_returns_the_resolved_path():
-    video = MagicMock()
-    video.json_data = {"media_url": "video1.mp4"}
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
-    ), patch("downscale.src.worker.YoutubeVideo", return_value=video), patch(
-        "downscale.src.worker.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.worker.EnvironmentSettings"
-    ) as mock_env:
-        mock_env.MEDIA_DIR = "/media"
-        path, error = worker.get_source_path(DOC_ID, WORKER)
-
-    assert error is None
-    assert path == "/media/video1.mp4"
 
 
 # --- upload_result() -----------------------------------------------------

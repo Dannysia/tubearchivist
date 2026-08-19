@@ -626,19 +626,25 @@ def claim(session, base_url, worker_name, encoders) -> dict | None:
         return None
 
 
-def download_source(session, base_url, worker_name, job, dest_path) -> None:
-    """GET the source file, worker identity via X-TA-Worker (no JSON body)"""
+def download_source(session, base_url, job, dest_path) -> None:
+    """
+    GET the source file. source_url is TA's plain nginx-served static
+    path (/youtube/...), not a job-scoped API endpoint - Django's
+    FileResponse over the ASGI/uvicorn worker pool was found to retain
+    the full file size in that worker process's memory for as long as
+    it ran, with no such growth when nginx serves the same bytes
+    directly. No ownership check happens here as a result (the old
+    job-scoped endpoint's 409-on-conflict is gone with it), but that
+    was never a real access boundary - the same file is already
+    reachable by any authenticated user through the normal download
+    path regardless of job state. Auth is still required (nginx's
+    auth_request), carried by the session's Authorization header same
+    as every other call.
+    """
     url = urljoin(base_url, job["source_url"])
 
     def _attempt():
-        resp = session.get(
-            url,
-            headers={"X-TA-Worker": worker_name},
-            stream=True,
-            timeout=(10, 60),
-        )
-        if resp.status_code == 409:
-            raise WorkerAbandon("conflict")
+        resp = session.get(url, stream=True, timeout=(10, 60))
         resp.raise_for_status()
         return resp
 
@@ -1102,7 +1108,7 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
     )
     pulse.start()
     try:
-        download_source(session, base_url, worker_name, job, src_path)
+        download_source(session, base_url, job, src_path)
         if pulse.aborted:
             raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
 
