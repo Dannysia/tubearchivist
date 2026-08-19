@@ -503,22 +503,26 @@ def _read_handbrake_output(
             progress_state["fraction"] = max(0.0, min(percent / 100, 0.99))
 
 
-def spawn_handbrake(cmd: list[str]):
-    """start HandBrakeCLI and its output reader thread"""
+def spawn_handbrake(cmd: list[str], progress_state: dict):
+    """
+    start HandBrakeCLI and its output reader thread. progress_state is
+    the same dict a LeaseHeartbeat already running for this job reads
+    from (see handle_job) - the reader thread writes encode progress
+    into it directly rather than owning a separate one.
+    """
     proc = subprocess.Popen(  # pylint: disable=consider-using-with
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
-    progress_state = {"fraction": 0.0}
     output_tail: list[str] = []
     threading.Thread(
         target=_read_handbrake_output,
         args=(proc, progress_state, output_tail),
         daemon=True,
     ).start()
-    return proc, progress_state, output_tail
+    return proc, output_tail
 
 
 # --------------------------------------------------------------------------
@@ -1005,62 +1009,55 @@ def deliver_result(
     encoded_path: str,
     out_path: str,
     encode_args: str,
+    pulse: "LeaseHeartbeat",
+    progress_state: dict,
 ) -> None:
     """
     everything after a successful encode: remux to MP4, upload, finish.
 
-    One heartbeat covers all three. It starts before the remux rather
-    than before the upload, because a stream copy of a multi-GB file is
-    quick but not free and has no progress ticks of its own - long
-    enough without a heartbeat to lose the lease and have the job reaped
-    out from under this worker mid-remux.
+    Shares the single heartbeat pulse handle_job started right after
+    claim, rather than starting a fresh one here - see handle_job's
+    docstring for why that pulse now spans the whole job instead of
+    just this tail end. progress_state is bumped to 1.0 (encoding
+    itself only ever reports up to 0.99) since nothing after the encode
+    has progress ticks of its own.
     """
     worker_name = config["worker"]["name"]
     job_id = job["id"]
     youtube_id = job["youtube_id"]
 
     log(f"encoded {youtube_id}, remuxing to {OUTPUT_CONTAINER}")
-    pulse = LeaseHeartbeat(
+    progress_state["fraction"] = 1.0
+
+    remuxed, remux_error = run_remux(config, encoded_path, out_path)
+    if pulse.aborted:
+        raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+    if not remuxed:
+        log(f"remux failed for {youtube_id}")
+        report_fail(
+            session, base_url, worker_name, job_id, remux_error[-2000:]
+        )
+        return
+
+    log_hdr_metadata_outcome(config, youtube_id, encoded_path, out_path)
+
+    log(f"uploading {youtube_id}")
+    upload_result(session, base_url, worker_name, job_id, out_path, pulse)
+    if pulse.aborted:
+        raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+
+    log(f"finishing {youtube_id}")
+    send_finish(
         session,
         base_url,
         worker_name,
         job_id,
-        config["worker"]["heartbeat_interval"],
-        progress_fn=lambda: 1.0,
+        config["encode"]["encoder"],
+        config["encode"]["quality"],
+        config["encode"].get("preset"),
+        encode_args,
+        OUTPUT_CONTAINER,
     )
-    pulse.start()
-    try:
-        remuxed, remux_error = run_remux(config, encoded_path, out_path)
-        if pulse.aborted:
-            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
-        if not remuxed:
-            log(f"remux failed for {youtube_id}")
-            report_fail(
-                session, base_url, worker_name, job_id, remux_error[-2000:]
-            )
-            return
-
-        log_hdr_metadata_outcome(config, youtube_id, encoded_path, out_path)
-
-        log(f"uploading {youtube_id}")
-        upload_result(session, base_url, worker_name, job_id, out_path, pulse)
-        if pulse.aborted:
-            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
-
-        log(f"finishing {youtube_id}")
-        send_finish(
-            session,
-            base_url,
-            worker_name,
-            job_id,
-            config["encode"]["encoder"],
-            config["encode"]["quality"],
-            config["encode"].get("preset"),
-            encode_args,
-            OUTPUT_CONTAINER,
-        )
-    finally:
-        pulse.stop()
 
 
 def handle_job(job: dict, session, base_url: str, config: dict) -> None:
@@ -1070,6 +1067,16 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
     network-exhaustion path. A local encode failure is reported via
     fail() and also returns normally - it's a completed job outcome, not
     an abandon.
+
+    A single heartbeat pulse spans the whole job, started right here
+    rather than only once encoding begins. download_source() and
+    probe_hdr_static_metadata() together can take longer than the
+    server's 60s stale-lease window on a large source or a slow link -
+    with no heartbeat running yet during that stretch, the lease was
+    getting reaped before this worker ever sent its first one, so the
+    first heartbeat (once encoding did start) came back a 409 and
+    abandoned a job that had barely begun. See STALE_LEASE_SECONDS in
+    downscale/src/worker.py.
     """
     worker_name = config["worker"]["name"]
     heartbeat_interval = config["worker"]["heartbeat_interval"]
@@ -1083,17 +1090,8 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
     src_path, encoded_path, out_path = _job_paths(
         temp_dir, youtube_id, target_height
     )
-    download_source(session, base_url, worker_name, job, src_path)
 
-    source_hdr = probe_hdr_static_metadata(config, src_path)
-    if source_hdr:
-        log(f"{youtube_id}: source has {', '.join(sorted(source_hdr))}")
-
-    cmd = build_handbrake_cmd(config, src_path, encoded_path, target_height)
-    encode_args = shlex.join(cmd)
-    log(f"encoding {youtube_id}: {encode_args}")
-
-    proc, progress_state, output_tail = spawn_handbrake(cmd)
+    progress_state = {"fraction": 0.0}
     pulse = LeaseHeartbeat(
         session,
         base_url,
@@ -1104,24 +1102,49 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
     )
     pulse.start()
     try:
+        download_source(session, base_url, worker_name, job, src_path)
+        if pulse.aborted:
+            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+
+        source_hdr = probe_hdr_static_metadata(config, src_path)
+        if source_hdr:
+            log(f"{youtube_id}: source has {', '.join(sorted(source_hdr))}")
+        if pulse.aborted:
+            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+
+        cmd = build_handbrake_cmd(
+            config, src_path, encoded_path, target_height
+        )
+        encode_args = shlex.join(cmd)
+        log(f"encoding {youtube_id}: {encode_args}")
+
+        proc, output_tail = spawn_handbrake(cmd, progress_state)
         while proc.poll() is None:
             if pulse.aborted:
                 proc.kill()
                 proc.wait(timeout=10)
                 raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
             time.sleep(0.5)
+
+        if proc.returncode != 0:
+            message = "".join(output_tail)[-2000:]
+            log(f"encode failed ({proc.returncode}) for {youtube_id}")
+            report_fail(session, base_url, worker_name, job_id, message)
+            return
+
+        deliver_result(
+            job,
+            session,
+            base_url,
+            config,
+            encoded_path,
+            out_path,
+            encode_args,
+            pulse,
+            progress_state,
+        )
     finally:
         pulse.stop()
-
-    if proc.returncode != 0:
-        message = "".join(output_tail)[-2000:]
-        log(f"encode failed ({proc.returncode}) for {youtube_id}")
-        report_fail(session, base_url, worker_name, job_id, message)
-        return
-
-    deliver_result(
-        job, session, base_url, config, encoded_path, out_path, encode_args
-    )
 
 
 # --------------------------------------------------------------------------
