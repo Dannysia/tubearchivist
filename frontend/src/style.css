@@ -361,6 +361,8 @@ button:disabled:hover {
   background-size: contain;
   height: 8vh;
   width: 8vh;
+  min-height: 50px;
+  min-width: 50px;
   background-position: center center;
   margin: 1rem;
   grid-area: logo;
