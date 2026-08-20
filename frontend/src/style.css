@@ -247,16 +247,6 @@ button:disabled:hover {
   text-align: center;
 }
 
-.top-banner {
-  background-image: var(--banner);
-  background-repeat: no-repeat;
-  background-size: contain;
-  height: 10vh;
-  min-height: 80px;
-  max-height: 120px;
-  background-position: center center;
-}
-
 .footer {
   margin: 0;
   padding: 20px 0;
@@ -358,15 +348,36 @@ button:disabled:hover {
 
 /* navigation */
 .top-nav {
-  display: block;
+  display: grid;
+  grid-template-columns: 1fr minmax(0, auto) 1fr;
+  grid-template-areas: 'logo text icons';
+  align-items: center;
   padding: 5px 0;
-  position: relative;
+}
+
+.nav-logo {
+  background-image: var(--banner);
+  background-repeat: no-repeat;
+  background-size: contain;
+  height: 8vh;
+  width: 8vh;
+  min-height: 50px;
+  min-width: 50px;
+  background-position: center center;
+  margin: 1rem;
+  grid-area: logo;
+  justify-self: start;
 }
 
 .nav-items {
-  width: 100%;
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
+  grid-area: text;
+}
+
+.nav-item-group {
+  display: flex;
 }
 
 .nav-item {
@@ -378,12 +389,10 @@ button:disabled:hover {
 }
 
 .nav-icons {
-  width: auto;
-  display: inline-flex;
-  position: absolute;
-  top: 50%;
-  right: 0;
-  transform: translate(0, -50%);
+  grid-area: icons;
+  justify-self: end;
+  display: flex;
+  align-items: center;
 }
 
 .nav-icons img {
@@ -473,7 +482,6 @@ button:disabled:hover {
 /* video player */
 .player-wrapper {
   background-color: var(--highlight-bg);
-  margin: 20px 0;
 }
 
 .player-wrapper.theater-mode {
@@ -1375,16 +1383,6 @@ video:-webkit-full-screen {
   .two-col > div {
     width: 100%;
   }
-  .top-nav {
-    flex-wrap: wrap-reverse;
-    display: flex;
-  }
-  .nav-icons {
-    width: 100%;
-    justify-content: center;
-    position: unset;
-    transform: unset;
-  }
   .grid-count {
     display: none;
   }
@@ -1444,14 +1442,26 @@ video:-webkit-full-screen {
   .toggle {
     flex-wrap: wrap;
   }
-  .nav-items {
-    display: grid;
+  .top-nav {
     grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      'logo icons'
+      'text text';
   }
-  .nav-item {
-    padding: 5px 0;
-    margin: 15px;
-    text-align: center;
+  .nav-logo {
+    justify-self: center;
+    grid-area: logo;
+  }
+  .nav-items {
+    grid-area: text;
+    width: 100%;
+    justify-self: stretch;
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .nav-icons {
+    grid-area: icons;
+    justify-self: center;
   }
   .view-controls.three {
     grid-template-columns: unset;
