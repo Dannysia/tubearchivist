@@ -14,9 +14,20 @@ it talks to).
 
 ## Setup
 
+Two example configs, one per deployment target — same script either way,
+only `worker.toml` differs:
+
+- **`worker.nvenc_windows.toml.example`** — Windows (or WSL invoking
+  Windows binaries) + NVENC hardware AV1. The original/production target;
+  see [windows-host-setup.md](../docs/remote-downscale/windows-host-setup.md).
+- **`worker.cpu.toml.example`** — native Linux + software AV1
+  (`svt_av1`), for hosts with no hardware AV1 encoder (e.g. a Raspberry
+  Pi fleet). Unverified against real hardware — see the encoder/preset
+  notes in the file itself before trusting the values.
+
 ```
 pip install -r requirements.txt
-cp worker.toml.example worker.toml
+cp worker.nvenc_windows.toml.example worker.toml   # or worker.cpu.toml.example
 # edit worker.toml: server url/token, worker name, temp_dir, encoder
 python ta_downscale_worker.py
 ```
@@ -53,3 +64,8 @@ Windows-visible path (e.g. `/mnt/c/ta-work`).
 
 Native Windows Python avoids the translation entirely and is the simpler
 starting point.
+
+None of this applies to a native Linux deployment (e.g. `worker.cpu.toml.example`)
+— the script's WSL detection (`_is_wsl()`) is only true when `/proc/version`
+mentions Microsoft, so on a Pi or any other native Linux box the path
+translation is simply never invoked.

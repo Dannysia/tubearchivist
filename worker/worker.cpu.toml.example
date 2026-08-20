@@ -1,0 +1,82 @@
+# TubeArchivist remote downscale worker config - CPU (software encode).
+# Copy to worker.toml next to the script and fill in your values.
+# See docs/remote-downscale/worker.md for the full design and
+# docs/downscale-hdr/README.md for why encoding goes through HandBrakeCLI.
+#
+# For the NVENC/Windows deployment target instead, see
+# worker.nvenc_windows.toml.example.
+#
+# UNVERIFIED: written for a native-Linux host with no hardware AV1
+# encoder (e.g. a Raspberry Pi) but not yet run against a real
+# HandBrakeCLI install on that hardware. Confirm every value marked
+# below with `HandBrakeCLI --encoder-list` /
+# `--encoder-preset-list=svt_av1` on the actual machine before trusting
+# it for an unattended run - same discipline as
+# docs/remote-downscale/windows-host-setup.md walked the NVENC config
+# through.
+
+[server]
+url = "http://tubearchivist.local:8000"
+token = "…"                 # TA API token (Settings → API)
+
+[worker]
+name = "pi-1"                # unique per worker; used for job ownership
+temp_dir = "/mnt/ta-work"    # prefer fast external storage over the SD
+                              # card - see the temp_dir note below
+poll_interval = 30           # seconds between claim attempts when idle
+heartbeat_interval = 10      # must be well under the server's 60s lease
+
+[encode]
+# No Windows/WSL binaries here, so plain names resolved via PATH are
+# enough - use absolute paths instead if that doesn't hold on your image.
+ffmpeg_path = "ffmpeg"
+# ffprobe_path = "ffprobe"   # optional override; defaults to
+                              # ffmpeg_path with "ffmpeg" swapped for
+                              # "ffprobe"
+
+handbrake_path = "HandBrakeCLI"
+
+# HandBrake's own encoder identifier for software AV1 (the SVT-AV1
+# library), NOT ffmpeg's (libsvtav1) and NOT the NVENC one this worker
+# script was originally written against (nvenc_av1). Run
+# `HandBrakeCLI --encoder-list` on the Pi to confirm svt_av1 is actually
+# built into your HandBrake package - some distro/Flatpak builds omit
+# encoders the upstream binary ships.
+encoder = "svt_av1"
+
+# SVT-AV1's own preset scale: a bare integer 0 (slowest/best quality) -
+# 13 (fastest), NOT HandBrake's named x264/x265 tiers and NOT NVENC's
+# named tiers either - three different vocabularies live behind this
+# same field depending on `encoder`. A Pi 4 (quad-core Cortex-A72, no
+# AV1 hardware path at all) has none of a discrete GPU's headroom to
+# spend on a slow preset - start high (fast) rather than copying the
+# NVENC worker's "slowest" choice, and time one real job before
+# committing a fleet of these to it. Confirm the actual range with
+# `HandBrakeCLI --encoder-preset-list=svt_av1`.
+preset = "8"
+# tune = ""                  # confirm with --encoder-tune-list=svt_av1;
+                              # may not offer anything worth setting
+
+# HandBrake's -q/--quality constant-quality value for svt_av1 - a
+# different scale from NVENC's CQ (see worker.nvenc_windows.toml.example's
+# q=32 - not a portable number here). Trial this against real content on
+# the Pi the same way windows-host-setup.md §3 did for NVENC before
+# trusting it for a real run.
+#
+# Must be a whole number. HandBrake itself accepts a fractional -q
+# (22.5 is idiomatic for x264/x265), but TA stores quality as an
+# integer and rejects anything else, so the worker refuses to start on
+# a fractional value rather than failing a job after encoding it.
+quality = 32
+
+extra_args = []              # escape hatch, appended to the HandBrakeCLI
+                              # invocation as-is
+
+# temp_dir sizing: same 3x-largest-source budget as the NVENC worker
+# (source + HandBrake's MKV + the remuxed MP4 coexist until the job
+# finishes) - but on a Pi that directory is worth putting on a USB SSD
+# rather than the boot SD card if at all possible. A microSD card
+# handles this worker's write pattern (repeated multi-GB writes, one
+# per job, across six Pis if all are pointed at the same NAS/dir) badly
+# on both counts that matter here: sustained write throughput and
+# write-cycle wear from constant large files being created and deleted.

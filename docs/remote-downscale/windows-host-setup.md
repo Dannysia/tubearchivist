@@ -108,7 +108,7 @@ qualifies comfortably.
 
 ## 3. Pin down preset, tune, and quality
 
-**These three values in the shipped `worker.toml.example` are guesses.**
+**These three values in the shipped `worker.nvenc_windows.toml.example` are guesses.**
 Replace them with real ones:
 
 ```powershell
@@ -157,7 +157,7 @@ Repeat for 22 / 26 / 28, compare size and appearance, pick one.
 
 ## 4. Write `worker.toml`
 
-Copy `worker.toml.example` next to the script and fill it in:
+Copy `worker.nvenc_windows.toml.example` next to the script and fill it in:
 
 ```toml
 [server]
