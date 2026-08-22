@@ -7,7 +7,7 @@ functionality:
 import json
 import os
 from datetime import datetime
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
@@ -15,7 +15,7 @@ from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import rand_sleep
-from common.src.ta_redis import RedisQueue
+from common.src.ta_redis import RedisArchivist, RedisQueue
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import CookieHandler
 from playlist.src.index import YoutubePlaylist
@@ -287,6 +287,7 @@ class Reindex(ReindexBase):
             if self.task:
                 self._notify(name, total, idx)
 
+            self._mark_active(youtube_id, queue_name=queue.key)
             index_name = index_config["index_name"]
             if index_name == "ta_video":
                 video = self.reindex_single_video(youtube_id)
@@ -298,6 +299,8 @@ class Reindex(ReindexBase):
             elif index_name == "ta_playlist":
                 self._reindex_single_playlist(playlist_id=youtube_id)
 
+            self._clear_active(queue_name=queue.key)
+
             rand_sleep(self.config)
 
     def _notify(self, name: str, total: int, idx: int) -> None:
@@ -305,6 +308,16 @@ class Reindex(ReindexBase):
         message = [f"Reindexing {name.title()}s {idx}/{total}"]
         progress = idx / total
         self.task.send_progress(message, progress=progress)
+
+    def _mark_active(self, youtube_id: str, queue_name: str) -> None:
+        """mark current video as active for RedisQueue.get_position"""
+        RedisArchivist().set_message(
+            key=f"{queue_name}:active", message=youtube_id, expire=300
+        )
+
+    def _clear_active(self, queue_name: str) -> None:
+        """clear from active key"""
+        RedisArchivist().del_message(key=f"{queue_name}:active")
 
     def reindex_single_video(
         self, youtube_id: str, from_download=False
@@ -319,12 +332,13 @@ class Reindex(ReindexBase):
 
         es_meta = video.json_data.copy()
 
+        media_url: str | bool
         if from_download:
             # use cache path for reindex media file
             media_url = False
         else:
             # use archive path for reindex media file
-            media_url: str | bool = os.path.join(
+            media_url = os.path.join(
                 EnvironmentSettings.MEDIA_DIR, es_meta["media_url"]
             )
 
@@ -430,40 +444,58 @@ class Reindex(ReindexBase):
         return message
 
 
+ReindexStateType = Literal[
+    "in_queue", "not_in_queue", "running", "empty", "processing"
+]
+RequestType = Literal["video", "channel", "playlist"]
+QueueType = RequestType | Literal["all"]
+
+
+class ReindexProgressType(TypedDict):
+    """response type"""
+
+    id: str | None
+    total_queued: int
+    queue_type: QueueType
+    queue_position: int | None
+    state: ReindexStateType
+
+
 class ReindexProgress(ReindexBase):
     """
     get progress of reindex task
     request_type: key of self.REINDEX_CONFIG
     request_id: id of request_type
-    return = {
-        "state": "running" | "queued" | False
-        "total_queued": int
-        "in_queue_name": "queue_name"
-    }
     """
 
-    def __init__(self, request_type=False, request_id=False):
+    def __init__(
+        self,
+        request_type: RequestType | None = None,
+        request_id: str | None = None,
+    ):
         super().__init__()
         self.request_type = request_type
         self.request_id = request_id
 
-    def get_progress(self) -> dict:
+    def get_progress(self) -> ReindexProgressType:
         """get progress from task"""
         queue_name, request_type = self._get_queue_name()
         total = self._get_total_in_queue(queue_name)
+        queue_position, state = self._get_state(total, queue_name)
 
-        progress = {
+        progress: ReindexProgressType = {
+            "id": self.request_id or None,
             "total_queued": total,
-            "type": request_type,
+            "queue_type": request_type,
+            "queue_position": queue_position,
+            "state": state,
         }
-        state = self._get_state(total, queue_name)
-        progress.update(state)
 
         return progress
 
-    def _get_queue_name(self):
+    def _get_queue_name(self) -> tuple[str, QueueType]:
         """return queue_name, queue_type, raise exception on error"""
-        if not self.request_type:
+        if self.request_type is None:
             return "all", "all"
 
         reindex_config = self.REINDEX_CONFIG.get(self.request_type)
@@ -485,23 +517,22 @@ class ReindexProgress(ReindexBase):
 
         return total
 
-    def _get_state(self, total, queue_name):
+    def _get_state(
+        self, total, queue_name
+    ) -> tuple[int | None, ReindexStateType]:
         """get state based on request_id"""
-        state_dict = {}
-        if self.request_id:
-            state = RedisQueue(queue_name).in_queue(self.request_id)
-            state_dict.update({"id": self.request_id, "state": state})
+        if not self.request_id:
+            return (None, "running") if total else (None, "empty")
 
-            return state_dict
+        active_id = RedisArchivist().get_message_str(f"{queue_name}:active")
+        if active_id == self.request_id:
+            return None, "processing"
 
-        if total:
-            state = "running"
-        else:
-            state = "empty"
+        rank = RedisQueue(queue_name).get_rank(self.request_id)
+        if rank is not None:
+            return rank, "in_queue"
 
-        state_dict.update({"state": state})
-
-        return state_dict
+        return None, "not_in_queue"
 
 
 class ChannelFullScan:
