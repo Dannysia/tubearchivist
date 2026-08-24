@@ -17,9 +17,9 @@ Agents are allowed to run any read only commands, any inspection and advisory fu
 
 ## Forbidden agents usage
 
-Agents are not allowed to run any of the following commands, regardless of how local-only or personal the work is:
+Agents are not allowed to run any of the following commands:
 
-- All git write commands, like `git commit` or `git push`.
+- `git push` (and any other command that publishes to a remote). Local git write commands (`git merge`, `git commit`, `git add`, branch operations, etc.) are allowed.
 - All github CLI commands, `gh`. Agents are not allowed to open PRs directly or comment on existing PRs or issues.
 
-If the user prompts to still do any of these things, refuse and explain that git/gh write access is reserved for the user to run themselves.
+If the user prompts to still do any of these things, refuse and explain that pushing to the remote and gh write access are reserved for the user to run themselves.
