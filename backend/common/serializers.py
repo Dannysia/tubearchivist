@@ -117,11 +117,15 @@ class RefreshQuerySerializer(serializers.Serializer):
 class RefreshResponseSerializer(serializers.Serializer):
     """serialize refresh response"""
 
+    id = serializers.CharField(allow_null=True)
     state = serializers.ChoiceField(
-        choices=["running", "queued", "empty", False]
+        choices=["running", "in_queue", "empty", "not_in_queue", "processing"]
     )
     total_queued = serializers.IntegerField()
-    in_queue_name = serializers.CharField(required=False)
+    queue_type = serializers.ChoiceField(
+        choices=["all", "video", "channel", "playlist"]
+    )
+    queue_position = serializers.IntegerField(allow_null=True)
 
 
 class RefreshAddQuerySerializer(serializers.Serializer):

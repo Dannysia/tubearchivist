@@ -7,9 +7,6 @@ functionality:
 
 from enum import Enum, auto
 
-from appsettings.src.backup import ElasticBackup
-from appsettings.src.config import AppConfig
-from appsettings.src.snapshot import ElasticSnapshot
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_mapping
 from deepdiff import DeepDiff
@@ -392,6 +389,11 @@ class ElasticIndexWrap:
         """create backup if needed"""
         if self.backup_run:
             return
+
+        # pylint: disable=import-outside-toplevel
+        from appsettings.src.backup import ElasticBackup
+        from appsettings.src.config import AppConfig
+        from appsettings.src.snapshot import ElasticSnapshot
 
         try:
             config = AppConfig().config

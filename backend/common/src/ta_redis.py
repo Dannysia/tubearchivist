@@ -147,13 +147,10 @@ class RedisQueue(RedisBase):
         """return total elements in list"""
         return self.conn.zcard(self.key)
 
-    def in_queue(self, element) -> str | bool:
-        """check if element is in list"""
+    def get_rank(self, element) -> int | None:
+        """get rank of element in queue"""
         result = self.conn.zrank(self.key, element)
-        if result is not None:
-            return "in_queue"
-
-        return False
+        return result
 
     def add(self, to_add: str) -> None:
         """add single item to queue"""
