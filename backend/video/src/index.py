@@ -158,14 +158,31 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         self.video_type = video_type
         self.offline_import = False
 
-    def build_json(self, youtube_meta_overwrite=False, media_path=False):
-        """build json dict of video"""
-        self.get_from_youtube()
+    def build_json(
+        self,
+        youtube_meta_overwrite=False,
+        media_path=False,
+        from_file=False,
+    ):
+        """build json dict of video, from_file for manual import"""
+        obs_overwrite = None
+        if from_file:
+            # the media is already on disk, so metadata is worth having even
+            # when YT serves no streams for it, e.g. age gated or members
+            # only. without this yt-dlp aborts the whole extraction
+            obs_overwrite = {"ignore_no_formats_error": True}
+
+        self.get_from_youtube(obs_overwrite)
         if not self.youtube_meta and not youtube_meta_overwrite:
             return
 
         if not self.youtube_meta:
             self.youtube_meta = youtube_meta_overwrite
+            self.offline_import = True
+        elif from_file and not self.youtube_meta.get("formats"):
+            # metadata came through but YT has no streams to offer, so the
+            # file came from elsewhere: treat local sidecar files as
+            # authoritative like any other offline import
             self.offline_import = True
 
         self.process_youtube_meta()

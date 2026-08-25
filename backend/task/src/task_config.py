@@ -56,7 +56,9 @@ MANUAL_IMPORT: TaskItemConfig = {
     "title": "Manual video import",
     "group": "setting:import",
     "api_start": False,
-    "api_stop": False,
+    # process_videos checks between videos, and paced imports are long
+    # enough that being unable to stop one is a real problem
+    "api_stop": True,
 }
 
 RUN_BACKUP: TaskItemConfig = {

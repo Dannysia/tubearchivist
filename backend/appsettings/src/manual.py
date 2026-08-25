@@ -10,10 +10,11 @@ import os
 import re
 import shutil
 import subprocess
+from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.helper import ignore_filelist
+from common.src.helper import ignore_filelist, is_missing, rand_sleep
 from download.src.queue_interact import PendingInteract
 from download.src.thumbnails import ThumbManager
 from PIL import Image
@@ -21,6 +22,37 @@ from video.src.comments import Comments
 from video.src.index import YoutubeVideo
 from video.src.meta_embed import IndexFromEmbed
 from yt_dlp.utils import ISO639Utils
+
+
+def extract_video_id(base_name: str) -> str | None:
+    """find youtube id at the end of a file base name, without extension"""
+    # yt-dlp default like [youtubeid]
+    id_search = re.search(r"\[([a-zA-Z0-9_-]{11})\]$", base_name)
+    if id_search:
+        return id_search.group(1)
+
+    file_name_search = re.search(r"([a-zA-Z0-9_-]{11})$", base_name)
+    if file_name_search:
+        return file_name_search.group(1)
+
+    return None
+
+
+def strict_video_id(base_name: str) -> str | None:
+    """video id from a file base name, unambiguous spellings only"""
+    # yt-dlp default like [youtubeid]
+    id_search = re.search(r"\[([a-zA-Z0-9_-]{11})\]$", base_name)
+    if id_search:
+        return id_search.group(1)
+
+    # the bare id and nothing else. extract_video_id would happily take the
+    # trailing 11 chars of any longer name, so mystery-clip.mp4 imports as
+    # ystery-clip. at upload time we can insist on a name that can't be
+    # misread instead of finding out after the file is on disk
+    if re.fullmatch(r"[a-zA-Z0-9_-]{11}", base_name):
+        return base_name
+
+    return None
 
 
 class ImportFolderScanner:
@@ -114,7 +146,8 @@ class ImportFolderScanner:
             print(f"manual import: {current_video}")
             self.to_import.append(current_video)
 
-    def _detect_base_name(self, file_path):
+    @staticmethod
+    def _detect_base_name(file_path):
         """extract base_name and ext for matching"""
         base_name_raw, ext = os.path.splitext(file_path)
         base_name, ext2 = os.path.splitext(base_name_raw)
@@ -143,6 +176,21 @@ class ImportFolderScanner:
                 print(f"{current_video}: no matching media file found.")
                 raise ValueError
 
+            if self.task and self.task.is_stopped():
+                print("manual import: stopped by user")
+                break
+
+            if idx:
+                # pace metadata extraction like the download queue does.
+                # a bulk import otherwise hits youtube a few hundred times
+                # back to back, which is what gets you blocked
+                if self.task:
+                    # most of a paced run is spent here, so say so rather
+                    # than leaving the last video's message on screen
+                    self._notify(idx, current_video, status="Waiting before")
+
+                rand_sleep(config)
+
             if self.task:
                 self._notify(idx, current_video)
 
@@ -160,17 +208,16 @@ class ImportFolderScanner:
                 prefer_local=self.prefer_local,
             ).run()
 
-    def _notify(self, idx, current_video):
+    def _notify(self, idx, current_video, status: str | bool = False):
         """send notification back to task"""
         filename = os.path.split(current_video["media"])[-1]
         if len(filename) > 50:
             filename = filename[:50] + "..."
 
-        message = [
-            f"Import queue processing video {idx + 1}/{len(self.to_import)}",
-            filename,
-        ]
-        progress = (idx + 1) / len(self.to_import)
+        total = len(self.to_import)
+        headline = status or "Import queue processing video"
+        message = [f"{headline} {idx + 1}/{total}", filename]
+        progress = (idx + 1) / total
         self.task.send_progress(message, progress=progress)
 
     def _detect_youtube_id(self, current_video):
@@ -194,16 +241,8 @@ class ImportFolderScanner:
         expects filename ending in [<youtube_id>].<ext>
         """
         base_name, _ = os.path.splitext(file_name)
-
-        # yt-dlp default like [youtubeid]
-        id_search = re.search(r"\[([a-zA-Z0-9_-]{11})\]$", base_name)
-        if id_search:
-            youtube_id = id_search.group(1)
-            return youtube_id
-
-        file_name_search = re.search(r"([a-zA-Z0-9_-]{11})$", base_name)
-        if file_name_search:
-            youtube_id = file_name_search.group(1)
+        youtube_id = extract_video_id(base_name)
+        if youtube_id:
             return youtube_id
 
         print(f"id extraction failed from filename: {file_name}")
@@ -456,6 +495,7 @@ class ManualImport:
         video.build_json(
             youtube_meta_overwrite=self._get_info_json(),
             media_path=self.current_video["media"],
+            from_file=True,
         )
         if not video.json_data:
             message = (
@@ -533,3 +573,173 @@ class ManualImport:
 
         video_id = self.current_video["video_id"]
         PendingInteract(youtube_id=video_id).delete_item(print_error=False)
+
+
+class ImportFolderFiles:
+    """list and stage files in the import folder"""
+
+    IMPORT_DIR = ImportFolderScanner.IMPORT_DIR
+    PART_SUFFIX = ".part"
+    PART_MAX_AGE = 24 * 60 * 60
+    EXT_CATEGORY = {
+        ext: key
+        for key, value in ImportFolderScanner.EXT_MAP.items()
+        for ext in value
+    }
+
+    @classmethod
+    def _describe(cls, file_name: str) -> dict:
+        """build the api representation of one staged file"""
+        file_path = os.path.join(cls.IMPORT_DIR, file_name)
+        # same base name matching the scanner uses, so a sidecar like
+        # <id>.info.json or <id>.en.vtt resolves to its video id too
+        base_name, ext = ImportFolderScanner._detect_base_name(file_name)
+
+        return {
+            "filename": file_name,
+            "size": os.path.getsize(file_path),
+            "category": cls.EXT_CATEGORY.get(ext.lower()) or "unknown",
+            "video_id": extract_video_id(base_name),
+        }
+
+    @classmethod
+    def _clear_stale_parts(cls, all_files: list[str]) -> None:
+        """delete abandoned part files, e.g. killed mid upload
+
+        they are hidden from the listing, so without this they would sit
+        there taking up disk with no way to notice or remove them. the
+        cutoff is far beyond any plausible single upload, an in flight
+        part file is never this old
+        """
+        cutoff = datetime.now().timestamp() - cls.PART_MAX_AGE
+        for file_name in all_files:
+            if not file_name.endswith(cls.PART_SUFFIX):
+                continue
+
+            file_path = os.path.join(cls.IMPORT_DIR, file_name)
+            if os.path.getmtime(file_path) < cutoff:
+                print(f"import: clear stale part file {file_name}")
+                os.remove(file_path)
+
+    @classmethod
+    def list_files(cls) -> list[dict]:
+        """list staged files with their detected video id"""
+        os.makedirs(cls.IMPORT_DIR, exist_ok=True)
+        all_files = ignore_filelist(os.listdir(cls.IMPORT_DIR))
+        cls._clear_stale_parts(all_files)
+
+        return [
+            cls._describe(i)
+            for i in sorted(all_files)
+            # in flight uploads are not staged files yet
+            if not i.endswith(cls.PART_SUFFIX)
+            and os.path.isfile(os.path.join(cls.IMPORT_DIR, i))
+        ]
+
+    @classmethod
+    def validate_name(cls, file_name: str | None) -> str:
+        """validate an upload file name, return the sanitized name"""
+        # basename first: an upload name is attacker controlled and could
+        # otherwise walk out of the import folder
+        clean_name = os.path.basename(file_name or "").strip()
+        if not clean_name or clean_name.startswith("."):
+            raise ValueError(f"invalid file name: {file_name}")
+
+        _, ext = os.path.splitext(clean_name)
+        if ext.lower() not in cls.EXT_CATEGORY:
+            raise ValueError(f"unsupported file type: {ext or clean_name}")
+
+        # secondary extensions off first, so <id>.info.json and <id>.en.vtt
+        # are checked against the same base name their video uses
+        base_name, _ = ImportFolderScanner._detect_base_name(clean_name)
+        if not strict_video_id(base_name):
+            raise ValueError(
+                f"{clean_name}: name must be the 11 character video id, "
+                "either on its own or in brackets like [video_id]"
+            )
+
+        return clean_name
+
+    @classmethod
+    def save(cls, upload) -> dict:
+        """write an uploaded file to the import folder"""
+        clean_name = cls.validate_name(upload.name)
+        os.makedirs(cls.IMPORT_DIR, exist_ok=True)
+        file_path = os.path.join(cls.IMPORT_DIR, clean_name)
+        # write beside the target then rename into place. the import task
+        # scans this folder on its own schedule and must never find a half
+        # written file sitting under its final name
+        part_path = f"{file_path}{cls.PART_SUFFIX}"
+
+        try:
+            # media files are far too big to buffer, chunks() streams them
+            with open(part_path, "wb") as f:
+                for chunk in upload.chunks():
+                    f.write(chunk)
+
+            written = os.path.getsize(part_path)
+            if upload.size is not None and written != upload.size:
+                raise ValueError(
+                    f"{clean_name}: incomplete upload, expected "
+                    f"{upload.size} bytes but wrote {written}"
+                )
+
+            host_uid = EnvironmentSettings.HOST_UID
+            host_gid = EnvironmentSettings.HOST_GID
+            if host_uid and host_gid:
+                os.chown(part_path, host_uid, host_gid)
+
+            # same filesystem, so this is atomic
+            os.replace(part_path, file_path)
+        except Exception:
+            if os.path.exists(part_path):
+                os.remove(part_path)
+
+            raise
+
+        return cls._describe(clean_name)
+
+    @classmethod
+    def find_indexed(cls, file_names: list[str]) -> list[str]:
+        """file names whose video is already in the archive
+
+        re-importing overwrites the document and resets watch state, so
+        the upload endpoint refuses them. copying a file into the import
+        folder directly still overwrites, which is deliberate enough
+        """
+        by_id: dict[str, list[str]] = {}
+        for file_name in file_names:
+            base_name, _ = ImportFolderScanner._detect_base_name(file_name)
+            video_id = strict_video_id(base_name)
+            if video_id:
+                by_id.setdefault(video_id, []).append(file_name)
+
+        if not by_id:
+            return []
+
+        # one round trip, whatever the batch size
+        missing = set(is_missing(list(by_id), index_name="ta_video"))
+
+        return sorted(
+            file_name
+            for video_id, names in by_id.items()
+            if video_id not in missing
+            for file_name in names
+        )
+
+    @classmethod
+    def delete_file(cls, file_name: str) -> bool:
+        """delete a single staged file, False if it is not there"""
+        # no strict name check here: a file put in the folder by hand can
+        # be named anything, and you still need to be able to remove it
+        clean_name = os.path.basename(file_name or "").strip()
+        if not clean_name or clean_name.startswith("."):
+            raise ValueError(f"invalid file name: {file_name}")
+
+        file_path = os.path.join(cls.IMPORT_DIR, clean_name)
+        if not os.path.isfile(file_path):
+            return False
+
+        os.remove(file_path)
+
+        return True
