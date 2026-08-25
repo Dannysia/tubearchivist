@@ -1399,6 +1399,38 @@ video:-webkit-full-screen {
   margin-left: 10px;
 }
 
+/* import folder staging list */
+.import-upload-progress progress {
+  width: 100%;
+  height: 10px;
+}
+
+.import-upload-failures {
+  padding: 10px 0;
+}
+
+.import-file-list {
+  padding: 10px 0;
+  /* 200 videos is 400+ rows, keep the rest of the page reachable */
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.import-file-row {
+  display: grid;
+  /* right third reserved for the video id, then the delete button */
+  grid-template-columns: 1fr 100px 33% min-content;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: solid 1px;
+  border-color: var(--main-font);
+}
+
+.import-file-row > span {
+  overflow-wrap: anywhere;
+}
+
 /* about */
 .about-section {
   padding: 20px 0;
@@ -1593,6 +1625,11 @@ video:-webkit-full-screen {
   }
   .backup-grid-row span {
     padding: 5px 0;
+  }
+  .import-file-row {
+    /* no room for a third column on narrow screens */
+    display: block;
+    padding: 10px 0;
   }
   .playlist-nav {
     display: block;

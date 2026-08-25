@@ -10,6 +10,7 @@ import { ApiResponseType } from '../functions/APIClient';
 import ToggleConfig from '../components/ToggleConfig';
 import queueStartFilesystemRescan from '../api/actions/queueStartFilesystemRescan';
 import queueManualImport from '../api/actions/queueManualImport';
+import ImportFiles from '../components/ImportFiles';
 
 const SettingsActions = () => {
   const [deleteIgnored, setDeleteIgnored] = useState(false);
@@ -23,6 +24,8 @@ const SettingsActions = () => {
   const [rescanPreferLocal, setRescanPreferLocal] = useState(false);
   const [manualPreferLocal, setManualPreferLocal] = useState(false);
   const [manualIgnoreErrors, setManualIgnoreErrors] = useState(false);
+  // bumped to re-list the import folder after an import run consumes it
+  const [importFilesRefresh, setImportFilesRefresh] = useState(0);
 
   const [backupListResponse, setBackupListResponse] = useState<ApiResponseType<BackupListType>>();
 
@@ -58,6 +61,12 @@ const SettingsActions = () => {
           setShouldRefresh={() => {
             setDeleteIgnored(false);
             setDeletePending(false);
+            if (processingImports) {
+              // the task consumes the folder, so re-list what is left.
+              // functional update: this callback closes over a render's
+              // value and can fire more than once per render
+              setImportFilesRefresh(current => current + 1);
+            }
             setProcessingImports(false);
             setReSyncMeta(false);
             setBackupStarted(false);
@@ -83,6 +92,7 @@ const SettingsActions = () => {
             .
           </p>
           <div id="manual-import">
+            <ImportFiles refreshToken={importFilesRefresh} />
             <div className="settings-box-wrapper">
               <div>
                 <p>Prefer embedded metadata</p>

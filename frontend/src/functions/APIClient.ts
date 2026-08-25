@@ -8,7 +8,7 @@ import { useBackendStore } from '../stores/BackendStore';
 
 export interface ApiClientOptions extends Omit<RequestInit, 'body'> {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-  body?: Record<string, unknown> | string;
+  body?: Record<string, unknown> | string | FormData;
 }
 
 export interface ApiError {
@@ -33,15 +33,19 @@ const APIClient = async <T>(
   const apiUrl = getApiUrl();
   const csrfToken = getCookie('csrftoken');
 
+  // the browser has to set Content-Type itself for FormData, so it can add
+  // the multipart boundary. sending defaultHeaders here breaks the upload
+  const isFormData = body instanceof FormData;
+
   const response = await fetch(`${apiUrl}${endpoint}`, {
     method,
     headers: {
-      ...defaultHeaders,
+      ...(isFormData ? {} : defaultHeaders),
       ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
       ...headers,
     },
     credentials: getFetchCredentials(),
-    body: body ? JSON.stringify(body) : undefined,
+    body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
     ...options,
   });
 
