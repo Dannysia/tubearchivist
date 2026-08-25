@@ -18,6 +18,9 @@ import { ApiResponseType } from '../functions/APIClient';
 import startChannelDownscale, {
   ChannelDownscaleResponseType,
 } from '../api/actions/startChannelDownscale';
+import loadChannelAggs, { ChannelAggsType } from '../api/loader/loadChannelAggs';
+import ChannelStats from '../components/ChannelStats';
+import { FileSizeUnits } from '../api/actions/updateUserConfig';
 
 const DOWNSCALE_LADDER = [2160, 1440, 1080, 720, 480, 360, 240];
 
@@ -53,6 +56,8 @@ const ChannelAbout = () => {
   const [downscaleResult, setDownscaleResult] = useState<ChannelDownscaleResponseType | null>(null);
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
+  const [channelAggsResponse, setChannelAggsResponse] =
+    useState<ApiResponseType<ChannelAggsType>>();
 
   const [downloadFormat, setDownloadFormat] = useState<string | null>(null);
   const [autoDeleteAfter, setAutoDeleteAfter] = useState<number | null>(null);
@@ -63,16 +68,22 @@ const ChannelAbout = () => {
   const [pageSizeStreams, setPageSizeStreams] = useState<number | null>(null);
 
   const { data: channelResponseData } = channelResponse ?? {};
+  const { data: channelAggs } = channelAggsResponse ?? {};
 
   const channel = channelResponseData;
+  const useSiUnits = userConfig.file_size_unit === FileSizeUnits.Metric;
 
   useEffect(() => {
     (async () => {
       if (refresh) {
-        const channelResponse = await loadChannelById(channelId);
+        const [channelResponse, channelAggsResponse] = await Promise.all([
+          loadChannelById(channelId),
+          loadChannelAggs(channelId),
+        ]);
         const { data: channelResponseData } = channelResponse;
 
         setChannelResponse(channelResponse);
+        setChannelAggsResponse(channelAggsResponse);
         setDownloadFormat(channelResponseData?.channel_overwrites?.download_format ?? null);
         setAutoDeleteAfter(channelResponseData?.channel_overwrites?.autodelete_days ?? null);
         setIndexPlaylists(channelResponseData?.channel_overwrites?.index_playlists ?? false);
@@ -274,6 +285,10 @@ const ChannelAbout = () => {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="info-box info-box-3">
+          <ChannelStats channelAggs={channelAggs} useSIUnits={useSiUnits} />
         </div>
 
         {channel.channel_description && (

@@ -10,6 +10,7 @@ from channel.serializers import (
     ChannelSerializer,
     ChannelUpdateSerializer,
 )
+from channel.src.aggs import ChannelAggs
 from channel.src.index import YoutubeChannel, channel_overwrites
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
@@ -189,8 +190,6 @@ class ChannelAggsApiView(ApiBaseView):
     GET: get channel aggregations
     """
 
-    search_base = "ta_video/_search"
-
     @extend_schema(
         responses={
             200: OpenApiResponse(ChannelAggSerializer()),
@@ -198,20 +197,8 @@ class ChannelAggsApiView(ApiBaseView):
     )
     def get(self, request, channel_id):
         """get channel aggregations"""
-        self.data.update(
-            {
-                "query": {
-                    "term": {"channel.channel_id": {"value": channel_id}}
-                },
-                "aggs": {
-                    "total_items": {"value_count": {"field": "youtube_id"}},
-                    "total_size": {"sum": {"field": "media_size"}},
-                    "total_duration": {"sum": {"field": "player.duration"}},
-                },
-            }
-        )
-        self.get_aggs()
-        serializer = ChannelAggSerializer(self.response)
+        aggs = ChannelAggs(channel_id).process()
+        serializer = ChannelAggSerializer(aggs)
 
         return Response(serializer.data)
 

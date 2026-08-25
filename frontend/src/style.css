@@ -925,6 +925,11 @@ video:-webkit-full-screen {
   width: 100%;
 }
 
+/* direct child only: ChannelOverview nests its h3 and must stay inline */
+.info-box-item > h3 {
+  width: 100%;
+}
+
 .description-text {
   width: 100%;
 }
@@ -1361,11 +1366,16 @@ video:-webkit-full-screen {
   min-width: 300px;
 }
 
-.settings-item .agg-channel-table {
+/* unscoped from .settings-item: the channel about page uses these too */
+.agg-channel-table {
   width: 100%;
 }
 
-.settings-item .agg-channel-right-align {
+.agg-channel-name {
+  text-align: left;
+}
+
+.agg-channel-right-align {
   white-space: nowrap;
   text-align: right;
 }

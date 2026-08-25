@@ -89,12 +89,58 @@ class ChannelAggBucketSerializer(serializers.Serializer):
     value_str = serializers.CharField(required=False)
 
 
+class ChannelAggStatSerializer(serializers.Serializer):
+    """serialize a channel agg bucket with size and duration"""
+
+    doc_count = serializers.IntegerField()
+    media_size = serializers.IntegerField()
+    duration = serializers.IntegerField()
+    duration_str = serializers.CharField()
+
+
+class ChannelAggTypeSerializer(serializers.Serializer):
+    """serialize channel aggregation by vid_type"""
+
+    videos = ChannelAggStatSerializer()
+    shorts = ChannelAggStatSerializer()
+    streams = ChannelAggStatSerializer()
+    unknown = ChannelAggStatSerializer()
+
+
+class ChannelAggWatchSerializer(serializers.Serializer):
+    """serialize channel watch progress"""
+
+    watched = ChannelAggStatSerializer()
+    unwatched = ChannelAggStatSerializer()
+    progress = serializers.FloatField()
+
+
+class ChannelAggActiveSerializer(serializers.Serializer):
+    """serialize channel availability"""
+
+    active = serializers.IntegerField()
+    inactive = serializers.IntegerField()
+
+
+class ChannelAggDateRangeSerializer(serializers.Serializer):
+    """serialize channel date range"""
+
+    published_first = serializers.CharField(allow_null=True)
+    published_last = serializers.CharField(allow_null=True)
+    downloaded_first = serializers.CharField(allow_null=True)
+    downloaded_last = serializers.CharField(allow_null=True)
+
+
 class ChannelAggSerializer(serializers.Serializer):
     """serialize channel aggregation"""
 
     total_items = ChannelAggBucketSerializer()
     total_size = ChannelAggBucketSerializer()
     total_duration = ChannelAggBucketSerializer()
+    by_type = ChannelAggTypeSerializer()
+    watch_progress = ChannelAggWatchSerializer()
+    availability = ChannelAggActiveSerializer()
+    date_range = ChannelAggDateRangeSerializer()
 
 
 class ChannelNavSerializer(serializers.Serializer):

@@ -1,0 +1,164 @@
+"""channel aggregations"""
+
+from common.src.es_connect import ElasticWrap
+from common.src.helper import get_duration_str
+from video.src.constants import VideoTypeEnum
+
+# without this ES falls back to the mapping's first format (epoch_second)
+DATE_FMT = {"format": "strict_date_optional_time"}
+
+DATE_KEYS = [
+    "published_first",
+    "published_last",
+    "downloaded_first",
+    "downloaded_last",
+]
+
+
+class ChannelAggs:
+    """get aggregations for a single channel"""
+
+    path = "ta_video/_search"
+
+    def __init__(self, channel_id: str):
+        self.channel_id = channel_id
+
+    def build_query(self) -> dict:
+        """build aggregation query"""
+        sub_aggs = {
+            "media_size": {"sum": {"field": "media_size"}},
+            "duration": {"sum": {"field": "player.duration"}},
+        }
+
+        return {
+            "size": 0,
+            "query": {
+                "term": {"channel.channel_id": {"value": self.channel_id}}
+            },
+            "aggs": {
+                "total_items": {"value_count": {"field": "youtube_id"}},
+                "total_size": {"sum": {"field": "media_size"}},
+                "total_duration": {"sum": {"field": "player.duration"}},
+                "by_type": {
+                    "terms": {"field": "vid_type"},
+                    "aggs": sub_aggs,
+                },
+                "by_watched": {
+                    "terms": {"field": "player.watched"},
+                    "aggs": sub_aggs,
+                },
+                "by_active": {"terms": {"field": "active"}},
+                # full timestamps, not yyyy-MM-dd: the frontend renders these
+                # in the viewer's timezone like every other date in the app
+                "published_first": {"min": {"field": "published", **DATE_FMT}},
+                "published_last": {"max": {"field": "published", **DATE_FMT}},
+                "downloaded_first": {
+                    "min": {"field": "date_downloaded", **DATE_FMT}
+                },
+                "downloaded_last": {
+                    "max": {"field": "date_downloaded", **DATE_FMT}
+                },
+            },
+        }
+
+    def process(self) -> dict:
+        """run query, build response"""
+        response, _ = ElasticWrap(self.path).get(self.build_query())
+        aggs = response.get("aggregations")
+        if not aggs:
+            return self._empty()
+
+        total_duration = int(aggs["total_duration"]["value"])
+
+        return {
+            "total_items": {"value": int(aggs["total_items"]["value"])},
+            "total_size": {"value": int(aggs["total_size"]["value"])},
+            "total_duration": {
+                "value": total_duration,
+                "value_str": get_duration_str(total_duration),
+            },
+            "by_type": self._parse_type(aggs["by_type"]["buckets"]),
+            "watch_progress": self._parse_watched(
+                aggs["by_watched"]["buckets"], total_duration
+            ),
+            "availability": self._parse_active(aggs["by_active"]["buckets"]),
+            "date_range": {
+                key: aggs[key].get("value_as_string") for key in DATE_KEYS
+            },
+        }
+
+    @staticmethod
+    def _build_bucket(bucket: dict) -> dict:
+        """parse a bucket sharing the media_size/duration sub aggs"""
+        duration = int(bucket["duration"]["value"])
+
+        return {
+            "doc_count": bucket["doc_count"],
+            "media_size": int(bucket["media_size"]["value"]),
+            "duration": duration,
+            "duration_str": get_duration_str(duration),
+        }
+
+    @staticmethod
+    def _empty_bucket() -> dict:
+        """zeroed bucket for a type with no videos"""
+        return {
+            "doc_count": 0,
+            "media_size": 0,
+            "duration": 0,
+            "duration_str": get_duration_str(0),
+        }
+
+    def _parse_type(self, buckets: list[dict]) -> dict:
+        """parse vid_type buckets, keep every type so totals reconcile"""
+        parsed = {i: self._empty_bucket() for i in VideoTypeEnum.values()}
+        for bucket in buckets:
+            parsed[bucket["key"]] = self._build_bucket(bucket)
+
+        return parsed
+
+    def _parse_watched(self, buckets: list[dict], all_duration: int) -> dict:
+        """parse watched buckets"""
+        parsed = {
+            "watched": self._empty_bucket(),
+            "unwatched": self._empty_bucket(),
+        }
+        for bucket in buckets:
+            is_watched = bucket["key_as_string"] == "true"
+            key = "watched" if is_watched else "unwatched"
+            parsed[key] = self._build_bucket(bucket)
+
+        watched_duration = parsed["watched"]["duration"]
+        parsed["progress"] = (
+            watched_duration / all_duration if all_duration else 0
+        )
+
+        return parsed
+
+    @staticmethod
+    def _parse_active(buckets: list[dict]) -> dict:
+        """parse active buckets"""
+        parsed = {"active": 0, "inactive": 0}
+        for bucket in buckets:
+            key = "active" if bucket["key_as_string"] == "true" else "inactive"
+            parsed[key] = bucket["doc_count"]
+
+        return parsed
+
+    def _empty(self) -> dict:
+        """response shape for a channel without videos"""
+        return {
+            "total_items": {"value": 0},
+            "total_size": {"value": 0},
+            "total_duration": {"value": 0, "value_str": get_duration_str(0)},
+            "by_type": {
+                i: self._empty_bucket() for i in VideoTypeEnum.values()
+            },
+            "watch_progress": {
+                "watched": self._empty_bucket(),
+                "unwatched": self._empty_bucket(),
+                "progress": 0,
+            },
+            "availability": {"active": 0, "inactive": 0},
+            "date_range": {key: None for key in DATE_KEYS},
+        }
