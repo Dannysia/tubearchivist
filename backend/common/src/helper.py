@@ -212,12 +212,19 @@ def get_duration_sec(file_path: str) -> int:
     return duration_sec
 
 
-def get_duration_str(seconds: int | float) -> str:
-    """Return a human-readable duration string from seconds."""
-    if not seconds:
+def get_duration_str(seconds: int | float | None) -> str:
+    """Return a human-readable duration string from seconds.
+
+    None means unknown duration, zero is a real duration of zero.
+    """
+    if seconds is None:
         return "NA"
 
+    # int() first: a sub second float would leave no parts to join below
     seconds = int(seconds)
+    if not seconds:
+        return "0s"
+
     units = [("y", 31536000), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1)]
     duration_parts = []
 

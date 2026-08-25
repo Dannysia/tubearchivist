@@ -117,6 +117,9 @@ def test_is_not_shorts():
 def test_get_duration_str():
     """only seconds"""
     assert get_duration_str(None) == "NA"
+    assert get_duration_str(0) == "0s"
+    assert get_duration_str(0.0) == "0s"
+    assert get_duration_str(0.5) == "0s"
     assert get_duration_str(5) == "5s"
     assert get_duration_str(10) == "10s"
     assert get_duration_str(500) == "8m 20s"

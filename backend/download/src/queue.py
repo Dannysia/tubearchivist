@@ -389,7 +389,7 @@ class PendingList(PendingIndex):
             "channel_id": video_data["channel_id"],
             "channel_indexed": video_data["channel_id"] in self.all_channels,
             "channel_name": video_data["channel"],
-            "duration": get_duration_str(video_data.get("duration", 0)),
+            "duration": get_duration_str(video_data.get("duration")),
             "published": self._extract_published(video_data),
             "timestamp": int(datetime.now().timestamp()),
             "title": video_data["title"],
