@@ -50,6 +50,16 @@ urlpatterns = [
         name="api-manual-import",
     ),
     path(
+        "import-file/",
+        views.ImportFileView.as_view(),
+        name="api-import-file",
+    ),
+    path(
+        "import-file/<str:filename>/",
+        views.ImportFileItemView.as_view(),
+        name="api-import-file-item",
+    ),
+    path(
         "membership/profile/",
         views_mb.MembershipProfileView.as_view(),
         name="api-membership-profile",

@@ -133,6 +133,21 @@ class ManualImportConfig(serializers.Serializer):
     prefer_local = serializers.BooleanField()
 
 
+class ImportFileSerializer(serializers.Serializer):
+    """serialize a file staged in the import folder"""
+
+    filename = serializers.CharField()
+    size = serializers.IntegerField()
+    category = serializers.CharField()
+    video_id = serializers.CharField(allow_null=True)
+
+
+class ImportFileUploadSerializer(serializers.Serializer):
+    """serialize import folder upload"""
+
+    files = serializers.ListField(child=serializers.FileField())
+
+
 class SnapshotItemSerializer(serializers.Serializer):
     """serialize snapshot response"""
 

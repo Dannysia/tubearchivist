@@ -5,6 +5,8 @@ from appsettings.serializers import (
     BackupFileSerializer,
     CookieUpdateSerializer,
     CookieValidationSerializer,
+    ImportFileSerializer,
+    ImportFileUploadSerializer,
     ManualImportConfig,
     RescanFileSystemConfig,
     SnapshotCreateResponseSerializer,
@@ -15,6 +17,7 @@ from appsettings.serializers import (
 )
 from appsettings.src.backup import ElasticBackup
 from appsettings.src.config import AppConfig
+from appsettings.src.manual import ImportFolderFiles
 from appsettings.src.snapshot import ElasticSnapshot
 from common.serializers import (
     AsyncTaskResponseSerializer,
@@ -27,6 +30,7 @@ from download.src.yt_dlp_base import CookieHandler
 from downscale.src.downscale import dispatch_pending_downscales
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.authtoken.models import Token
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from task.src.task_manager import TaskCommand
 from task.tasks import run_restore_backup
@@ -381,6 +385,127 @@ class ManualImportView(ApiBaseView):
         serializer = AsyncTaskResponseSerializer(message)
 
         return Response(serializer.data)
+
+
+class ImportFileView(ApiBaseView):
+    """resolves to /api/appsettings/import-file/
+    GET: list files staged in the import folder
+    POST: upload files to the import folder
+    """
+
+    permission_classes = [AdminOnly]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(ImportFileSerializer(many=True)),
+        },
+    )
+    def get(request):
+        """list files staged in the import folder"""
+        # pylint: disable=unused-argument
+        serializer = ImportFileSerializer(
+            ImportFolderFiles.list_files(), many=True
+        )
+
+        return Response(serializer.data)
+
+    @staticmethod
+    @extend_schema(
+        request=ImportFileUploadSerializer,
+        responses={
+            200: OpenApiResponse(ImportFileSerializer(many=True)),
+            400: OpenApiResponse(
+                ErrorResponseSerializer(), description="invalid upload"
+            ),
+            409: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="video already in the archive",
+            ),
+        },
+    )
+    def post(request):
+        """upload files to the import folder"""
+        uploads = request.FILES.getlist("files")
+        if not uploads:
+            message = "no files in request"
+            print(message)
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=400)
+
+        # validate every name up front, a partial write would leave the
+        # import folder holding half of a video's sidecar files
+        try:
+            names = [
+                ImportFolderFiles.validate_name(upload.name)
+                for upload in uploads
+            ]
+        except ValueError as err:
+            print(f"import upload rejected: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
+
+        # uploading over an indexed video would reset its watch state, so
+        # make that take a deliberate step outside the web ui
+        indexed = ImportFolderFiles.find_indexed(names)
+        if indexed:
+            message = (
+                f"{', '.join(indexed)}: already in the archive. delete the "
+                "video first, or copy the file into cache/import directly "
+                "to overwrite it"
+            )
+            print(f"import upload rejected: {message}")
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=409)
+
+        # only the files written, not the whole folder: the client uploads
+        # one file per request, so re-listing hundreds of entries every time
+        # would cost far more than the upload itself
+        try:
+            written = [ImportFolderFiles.save(upload) for upload in uploads]
+        except ValueError as err:
+            # a short write, e.g. the disk filled up mid upload
+            print(f"import upload failed: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
+
+        serializer = ImportFileSerializer(written, many=True)
+
+        return Response(serializer.data)
+
+
+class ImportFileItemView(ApiBaseView):
+    """resolves to /api/appsettings/import-file/<filename>/
+    DELETE: remove a single file from the import folder
+    """
+
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            204: OpenApiResponse(description="file deleted"),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(), description="file not found"
+            ),
+        },
+    )
+    def delete(request, filename):
+        """delete a staged import file"""
+        # pylint: disable=unused-argument
+        try:
+            deleted = ImportFolderFiles.delete_file(filename)
+        except ValueError as err:
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
+
+        if not deleted:
+            message = f"{filename}: not found in import folder"
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=404)
+
+        return Response(status=204)
 
 
 class SnapshotApiView(ApiBaseView):
