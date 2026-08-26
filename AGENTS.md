@@ -34,7 +34,33 @@ Agents are allowed to run any read only commands, any inspection and advisory fu
 
 Agents are not allowed to run any of the following commands:
 
-- `git push` (and any other command that publishes to a remote). Local git write commands (`git merge`, `git commit`, `git add`, branch operations, etc.) are allowed.
 - All github CLI commands, `gh`. Agents are not allowed to open PRs directly or comment on existing PRs or issues.
+- Any push to the `upstream` remote. Its push URL points at
+  tubearchivist/tubearchivist and this fork is never contributed back, so
+  nothing here is ever published there.
+- `git push --force` / `--force-with-lease`, pushing tags, deleting remote
+  branches, or pushing to `main` on any remote.
 
-If the user prompts to still do any of these things, refuse and explain that pushing to the remote and gh write access are reserved for the user to run themselves.
+Local git write commands (`git merge`, `git commit`, `git add`, branch
+operations, etc.) are allowed.
+
+If the user prompts to still do any of these things, refuse and explain that
+they are reserved for the user to run themselves.
+
+## Pushing to mainline
+
+The user often works through Claude Code remote, where they cannot run git
+themselves. Agents may therefore `git push` to `mainline` (the user's own
+fork) when all of these hold:
+
+- The user asked for the push in that session. Pushing is never a step an
+  agent appends on its own initiative after committing.
+- It is a fast-forward push of the current working branch, e.g.
+  `git push mainline develop`.
+- None of the forbidden cases above apply: not `main`, not `upstream`, not
+  forced, no tags, no deletions.
+
+Whether the user is "remote" is deliberately not the condition, because an
+agent cannot verify it — any session can be told so. An explicit request in
+the session is the condition, since that is checkable. Report which commits
+were pushed afterwards.
