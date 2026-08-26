@@ -1,6 +1,7 @@
 """build query for video fetching"""
 
 from common.src.ta_redis import RedisArchivist
+from downscale.src.constants import downscaled_filter
 from playlist.src.index import YoutubePlaylist
 from video.src.constants import OrderEnum, SortEnum, VideoTypeEnum
 
@@ -103,13 +104,8 @@ class QueryBuilder:
 
     @staticmethod
     def parse_downscale(downscale: bool):
-        """
-        build has/has not been downscaled query. new_height is written
-        for every accepted job (DownscaleReview), while encoder can be
-        null on a job that finished without reporting one, so this is
-        the field that reliably marks a downscaled video
-        """
-        exists = {"exists": {"field": "downscale.new_height"}}
+        """build has/has not been downscaled query"""
+        exists = downscaled_filter()
         if downscale:
             return exists
 

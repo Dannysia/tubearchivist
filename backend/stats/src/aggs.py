@@ -4,6 +4,7 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from django.conf import settings
+from downscale.src.constants import downscaled_filter
 
 
 class AggBase:
@@ -389,16 +390,13 @@ class Downscale(AggBase):
     ENCODER_LIMIT = 8
     OTHER_ENCODER = "other"
 
-    # new_height marks a downscaled video, the same marker the channel
-    # panel and the video list filter use - see ChannelAggs.build_query
-    # and QueryBuilder.parse_downscale
     _size_aggs = {
         "original_size": {"sum": {"field": "downscale.original_size"}},
         "new_size": {"sum": {"field": "downscale.new_size"}},
     }
     data = {
         "size": 0,
-        "query": {"exists": {"field": "downscale.new_height"}},
+        "query": downscaled_filter(),
         "aggs": {
             **_size_aggs,
             # AggBase.get() returns only the aggregations, so the hit

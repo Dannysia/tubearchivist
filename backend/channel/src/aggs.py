@@ -2,6 +2,7 @@
 
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
+from downscale.src.constants import downscaled_filter
 from video.src.constants import VideoTypeEnum
 
 # without this ES falls back to the mapping's first format (epoch_second)
@@ -48,10 +49,8 @@ class ChannelAggs:
                     "aggs": sub_aggs,
                 },
                 "by_active": {"terms": {"field": "active"}},
-                # new_height marks a downscaled video, same as the video
-                # list filter - see QueryBuilder.parse_downscale
                 "downscale": {
-                    "filter": {"exists": {"field": "downscale.new_height"}},
+                    "filter": downscaled_filter(),
                     "aggs": {
                         "original_size": {
                             "sum": {"field": "downscale.original_size"}
