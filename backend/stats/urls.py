@@ -15,6 +15,11 @@ urlpatterns = [
         name="api-stats-channel",
     ),
     path(
+        "downscale/",
+        views.StatDownscaleView.as_view(),
+        name="api-stats-downscale",
+    ),
+    path(
         "playlist/",
         views.StatPlaylistView.as_view(),
         name="api-stats-playlist",

@@ -48,6 +48,28 @@ class PlaylistStatsSerializer(serializers.Serializer):
     subscribed_true = serializers.IntegerField(allow_null=True)
 
 
+class DownscaleStatsItemSerializer(serializers.Serializer):
+    """serialize downscale savings for one encoder"""
+
+    encoder = serializers.CharField()
+    doc_count = serializers.IntegerField()
+    original_size = serializers.IntegerField()
+    new_size = serializers.IntegerField()
+    saved = serializers.IntegerField()
+    saved_percent = serializers.FloatField()
+
+
+class DownscaleStatsSerializer(serializers.Serializer):
+    """serialize downscale savings stats"""
+
+    doc_count = serializers.IntegerField()
+    original_size = serializers.IntegerField()
+    new_size = serializers.IntegerField()
+    saved = serializers.IntegerField()
+    saved_percent = serializers.FloatField()
+    by_encoder = DownscaleStatsItemSerializer(many=True)
+
+
 class DownloadStatsSerializer(serializers.Serializer):
     """serialize download stats"""
 

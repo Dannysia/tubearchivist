@@ -371,3 +371,123 @@ class BiggestChannel(AggBase):
         ]
 
         return response
+
+
+class Downscale(AggBase):
+    """get downscale savings stats"""
+
+    name = "downscale_stats"
+    path = "ta_video/_search"
+
+    # how many encoder panels to break the savings down into. The set of
+    # distinct encoder strings is naturally small - six local encoders
+    # plus whatever remote workers report - and does not grow with the
+    # archive the way channels or days do, so this is a defensive bound
+    # rather than a real ceiling. Anything past it is folded into a
+    # single OTHER_ENCODER entry, so the panels always reconcile with
+    # the total instead of silently dropping savings.
+    ENCODER_LIMIT = 8
+    OTHER_ENCODER = "other"
+
+    # new_height marks a downscaled video, the same marker the channel
+    # panel and the video list filter use - see ChannelAggs.build_query
+    # and QueryBuilder.parse_downscale
+    _size_aggs = {
+        "original_size": {"sum": {"field": "downscale.original_size"}},
+        "new_size": {"sum": {"field": "downscale.new_size"}},
+    }
+    data = {
+        "size": 0,
+        "query": {"exists": {"field": "downscale.new_height"}},
+        "aggs": {
+            **_size_aggs,
+            # AggBase.get() returns only the aggregations, so the hit
+            # total is not available - count here instead
+            "video_count": {"value_count": {"field": "youtube_id"}},
+            "by_encoder": {
+                # ordered by the data each encoder actually processed,
+                # so a truncated tail is the least significant one
+                "terms": {
+                    "field": "downscale.encoder",
+                    "size": ENCODER_LIMIT,
+                    "order": {"original_size": "desc"},
+                },
+                "aggs": _size_aggs,
+            },
+        },
+    }
+
+    def process(self):
+        """process aggregation"""
+        aggregations = self.get()
+        if not aggregations:
+            return None
+
+        response = self._build_totals(
+            int(aggregations["video_count"]["value"]), aggregations
+        )
+        by_encoder = [
+            self._build_totals(bucket["doc_count"], bucket, bucket["key"])
+            for bucket in aggregations["by_encoder"]["buckets"]
+        ]
+        remainder = self._build_remainder(response, by_encoder)
+        if remainder:
+            by_encoder.append(remainder)
+
+        response["by_encoder"] = by_encoder
+
+        return response
+
+    @classmethod
+    def _build_remainder(cls, total: dict, shown: list[dict]) -> dict | None:
+        """
+        fold every encoder past ENCODER_LIMIT into one entry. Derived by
+        subtracting what is shown from the total rather than from the
+        dropped buckets themselves, which the terms agg never returns,
+        so it stays exact however many encoders were left out
+        """
+        doc_count = total["doc_count"] - sum(i["doc_count"] for i in shown)
+        if doc_count <= 0:
+            return None
+
+        original_size = total["original_size"] - sum(
+            i["original_size"] for i in shown
+        )
+        new_size = total["new_size"] - sum(i["new_size"] for i in shown)
+        saved = original_size - new_size
+
+        return {
+            "encoder": cls.OTHER_ENCODER,
+            "doc_count": doc_count,
+            "original_size": original_size,
+            "new_size": new_size,
+            "saved": saved,
+            "saved_percent": (
+                round(saved / original_size * 100, 2) if original_size else 0
+            ),
+        }
+
+    @staticmethod
+    def _build_totals(
+        doc_count: int, agg: dict, encoder: str | None = None
+    ) -> dict:
+        """build the savings numbers shared by the total and each encoder"""
+        original_size = int(agg["original_size"]["value"])
+        new_size = int(agg["new_size"]["value"])
+        saved = original_size - new_size
+
+        totals = {
+            "doc_count": doc_count,
+            "original_size": original_size,
+            "new_size": new_size,
+            "saved": saved,
+            # of the original size, so a 76% saving means the archive
+            # now holds 24% of what these videos used to take
+            "saved_percent": (
+                round(saved / original_size * 100, 2) if original_size else 0
+            ),
+        }
+        if encoder is not None:
+            totals["encoder"] = encoder
+
+        return totals

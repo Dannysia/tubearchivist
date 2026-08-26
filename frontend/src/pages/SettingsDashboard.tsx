@@ -13,12 +13,14 @@ import loadStatsDownloadHistory, {
 import loadStatsBiggestChannels, {
   BiggestChannelsStatsType,
 } from '../api/loader/loadStatsBiggestChannels';
+import loadStatsDownscale, { DownscaleStatsType } from '../api/loader/loadStatsDownscale';
 import OverviewStats from '../components/OverviewStats';
 import VideoTypeStats from '../components/VideoTypeStats';
 import ApplicationStats from '../components/ApplicationStats';
 import WatchProgressStats from '../components/WatchProgressStats';
 import DownloadHistoryStats from '../components/DownloadHistoryStats';
 import BiggestChannelsStats from '../components/BiggestChannelsStats';
+import DownscaleStats from '../components/DownscaleStats';
 import Notifications from '../components/Notifications';
 import PaginationDummy from '../components/PaginationDummy';
 import { useUserConfigStore } from '../stores/UserConfigStore';
@@ -35,6 +37,7 @@ type DashboardStatsReponses = {
   biggestChannelsStatsByCount?: ApiResponseType<BiggestChannelsStatsType>;
   biggestChannelsStatsByDuration?: ApiResponseType<BiggestChannelsStatsType>;
   biggestChannelsStatsByMediaSize?: ApiResponseType<BiggestChannelsStatsType>;
+  downscaleStats?: ApiResponseType<DownscaleStatsType>;
 };
 
 const SettingsDashboard = () => {
@@ -53,6 +56,7 @@ const SettingsDashboard = () => {
   const { data: biggestChannelsStatsByCount } = response?.biggestChannelsStatsByCount || {};
   const { data: biggestChannelsStatsByDuration } = response?.biggestChannelsStatsByDuration || {};
   const { data: biggestChannelsStatsByMediaSize } = response?.biggestChannelsStatsByMediaSize || {};
+  const { data: downscaleStats } = response?.downscaleStats || {};
 
   useEffect(() => {
     (async () => {
@@ -66,6 +70,7 @@ const SettingsDashboard = () => {
         await loadStatsBiggestChannels('doc_count'),
         await loadStatsBiggestChannels('duration'),
         await loadStatsBiggestChannels('media_size'),
+        await loadStatsDownscale(),
       ]);
 
       const [
@@ -78,6 +83,7 @@ const SettingsDashboard = () => {
         biggestChannelsStatsByCount,
         biggestChannelsStatsByDuration,
         biggestChannelsStatsByMediaSize,
+        downscaleStats,
       ] = all;
 
       setResponse({
@@ -90,6 +96,7 @@ const SettingsDashboard = () => {
         biggestChannelsStatsByCount,
         biggestChannelsStatsByDuration,
         biggestChannelsStatsByMediaSize,
+        downscaleStats,
       });
     })();
   }, []);
@@ -140,6 +147,16 @@ const SettingsDashboard = () => {
             <DownloadHistoryStats downloadHistoryStats={downloadHistoryStats} useSIUnits={false} />
           </div>
         </div>
+        {/* nothing downscaled is the normal case, only show this
+            section once there are savings to report */}
+        {!!downscaleStats?.doc_count && (
+          <div className="settings-item">
+            <h2>Downscale Savings</h2>
+            <div className="info-box info-box-3">
+              <DownscaleStats downscaleStats={downscaleStats} useSIUnits={useSiUnits} />
+            </div>
+          </div>
+        )}
         <div className="settings-item">
           <h2>Biggest Channels</h2>
           <div className="info-box info-box-3">

@@ -10,6 +10,7 @@ from stats.serializers import (
     ChannelStatsSerializer,
     DownloadHistItemSerializer,
     DownloadStatsSerializer,
+    DownscaleStatsSerializer,
     PlaylistStatsSerializer,
     VideoStatsSerializer,
     WatchStatsSerializer,
@@ -19,6 +20,7 @@ from stats.src.aggs import (
     Channel,
     Download,
     DownloadHist,
+    Downscale,
     Playlist,
     Video,
     WatchProgress,
@@ -49,6 +51,20 @@ class StatChannelView(ApiBaseView):
         """get channel stats"""
         # pylint: disable=unused-argument
         serializer = ChannelStatsSerializer(Channel().process())
+
+        return Response(serializer.data)
+
+
+class StatDownscaleView(ApiBaseView):
+    """resolves to /api/stats/downscale/
+    GET: return downscale savings stats
+    """
+
+    @extend_schema(responses=DownscaleStatsSerializer())
+    def get(self, request):
+        """get downscale stats"""
+        # pylint: disable=unused-argument
+        serializer = DownscaleStatsSerializer(Downscale().process())
 
         return Response(serializer.data)
 
