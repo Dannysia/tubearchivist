@@ -23,6 +23,9 @@ class ElasticBackup:
     INDEX_SIZE_CONF = {
         "comment": 100,
         "subtitle": 10000,
+        # history docs are tiny but there are a lot of them, the
+        # default 500 per page would be thousands of round trips
+        "history": 10000,
     }
     CACHE_DIR = EnvironmentSettings.CACHE_DIR
     BACKUP_DIR = os.path.join(CACHE_DIR, "backup")

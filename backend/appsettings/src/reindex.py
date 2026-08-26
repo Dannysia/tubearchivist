@@ -15,6 +15,7 @@ from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import rand_sleep
+from common.src.history import track_changes, track_deactivation
 from common.src.ta_redis import RedisArchivist, RedisQueue
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import CookieHandler
@@ -367,8 +368,11 @@ class Reindex(ReindexBase):
             youtube_id, es_meta, is_redownload
         )
 
+        source = "redownload" if is_redownload else "reindex"
+
         video.build_json(media_path=media_url)
         if not video.youtube_meta:
+            track_deactivation("video", youtube_id, es_meta, source=source)
             video.deactivate()
             return None
 
@@ -385,6 +389,9 @@ class Reindex(ReindexBase):
         if not is_redownload and es_meta.get("downscale"):
             video.json_data["downscale"] = es_meta.get("downscale")
 
+        track_changes(
+            "video", youtube_id, es_meta, video.json_data, source=source
+        )
         video.upload_to_es()
         self.processed["videos"] += 1
 
@@ -413,6 +420,7 @@ class Reindex(ReindexBase):
         # get new
         channel.get_from_youtube()
         if not channel.youtube_meta:
+            track_deactivation("channel", channel_id, es_meta)
             channel.deactivate()
             channel.get_from_es()
             channel.sync_to_videos()
@@ -427,6 +435,7 @@ class Reindex(ReindexBase):
         if overwrites:
             channel.json_data["channel_overwrites"] = overwrites
 
+        track_changes("channel", channel_id, es_meta, channel.json_data)
         channel.upload_to_es()
         channel.sync_to_videos()
         ChannelFullScan(channel_id, self.config).scan()
@@ -442,11 +451,15 @@ class Reindex(ReindexBase):
         ):
             return
 
+        es_meta = playlist.json_data.copy()
+
         is_active = playlist.update_playlist()
         if not is_active:
+            track_deactivation("playlist", playlist_id, es_meta)
             playlist.deactivate()
             return
 
+        track_changes("playlist", playlist_id, es_meta, playlist.json_data)
         self.processed["playlists"] += 1
 
     def cookie_is_valid(self) -> bool:

@@ -930,6 +930,59 @@
                 },
                 "number_of_replicas": "0"
             }
+        },
+        {
+            "index_name": "history",
+            "expected_map": {
+                "item_id": {
+                    "type": "keyword"
+                },
+                "item_type": {
+                    "type": "keyword"
+                },
+                "channel_id": {
+                    "type": "keyword"
+                },
+                "refresh_id": {
+                    "type": "keyword"
+                },
+                "source": {
+                    "type": "keyword"
+                },
+                "timestamp": {
+                    "type": "date",
+                    "format": "epoch_second"
+                },
+                "field": {
+                    "type": "keyword"
+                },
+                "old_value": {
+                    "type": "text",
+                    "index": false
+                },
+                "new_value": {
+                    "type": "text",
+                    "index": false
+                },
+                "old_value_type": {
+                    "type": "keyword"
+                },
+                "new_value_type": {
+                    "type": "keyword"
+                },
+                "old_num": {
+                    "type": "double"
+                },
+                "new_num": {
+                    "type": "double"
+                },
+                "delta": {
+                    "type": "double"
+                }
+            },
+            "expected_set": {
+                "number_of_replicas": "0"
+            }
         }
     ]
 }
