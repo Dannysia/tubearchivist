@@ -1,5 +1,6 @@
 import { ViewStylesType } from '../../configuration/constants/ViewStyle';
 import APIClient from '../../functions/APIClient';
+import { ChannelSortByType } from '../loader/loadChannelList';
 import { SortByType, SortOrderType, VideoTypes } from '../loader/loadVideoListByPage';
 
 export type ColourVariants =
@@ -27,6 +28,8 @@ export type UserConfigType = {
   page_size: number;
   sort_by: SortByType;
   sort_order: SortOrderType;
+  sort_by_channel: ChannelSortByType;
+  sort_order_channel: SortOrderType;
   view_style_home: ViewStylesType;
   view_style_channel: ViewStylesType;
   view_style_downloads: ViewStylesType;

@@ -9,6 +9,9 @@ import ChannelIcon from './ChannelIcon';
 import ChannelBanner from './ChannelBanner';
 import LoadingIndicator from './LoadingIndicator';
 import { useUserConfigStore } from '../stores/UserConfigStore';
+import { FileSizeUnits } from '../api/actions/updateUserConfig';
+import humanFileSize from '../functions/humanFileSize';
+import formatNumbers from '../functions/formatNumbers';
 
 type ChannelListProps = {
   channelList: ChannelType[] | undefined;
@@ -18,6 +21,7 @@ type ChannelListProps = {
 const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
   const { userConfig } = useUserConfigStore();
   const viewStyle = userConfig.view_style_channel;
+  const useSiUnits = userConfig.file_size_unit === FileSizeUnits.Metric;
 
   if (!channelList) {
     return <LoadingIndicator />;
@@ -60,6 +64,13 @@ const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
               </div>
               <div className="info-box-item">
                 <div>
+                  {channel.channel_stats && (
+                    <p>
+                      {formatNumbers(channel.channel_stats.doc_count)} videos -{' '}
+                      {humanFileSize(channel.channel_stats.media_size, useSiUnits)} -{' '}
+                      {channel.channel_stats.duration_str}
+                    </p>
+                  )}
                   <p>Last refreshed: {formatDate(channel.channel_last_refresh)}</p>
                   {channel.channel_subscribed && (
                     <Button

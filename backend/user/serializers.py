@@ -2,6 +2,7 @@
 
 # pylint: disable=abstract-method
 
+from channel.src.constants import ChannelSortEnum
 from common.src.helper import get_stylesheets
 from rest_framework import serializers
 from user.models import Account
@@ -31,6 +32,8 @@ class UserMeConfigSerializer(serializers.Serializer):
     page_size = serializers.IntegerField()
     sort_by = serializers.ChoiceField(choices=SortEnum.names())
     sort_order = serializers.ChoiceField(choices=OrderEnum.values())
+    sort_by_channel = serializers.ChoiceField(choices=ChannelSortEnum.names())
+    sort_order_channel = serializers.ChoiceField(choices=OrderEnum.values())
     view_style_home = serializers.ChoiceField(
         choices=["grid", "list", "table"]
     )

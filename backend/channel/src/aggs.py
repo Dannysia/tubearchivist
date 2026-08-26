@@ -162,3 +162,100 @@ class ChannelAggs:
             "availability": {"active": 0, "inactive": 0},
             "date_range": {key: None for key in DATE_KEYS},
         }
+
+
+class ChannelListAggs:
+    """get per channel video stats for the channel list"""
+
+    path = "ta_video/_search"
+
+    # channel count is orders of magnitude below the video count, this is
+    # sized to fit every channel of an archive into a single terms agg
+    MAX_CHANNELS = 10000
+
+    def __init__(self, channel_ids: list[str] | None = None):
+        # None aggregates every channel, needed to sort the whole list,
+        # a list limits the agg to the channels of a single page
+        self.channel_ids = channel_ids
+
+    def build_query(self) -> dict:
+        """build aggregation query"""
+        if self.channel_ids is None:
+            query = {"match_all": {}}
+            size = self.MAX_CHANNELS
+        else:
+            query = {"terms": {"channel.channel_id": self.channel_ids}}
+            size = max(len(self.channel_ids), 1)
+
+        return {
+            "size": 0,
+            "query": query,
+            "aggs": {
+                "by_channel": {
+                    "terms": {"field": "channel.channel_id", "size": size},
+                    "aggs": {
+                        "media_size": {"sum": {"field": "media_size"}},
+                        "duration": {"sum": {"field": "player.duration"}},
+                        "watched_duration": {
+                            "filter": {"term": {"player.watched": True}},
+                            "aggs": {
+                                "duration": {
+                                    "sum": {"field": "player.duration"}
+                                }
+                            },
+                        },
+                        "last_download": {
+                            "max": {"field": "date_downloaded", **DATE_FMT}
+                        },
+                        "last_published": {
+                            "max": {"field": "published", **DATE_FMT}
+                        },
+                    },
+                }
+            },
+        }
+
+    def process(self) -> dict[str, dict]:
+        """run query, build a channel_id to stats lookup"""
+        if self.channel_ids is not None and not self.channel_ids:
+            return {}
+
+        response, _ = ElasticWrap(self.path).get(self.build_query())
+        aggs = response.get("aggregations")
+        if not aggs:
+            return {}
+
+        return {
+            bucket["key"]: self._build_stats(bucket)
+            for bucket in aggs["by_channel"]["buckets"]
+        }
+
+    @staticmethod
+    def _build_stats(bucket: dict) -> dict:
+        """parse a single channel bucket"""
+        duration = int(bucket["duration"]["value"])
+        watched = int(bucket["watched_duration"]["duration"]["value"])
+
+        return {
+            "doc_count": bucket["doc_count"],
+            "media_size": int(bucket["media_size"]["value"]),
+            "duration": duration,
+            "duration_str": get_duration_str(duration),
+            "watch_progress": watched / duration if duration else 0,
+            # sortable as is, ES returns a fixed width timestamp
+            "last_download": bucket["last_download"].get("value_as_string"),
+            "last_published": bucket["last_published"].get("value_as_string"),
+        }
+
+    @staticmethod
+    def empty_stats() -> dict:
+        """stats for a channel without indexed videos"""
+        return {
+            "doc_count": 0,
+            "media_size": 0,
+            "duration": 0,
+            "duration_str": get_duration_str(0),
+            "watch_progress": 0,
+            "last_download": None,
+            "last_published": None,
+        }

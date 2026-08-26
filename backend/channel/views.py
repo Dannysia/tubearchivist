@@ -11,10 +11,13 @@ from channel.serializers import (
     ChannelUpdateSerializer,
 )
 from channel.src.aggs import ChannelAggs
+from channel.src.constants import ChannelSortEnum
 from channel.src.index import YoutubeChannel, channel_overwrites
+from channel.src.list_query import ChannelListQuery
 from channel.src.nav import ChannelNav
 from common.serializers import ErrorResponseSerializer
 from common.src.es_connect import IndexPaginate
+from common.src.index_generic import Pagination
 from common.src.urlparser import Parser
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from downscale.src.downscale import dispatch_pending_downscales
@@ -47,25 +50,28 @@ class ChannelApiListView(ApiBaseView):
     )
     def get(self, request):
         """get request"""
-        self.data.update(
-            {"sort": [{"channel_name.keyword": {"order": "asc"}}]}
-        )
-
         serializer = ChannelListQuerySerializer(data=request.query_params)
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
 
-        must_list = []
-        query_filter = validated_data.get("filter")
-        if query_filter is not None:
-            channel_subscribed = query_filter == "subscribed"
-            must_list.append(
-                {"term": {"channel_subscribed": {"value": channel_subscribed}}}
-            )
+        list_query = ChannelListQuery(
+            query_filter=validated_data.get("filter"),
+            sort_by=ChannelSortEnum.from_name(
+                validated_data.get("sort", "name")
+            ),
+            order=validated_data.get("order", "asc"),
+        )
 
-        self.data["query"] = {"bool": {"must": must_list}}
-        self.get_document_list(request)
-        serializer = ChannelListSerializer(self.response)
+        pagination_handler = Pagination(request)
+        channels, total_hits = list_query.get_page(
+            page_from=pagination_handler.pagination["page_from"],
+            page_size=pagination_handler.pagination["page_size"],
+        )
+        pagination_handler.validate(total_hits)
+
+        serializer = ChannelListSerializer(
+            {"data": channels, "paginate": pagination_handler.pagination}
+        )
 
         return Response(serializer.data)
 

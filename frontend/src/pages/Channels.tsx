@@ -1,9 +1,14 @@
 import { useOutletContext } from 'react-router-dom';
-import loadChannelList, { ChannelsListResponse } from '../api/loader/loadChannelList';
+import loadChannelList, {
+  ChannelSortByEnum,
+  ChannelSortByType,
+  ChannelsListResponse,
+} from '../api/loader/loadChannelList';
 import iconGridView from '/img/icon-gridview.svg';
 import iconListView from '/img/icon-listview.svg';
 import iconAdd from '/img/icon-add.svg';
 import iconFilter from '/img/icon-filter.svg';
+import iconSort from '/img/icon-sort.svg';
 import { useEffect, useState } from 'react';
 import Pagination from '../components/Pagination';
 import { OutletContextType } from './Base';
@@ -17,6 +22,7 @@ import { useUserConfigStore } from '../stores/UserConfigStore';
 import updateUserConfig, { UserConfigType } from '../api/actions/updateUserConfig';
 import { ApiResponseType } from '../functions/APIClient';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
+import { SortOrderEnum, SortOrderType } from '../api/loader/loadVideoListByPage';
 
 type ChannelOverwritesType = {
   download_format: string | null;
@@ -26,6 +32,16 @@ type ChannelOverwritesType = {
   subscriptions_channel_size: number | null;
   subscriptions_live_channel_size: number | null;
   subscriptions_shorts_channel_size: number | null;
+};
+
+export type ChannelStatsType = {
+  doc_count: number;
+  media_size: number;
+  duration: number;
+  duration_str: string;
+  watch_progress: number;
+  last_download: string | null;
+  last_published: string | null;
 };
 
 export type ChannelType = {
@@ -42,6 +58,7 @@ export type ChannelType = {
   channel_tags?: string[];
   channel_thumb_url: string;
   channel_tvart_url: string;
+  channel_stats?: ChannelStatsType;
 };
 
 const Channels = () => {
@@ -54,6 +71,7 @@ const Channels = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [refresh, setRefresh] = useState(true);
   const [showFilterItems, setShowFilterItems] = useState(false);
+  const [showSortItems, setShowSortItems] = useState(false);
   const [showNotification, setShowNotification] = useState(false);
   const [channelsToSubscribeTo, setChannelsToSubscribeTo] = useState('');
 
@@ -73,13 +91,25 @@ const Channels = () => {
 
   useEffect(() => {
     (async () => {
-      const channelListResponse = await loadChannelList(currentPage, userConfig.show_subed_only);
+      const channelListResponse = await loadChannelList({
+        page: currentPage,
+        showSubscribed: userConfig.show_subed_only,
+        sort: userConfig.sort_by_channel,
+        order: userConfig.sort_order_channel,
+      });
 
       setChannelListResponse(channelListResponse);
       setShowNotification(false);
       setRefresh(false);
     })();
-  }, [refresh, userConfig.show_subed_only, currentPage, pagination?.current_page]);
+  }, [
+    refresh,
+    userConfig.show_subed_only,
+    userConfig.sort_by_channel,
+    userConfig.sort_order_channel,
+    currentPage,
+    pagination?.current_page,
+  ]);
 
   return (
     <>
@@ -172,6 +202,57 @@ const Channels = () => {
               src={iconFilter}
               alt="icon filter"
               onClick={() => setShowFilterItems(!showFilterItems)}
+            />
+
+            {showSortItems && (
+              <div className="sort">
+                <span>Sort:</span>
+                <select
+                  name="sort_by"
+                  id="sort"
+                  value={userConfig.sort_by_channel}
+                  onChange={event => {
+                    handleUserConfigUpdate({
+                      sort_by_channel: event.target.value as ChannelSortByType,
+                    });
+                    setCurrentPage(0);
+                  }}
+                >
+                  {Object.entries(ChannelSortByEnum).map(([key, value]) => {
+                    return (
+                      <option key={value} value={value}>
+                        {key}
+                      </option>
+                    );
+                  })}
+                </select>
+                <select
+                  name="sort_order"
+                  id="sort-order"
+                  value={userConfig.sort_order_channel}
+                  onChange={event => {
+                    handleUserConfigUpdate({
+                      sort_order_channel: event.target.value as SortOrderType,
+                    });
+                    setCurrentPage(0);
+                  }}
+                >
+                  {Object.entries(SortOrderEnum).map(([key, value]) => {
+                    return (
+                      <option key={value} value={value}>
+                        {key}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+
+            <img
+              src={iconSort}
+              alt="sort-icon"
+              onClick={() => setShowSortItems(!showSortItems)}
+              id="animate-icon"
             />
 
             <img

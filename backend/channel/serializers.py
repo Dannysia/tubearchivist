@@ -2,10 +2,11 @@
 
 # pylint: disable=abstract-method
 
+from channel.src.constants import ChannelSortEnum
 from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
 from downscale.serializers import DownscaleBulkResultItemSerializer
 from rest_framework import serializers
-from video.src.constants import VideoTypeEnum
+from video.src.constants import OrderEnum, VideoTypeEnum
 
 
 class ChannelOverwriteSerializer(
@@ -28,6 +29,18 @@ class ChannelOverwriteSerializer(
     subscriptions_shorts_channel_size = serializers.IntegerField(
         required=False, allow_null=True
     )
+
+
+class ChannelListStatSerializer(serializers.Serializer):
+    """serialize the video stats of a channel list item"""
+
+    doc_count = serializers.IntegerField()
+    media_size = serializers.IntegerField()
+    duration = serializers.IntegerField()
+    duration_str = serializers.CharField()
+    watch_progress = serializers.FloatField()
+    last_download = serializers.CharField(allow_null=True)
+    last_published = serializers.CharField(allow_null=True)
 
 
 class ChannelSerializer(serializers.Serializer):
@@ -55,6 +68,7 @@ class ChannelSerializer(serializers.Serializer):
     channel_tabs = serializers.ListField(
         child=serializers.ChoiceField(VideoTypeEnum.values_known())
     )
+    channel_stats = ChannelListStatSerializer(required=False)
     _index = serializers.CharField(required=False)
     _score = serializers.IntegerField(required=False)
 
@@ -72,6 +86,10 @@ class ChannelListQuerySerializer(serializers.Serializer):
     filter = serializers.ChoiceField(
         choices=["subscribed", "unsubscribed"], required=False
     )
+    sort = serializers.ChoiceField(
+        choices=ChannelSortEnum.names(), required=False
+    )
+    order = serializers.ChoiceField(choices=OrderEnum.values(), required=False)
     page = serializers.IntegerField(required=False)
 
 

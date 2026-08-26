@@ -16,6 +16,8 @@ class UserConfigType(TypedDict, total=False):
     page_size: int
     sort_by: str
     sort_order: str
+    sort_by_channel: str
+    sort_order_channel: str
     view_style_home: str
     view_style_channel: str
     view_style_downloads: str
@@ -43,6 +45,8 @@ class UserConfig:
         page_size=25,
         sort_by="published",
         sort_order="desc",
+        sort_by_channel="name",
+        sort_order_channel="asc",
         view_style_home="grid",
         view_style_channel="list",
         view_style_downloads="list",

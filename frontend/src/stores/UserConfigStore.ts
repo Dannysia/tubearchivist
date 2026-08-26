@@ -14,6 +14,8 @@ export const useUserConfigStore = create<UserConfigState>(set => ({
     page_size: 12,
     sort_by: 'published',
     sort_order: SortOrderEnum.Desc as SortOrderType,
+    sort_by_channel: 'name',
+    sort_order_channel: SortOrderEnum.Asc as SortOrderType,
     view_style_home: ViewStylesEnum.Grid as ViewStylesType,
     view_style_channel: ViewStylesEnum.List as ViewStylesType,
     view_style_downloads: ViewStylesEnum.List as ViewStylesType,
