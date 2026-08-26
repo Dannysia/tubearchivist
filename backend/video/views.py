@@ -15,6 +15,7 @@ from video.serializers import (
     DownscaleQueuedResponseSerializer,
     PlayerSerializer,
     PlaylistNavItemSerializer,
+    VideoDownscaleEncoderAggsSerializer,
     VideoDownscaleSerializer,
     VideoListQuerySerializer,
     VideoListSerializer,
@@ -23,6 +24,8 @@ from video.serializers import (
 )
 from video.src.index import YoutubeVideo
 from video.src.query_building import QueryBuilder
+
+DOWNSCALE_ENCODER_AGG = "downscale_encoder"
 
 
 class VideoApiListView(ApiBaseView):
@@ -36,6 +39,8 @@ class VideoApiListView(ApiBaseView):
     - order:enum=asc|desc
     - type:enum=videos|streams|shorts
     - height:int=px
+    - downscale:bool=true|false
+    - downscale_encoder:str=<encoder>
     """
 
     search_base = "ta_video/_search/"
@@ -66,6 +71,44 @@ class VideoApiListView(ApiBaseView):
         response_serializer = VideoListSerializer(self.response)
 
         return Response(response_serializer.data)
+
+
+class VideoDownscaleEncoderView(ApiBaseView):
+    """resolves to /api/video/downscale-encoders/
+    GET: list the downscale encoders present in the video index
+    """
+
+    search_base = "ta_video/_search/"
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(VideoDownscaleEncoderAggsSerializer())
+        },
+    )
+    def get(self, request):
+        # pylint: disable=unused-argument
+        """
+        get the encoders videos have actually been downscaled with, to
+        populate the filter dropdown. Aggregated rather than served from
+        ENCODER_SETTINGS because a remote worker reports its own encoder
+        string, which is not in that dict (see DownscaleEncoders.ts)
+        """
+        self.data = {
+            "query": {"exists": {"field": "downscale.encoder"}},
+            "aggs": {
+                DOWNSCALE_ENCODER_AGG: {
+                    "terms": {"field": "downscale.encoder", "size": 30}
+                }
+            },
+        }
+        self.get_aggs()
+
+        aggs = self.response or {}
+        serializer = VideoDownscaleEncoderAggsSerializer(
+            aggs.get(DOWNSCALE_ENCODER_AGG, {"buckets": []})
+        )
+
+        return Response(serializer.data)
 
 
 class VideoApiView(ApiBaseView):

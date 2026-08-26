@@ -43,6 +43,11 @@ class UserMeConfigSerializer(serializers.Serializer):
     vid_type_filter = serializers.ChoiceField(
         choices=VideoTypeEnum.values_known(), allow_null=True
     )
+    downscale_filter = serializers.BooleanField(allow_null=True)
+    # not a ChoiceField: a remote worker reports its own encoder string
+    downscale_encoder_filter = serializers.CharField(
+        allow_null=True, allow_blank=True
+    )
     grid_items = serializers.IntegerField(max_value=7, min_value=3)
     hide_watched = serializers.BooleanField(allow_null=True)
     hide_watched_channel = serializers.BooleanField(allow_null=True)

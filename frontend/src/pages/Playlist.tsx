@@ -94,6 +94,8 @@ const Playlist = () => {
                 : WatchTypesEnum.Unwatched) as WatchTypes),
         type: userConfig.vid_type_filter as VideoTypes,
         height: filterHeight,
+        downscale: userConfig.downscale_filter,
+        downscaleEncoder: userConfig.downscale_encoder_filter,
       });
 
       setPlaylistResponse(playlist);
@@ -112,6 +114,8 @@ const Playlist = () => {
     playlistId,
     userConfig.hide_watched_playlist,
     userConfig.vid_type_filter,
+    userConfig.downscale_filter,
+    userConfig.downscale_encoder_filter,
     filterHeight,
     refresh,
     currentPage,

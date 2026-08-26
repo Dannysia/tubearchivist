@@ -86,6 +86,8 @@ const ChannelVideo = ({ videoType }: ChannelVideoProps) => {
         order: userConfig.sort_order,
         type: videoType,
         height: filterHeight,
+        downscale: userConfig.downscale_filter,
+        downscaleEncoder: userConfig.downscale_encoder_filter,
       });
       const channelAggs = await loadChannelAggs(channelId);
 
@@ -99,6 +101,8 @@ const ChannelVideo = ({ videoType }: ChannelVideoProps) => {
     userConfig.sort_by,
     userConfig.sort_order,
     userConfig.hide_watched_channel,
+    userConfig.downscale_filter,
+    userConfig.downscale_encoder_filter,
     filterHeight,
     currentPage,
     channelId,

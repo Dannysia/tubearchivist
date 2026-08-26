@@ -35,6 +35,8 @@ export type UserConfigType = {
   view_style_downloads: ViewStylesType;
   view_style_playlist: ViewStylesType;
   vid_type_filter: VideoTypes | null;
+  downscale_filter: boolean | null;
+  downscale_encoder_filter: string | null;
   grid_items: number;
   hide_watched: boolean | null;
   hide_watched_channel: boolean | null;

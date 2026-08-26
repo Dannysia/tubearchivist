@@ -52,6 +52,8 @@ type FilterType = {
   order?: SortOrderType;
   type?: VideoTypes;
   height?: string;
+  downscale?: boolean | null;
+  downscaleEncoder?: string | null;
 };
 
 const loadVideoListByFilter = async (filter: FilterType) => {
@@ -69,6 +71,12 @@ const loadVideoListByFilter = async (filter: FilterType) => {
   if (filter.order) searchParams.append('order', filter.order);
   if (filter.type) searchParams.append('type', filter.type);
   if (filter.height) searchParams.append('height', filter.height.toString());
+  if (filter.downscale !== undefined && filter.downscale !== null) {
+    searchParams.append('downscale', filter.downscale.toString());
+  }
+  if (filter.downscaleEncoder) {
+    searchParams.append('downscale_encoder', filter.downscaleEncoder);
+  }
 
   const endpoint = `/api/video/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
   return APIClient<VideoListByFilterResponseType>(endpoint);

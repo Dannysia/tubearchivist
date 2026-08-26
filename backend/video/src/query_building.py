@@ -49,6 +49,14 @@ class QueryBuilder:
             height_must = self.parse_height(height)
             must_list.append(height_must)
 
+        downscale = self.request_params.get("downscale")
+        if downscale is not None:
+            must_list.append(self.parse_downscale(downscale))
+
+        downscale_encoder = self.request_params.get("downscale_encoder")
+        if downscale_encoder:
+            must_list.append(self.parse_downscale_encoder(downscale_encoder))
+
         query = {"bool": {"must": must_list}}
 
         return query
@@ -92,6 +100,29 @@ class QueryBuilder:
         """parse height to int"""
 
         return {"term": {"streams.height": {"value": height}}}
+
+    @staticmethod
+    def parse_downscale(downscale: bool):
+        """
+        build has/has not been downscaled query. new_height is written
+        for every accepted job (DownscaleReview), while encoder can be
+        null on a job that finished without reporting one, so this is
+        the field that reliably marks a downscaled video
+        """
+        exists = {"exists": {"field": "downscale.new_height"}}
+        if downscale:
+            return exists
+
+        return {"bool": {"must_not": exists}}
+
+    @staticmethod
+    def parse_downscale_encoder(encoder: str):
+        """
+        build downscale encoder query. Not validated against a fixed
+        list: a remote worker reports its own encoder string, so the
+        values here are whatever finished jobs actually wrote
+        """
+        return {"term": {"downscale.encoder": {"value": encoder}}}
 
     def parse_sort(self) -> dict | None:
         """build sort key"""

@@ -161,6 +161,8 @@ const Home = () => {
         sort: userConfig.sort_by,
         order: userConfig.sort_order,
         height: filterHeight,
+        downscale: userConfig.downscale_filter,
+        downscaleEncoder: userConfig.downscale_encoder_filter,
       });
 
       try {
@@ -181,6 +183,8 @@ const Home = () => {
     userConfig.sort_order,
     userConfig.hide_watched,
     userConfig.vid_type_filter,
+    userConfig.downscale_filter,
+    userConfig.downscale_encoder_filter,
     filterHeight,
     currentPage,
     pagination?.current_page,

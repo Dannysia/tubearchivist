@@ -18,6 +18,8 @@ import {
   VideoTypes,
 } from '../api/loader/loadVideoListByPage';
 import { useFilterBarTempConf } from '../stores/FilterbarTempConf';
+import loadVideoDownscaleEncoders from '../api/loader/loadVideoDownscaleEncoders';
+import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders';
 import { useVideoSelectionStore } from '../stores/VideoSelectionStore';
 import Button from './Button';
 import updateDownloadQueue from '../api/actions/updateDownloadQueue';
@@ -50,6 +52,7 @@ const Filterbar = ({
   } = useVideoSelectionStore();
 
   const [showHidden, setShowHidden] = useState(false);
+  const [downscaleEncoders, setDownscaleEncoders] = useState<string[]>([]);
   const { filterHeight, setFilterHeight, showFilterItems, setShowFilterItems } =
     useFilterBarTempConf();
   const { setStartNotification } = useOutletContext() as ChannelBaseOutletContextType;
@@ -70,6 +73,15 @@ const Filterbar = ({
       setShowHidden(false);
     }
   }, [currentViewStyle, showSort]);
+
+  // only worth offering the encoder filter once something has been
+  // downscaled, so the options come from the index, not a static list
+  useEffect(() => {
+    (async () => {
+      const { data } = await loadVideoDownscaleEncoders();
+      setDownscaleEncoders(data?.buckets.map(bucket => bucket.key) ?? []);
+    })();
+  }, []);
 
   const handleUserConfigUpdate = async (config: Partial<UserConfigType>) => {
     const updatedUserConfig = await updateUserConfig(config);
@@ -161,6 +173,39 @@ const Filterbar = ({
                   <option value="videos">Videos</option>
                   <option value="streams">Streams</option>
                   <option value="shorts">Shorts</option>
+                </select>
+              )}
+              <select
+                value={
+                  userConfig.downscale_filter === null ? '' : userConfig.downscale_filter.toString()
+                }
+                onChange={event => {
+                  handleUserConfigUpdate({
+                    downscale_filter:
+                      event.target.value === '' ? null : event.target.value === 'true',
+                  });
+                }}
+              >
+                <option value="">All downscale state</option>
+                <option value="true">Downscaled only</option>
+                <option value="false">Not downscaled only</option>
+              </select>
+              {downscaleEncoders.length > 0 && (
+                <select
+                  value={userConfig.downscale_encoder_filter ?? ''}
+                  onChange={event => {
+                    handleUserConfigUpdate({
+                      downscale_encoder_filter:
+                        event.target.value === '' ? null : event.target.value,
+                    });
+                  }}
+                >
+                  <option value="">All codecs</option>
+                  {downscaleEncoders.map(encoder => (
+                    <option key={encoder} value={encoder}>
+                      {ALL_ENCODER_LABELS[encoder] ?? encoder}
+                    </option>
+                  ))}
                 </select>
               )}
               <input

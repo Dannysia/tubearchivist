@@ -174,6 +174,21 @@ class VideoListQuerySerializer(serializers.Serializer):
     )
     page = serializers.IntegerField(required=False)
     height = serializers.IntegerField(required=False)
+    downscale = serializers.BooleanField(required=False, allow_null=True)
+    downscale_encoder = serializers.CharField(required=False)
+
+
+class VideoDownscaleEncoderBucketSerializer(serializers.Serializer):
+    """serialize a single downscale encoder bucket"""
+
+    key = serializers.CharField()
+    doc_count = serializers.IntegerField()
+
+
+class VideoDownscaleEncoderAggsSerializer(serializers.Serializer):
+    """serialize the downscale encoders present in the video index"""
+
+    buckets = VideoDownscaleEncoderBucketSerializer(many=True)
 
 
 class CommentItemSerializer(serializers.Serializer):

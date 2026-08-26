@@ -23,6 +23,8 @@ class UserConfigType(TypedDict, total=False):
     view_style_downloads: str
     view_style_playlist: str
     vid_type_filter: str | None
+    downscale_filter: bool | None
+    downscale_encoder_filter: str | None
     grid_items: int
     hide_watched: bool | None
     hide_watched_channel: bool | None
@@ -52,6 +54,8 @@ class UserConfig:
         view_style_downloads="list",
         view_style_playlist="grid",
         vid_type_filter=None,
+        downscale_filter=None,
+        downscale_encoder_filter=None,
         grid_items=3,
         hide_watched=False,
         hide_watched_channel=None,
