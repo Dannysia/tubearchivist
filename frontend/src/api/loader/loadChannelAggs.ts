@@ -33,6 +33,12 @@ export type ChannelAggsType = {
     active: number;
     inactive: number;
   };
+  downscale: {
+    doc_count: number;
+    original_size: number;
+    new_size: number;
+    saved: number;
+  };
   date_range: {
     published_first: string | null;
     published_last: string | null;

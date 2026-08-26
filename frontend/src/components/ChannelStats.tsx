@@ -36,7 +36,7 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
     return <p id="loading">Loading...</p>;
   }
 
-  const { by_type, watch_progress, availability, date_range } = channelAggs;
+  const { by_type, watch_progress, availability, downscale, date_range } = channelAggs;
   const watchedPercent = (watch_progress.progress * 100).toFixed(1);
 
   const cards = [
@@ -68,6 +68,21 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
         Deactivated: formatNumbers(availability.inactive),
       },
     },
+    // nothing downscaled is the normal case, so only show the panel
+    // once this channel actually has something to report
+    ...(downscale.doc_count > 0
+      ? [
+          {
+            title: 'Downscaled',
+            data: {
+              Videos: formatNumbers(downscale.doc_count),
+              ['Original Size']: humanFileSize(downscale.original_size, useSIUnits),
+              ['Downscaled Size']: humanFileSize(downscale.new_size, useSIUnits),
+              Saved: humanFileSize(downscale.saved, useSIUnits),
+            },
+          },
+        ]
+      : []),
     {
       title: 'Date Range',
       data: {

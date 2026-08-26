@@ -140,6 +140,15 @@ class ChannelAggActiveSerializer(serializers.Serializer):
     inactive = serializers.IntegerField()
 
 
+class ChannelAggDownscaleSerializer(serializers.Serializer):
+    """serialize channel downscale totals"""
+
+    doc_count = serializers.IntegerField()
+    original_size = serializers.IntegerField()
+    new_size = serializers.IntegerField()
+    saved = serializers.IntegerField()
+
+
 class ChannelAggDateRangeSerializer(serializers.Serializer):
     """serialize channel date range"""
 
@@ -158,6 +167,7 @@ class ChannelAggSerializer(serializers.Serializer):
     by_type = ChannelAggTypeSerializer()
     watch_progress = ChannelAggWatchSerializer()
     availability = ChannelAggActiveSerializer()
+    downscale = ChannelAggDownscaleSerializer()
     date_range = ChannelAggDateRangeSerializer()
 
 

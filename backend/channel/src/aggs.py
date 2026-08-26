@@ -48,6 +48,17 @@ class ChannelAggs:
                     "aggs": sub_aggs,
                 },
                 "by_active": {"terms": {"field": "active"}},
+                # new_height marks a downscaled video, same as the video
+                # list filter - see QueryBuilder.parse_downscale
+                "downscale": {
+                    "filter": {"exists": {"field": "downscale.new_height"}},
+                    "aggs": {
+                        "original_size": {
+                            "sum": {"field": "downscale.original_size"}
+                        },
+                        "new_size": {"sum": {"field": "downscale.new_size"}},
+                    },
+                },
                 # full timestamps, not yyyy-MM-dd: the frontend renders these
                 # in the viewer's timezone like every other date in the app
                 "published_first": {"min": {"field": "published", **DATE_FMT}},
@@ -82,9 +93,33 @@ class ChannelAggs:
                 aggs["by_watched"]["buckets"], total_duration
             ),
             "availability": self._parse_active(aggs["by_active"]["buckets"]),
+            "downscale": self._parse_downscale(aggs["downscale"]),
             "date_range": {
                 key: aggs[key].get("value_as_string") for key in DATE_KEYS
             },
+        }
+
+    @staticmethod
+    def _parse_downscale(agg: dict) -> dict:
+        """parse the downscale filter bucket"""
+        original_size = int(agg["original_size"]["value"])
+        new_size = int(agg["new_size"]["value"])
+
+        return {
+            "doc_count": agg["doc_count"],
+            "original_size": original_size,
+            "new_size": new_size,
+            "saved": original_size - new_size,
+        }
+
+    @staticmethod
+    def _empty_downscale() -> dict:
+        """downscale bucket for a channel with nothing downscaled"""
+        return {
+            "doc_count": 0,
+            "original_size": 0,
+            "new_size": 0,
+            "saved": 0,
         }
 
     @staticmethod
@@ -160,6 +195,7 @@ class ChannelAggs:
                 "progress": 0,
             },
             "availability": {"active": 0, "inactive": 0},
+            "downscale": self._empty_downscale(),
             "date_range": {key: None for key in DATE_KEYS},
         }
 
