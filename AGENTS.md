@@ -4,6 +4,21 @@ This is a personal fork of [tubearchivist/tubearchivist](https://github.com/tube
 
 These are mandatory guidelines for coding agents working in this repo.
 
+## Running tests
+
+There is no python environment on the host. Use `./run_tests.sh`, which
+runs pytest in a throwaway container built from the deployed image with
+the working tree bind mounted, alongside its own throwaway redis. The
+running stack is never touched.
+
+```bash
+./run_tests.sh                 # whole suite
+./run_tests.sh backend/common  # subset, args are passed to pytest
+./run_tests.sh lint            # black, isort and flake8 check only
+```
+
+The script header documents the setup and its caveats.
+
 ## Allowed agents usage
 
 Agents are allowed to run any read only commands, any inspection and advisory functionality on this repo, and to write code — including large or sweeping changes — as needed to implement what the user asks for. That includes:
