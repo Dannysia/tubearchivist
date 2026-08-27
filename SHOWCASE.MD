@@ -1,3 +1,7 @@
+*These are upstream's screenshots and video, kept for reference. They
+predate this fork's UI changes — there is no downscale queue, no import
+file management and none of the added stats panels in them.*
+
 ## Tube Archivist on YouTube
 [![ibracorp-youtube-video-thumb](assets/tube-archivist-ibracorp-O8H8Z01c0Ys.jpg)](https://www.youtube.com/watch?v=O8H8Z01c0Ys)
 Video featuring Tube Archivist generously created by [IBRACORP](https://www.youtube.com/@IBRACORP).

@@ -1,6 +1,6 @@
 # Coding agents on tubearchivist
 
-This is a personal fork of [tubearchivist/tubearchivist](https://github.com/tubearchivist/tubearchivist), developed and run locally on a Raspberry Pi 5, with an eventual move to the user's Unraid server. There is no intent to contribute this work back upstream, and the fork is expected to diverge significantly from mainline over time. Upstream's [CONTRIBUTING.md](CONTRIBUTING.md) still ships in this repo but describes the *upstream* project's process (issue templates, PR discipline, org rules) — it does not govern work here and agents should not cite it to push back on scope or diff size.
+This is a personal fork of [tubearchivist/tubearchivist](https://github.com/tubearchivist/tubearchivist), developed and run locally on a Raspberry Pi 5, with an eventual move to the user's Unraid server. There is no intent to contribute this work back upstream, and the fork is expected to diverge significantly from mainline over time. Upstream's process — issue templates, PR discipline, org rules, its policy against agents writing code — does not govern work here, and agents should not cite it to push back on scope or diff size. [CONTRIBUTING.md](CONTRIBUTING.md) used to be a verbatim copy of that guide and is now a pointer to it.
 
 These are mandatory guidelines for coding agents working in this repo.
 
