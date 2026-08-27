@@ -87,8 +87,14 @@ def wired(monkeypatch):
 class TestDisabled:
     """nothing happens unless it was asked for"""
 
-    def test_no_config_at_all_is_silent(self):
-        """urlparser builds a YtWrap without one"""
+    def test_no_config_at_all_is_silent(self, monkeypatch):
+        """urlparser builds a YtWrap without one, and that path must not
+        need a redis either"""
+
+        def explode():
+            raise AssertionError("redis must not be reached when off")
+
+        monkeypatch.setattr(exit_node, "RedisArchivist", explode)
         assert exit_node.rotate_on_bot_block(False) is None
 
     def test_toggle_off_is_silent(self, wired):
@@ -186,13 +192,33 @@ class TestRotating:
 
 
 class TestBudget:
-    """handing it back"""
+    """handing it back
+
+    clear_budget runs after every request that works, so what it costs
+    when rotation is switched off matters more than what it does when
+    switched on
+    """
+
+    def test_disabled_never_reaches_redis(self, monkeypatch):
+        """the regression: this used to construct a RedisArchivist on
+        every successful extract, which needs a REDIS_CON to exist even
+        on an install that will never rotate anything"""
+
+        def explode():
+            raise AssertionError("redis must not be reached when off")
+
+        monkeypatch.setattr(exit_node, "RedisArchivist", explode)
+
+        exit_node.clear_budget(config(enabled=False))
+        exit_node.clear_budget(False)
+        exit_node.clear_budget(None)
+        exit_node.clear_budget()
 
     def test_a_working_request_clears_it(self, monkeypatch):
         redis = FakeRedis(stored="2")
         monkeypatch.setattr(exit_node, "RedisArchivist", lambda: redis)
 
-        exit_node.clear_budget()
+        exit_node.clear_budget(config())
         assert redis.deleted is True
 
     def test_clearing_an_unused_budget_touches_nothing(self, monkeypatch):
@@ -200,7 +226,7 @@ class TestBudget:
         redis = FakeRedis(stored=None)
         monkeypatch.setattr(exit_node, "RedisArchivist", lambda: redis)
 
-        exit_node.clear_budget()
+        exit_node.clear_budget(config())
         assert redis.deleted is False
 
     def test_a_junk_value_reads_as_no_budget_used(self, monkeypatch):

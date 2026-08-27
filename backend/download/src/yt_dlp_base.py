@@ -107,7 +107,7 @@ class YtWrap:
                 return False, str(err)
 
         self._validate_cookie()
-        clear_budget()
+        clear_budget(self.config)
 
         return True, True
 
@@ -138,7 +138,7 @@ class YtWrap:
                 return None, str(err)
 
         self._validate_cookie()
-        clear_budget()
+        clear_budget(self.config)
 
         return response, None
 

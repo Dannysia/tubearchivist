@@ -24,9 +24,29 @@ def _budget_used() -> int:
     return int(stored) if stored and stored.isdigit() else 0
 
 
-def clear_budget() -> None:
+def _is_enabled(config) -> bool:
+    """whether rotation is switched on for this request
+
+    urlparser builds a YtWrap with no config at all, which is neither on
+    nor off but has to read as off.
+    """
+    if not config:
+        return False
+
+    return bool((config.get("downloads") or {}).get("auto_rotate_exit_node"))
+
+
+def clear_budget(config=None) -> None:
     """a request got through, so the address is fine and the next block
-    starts with a full budget again"""
+    starts with a full budget again
+
+    takes the config because this runs after every successful request:
+    an install with rotation switched off must not pay a redis round
+    trip, or need a redis at all, for a budget it cannot have spent.
+    """
+    if not _is_enabled(config):
+        return
+
     if _budget_used():
         RedisArchivist().del_message(ROTATE_COUNT_KEY)
 
@@ -38,17 +58,13 @@ def rotate_on_bot_block(config) -> str | None:
     raises: a failure to rotate must not replace the bot error that is
     already on its way up.
     """
-    # urlparser builds a YtWrap with no config at all
-    if not config:
-        return None
-
-    downloads = config.get("downloads") or {}
-    if not downloads.get("auto_rotate_exit_node"):
+    if not _is_enabled(config):
         return None
 
     if not tailscale.is_available():
         return "auto rotate is on but there is no tailscaled to talk to"
 
+    downloads = config.get("downloads") or {}
     used = _budget_used()
     allowed = downloads.get("max_exit_node_rotates") or FALLBACK_MAX_ROTATES
     if used >= allowed:
