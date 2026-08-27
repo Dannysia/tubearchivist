@@ -228,7 +228,7 @@ TA_UPSTREAM = "https://github.com/tubearchivist/tubearchivist"
 # not a place to record fork changes - ReleaseVersion._parse_version
 # int()s the dot separated parts and raises on any suffix that is not
 # spelled out of the letters in "-unstable".
-TA_VERSION = "v0.5.11"
+TA_VERSION = "v0.5.12"
 # which build of this working tree is running, baked in at image build
 # time - see local_deploy.sh. Empty for an image built without the
 # build args, which then just reports TA_VERSION on its own.
