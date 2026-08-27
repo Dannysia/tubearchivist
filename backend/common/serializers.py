@@ -149,3 +149,59 @@ class RefreshAddDataSerializer(serializers.Serializer):
     playlist = serializers.ListField(
         child=serializers.CharField(), required=False
     )
+
+
+class LogEntrySerializer(serializers.Serializer):
+    """serialize a single log entry"""
+
+    id = serializers.CharField()
+    timestamp = serializers.IntegerField()
+    source = serializers.CharField()
+    level = serializers.CharField()
+    message = serializers.CharField()
+    event = serializers.CharField(required=False)
+    task_id = serializers.CharField(required=False)
+    task_name = serializers.CharField(required=False)
+    task_title = serializers.CharField(required=False)
+    group = serializers.CharField(required=False)
+
+
+class LogTaskOptionSerializer(serializers.Serializer):
+    """serialize one entry of the task filter dropdown"""
+
+    task_name = serializers.CharField()
+    task_title = serializers.CharField()
+
+
+class LogListSerializer(serializers.Serializer):
+    """serialize log list response"""
+
+    data = LogEntrySerializer(many=True)
+    paginate = PaginationSerializer()
+    tasks = LogTaskOptionSerializer(many=True)
+
+
+class LogQueryFilterSerializer(serializers.Serializer):
+    """serialize log list query filters"""
+
+    source = serializers.ChoiceField(
+        choices=["notification", "application"], required=False
+    )
+    level = serializers.ChoiceField(choices=["info", "error"], required=False)
+    task_name = serializers.CharField(required=False)
+    q = serializers.CharField(required=False)
+    page = serializers.IntegerField(required=False)
+
+
+class LogDeleteQuerySerializer(serializers.Serializer):
+    """serialize log delete query"""
+
+    source = serializers.ChoiceField(
+        choices=["notification", "application"], required=False
+    )
+
+
+class LogDeleteResultSerializer(serializers.Serializer):
+    """serialize log delete result"""
+
+    deleted = serializers.IntegerField()

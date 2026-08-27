@@ -5,6 +5,10 @@ from appsettings.src.reindex import ReindexProgress
 from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
+    LogDeleteQuerySerializer,
+    LogDeleteResultSerializer,
+    LogListSerializer,
+    LogQueryFilterSerializer,
     NotificationQueryFilterSerializer,
     NotificationSerializer,
     PingSerializer,
@@ -14,6 +18,9 @@ from common.serializers import (
     RefreshResponseSerializer,
     WatchedDataSerializer,
 )
+from common.src.es_connect import ElasticWrap
+from common.src.log import clear_logs
+from common.src.search_processor import SearchProcess
 from common.src.searching import SearchForm
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
@@ -211,3 +218,142 @@ class HealthCheck(APIView):
     def get(self, request):
         """health check, no auth needed"""
         return Response("OK", status=200)
+
+
+class LogView(ApiBaseView):
+    """resolves to /api/log/
+    GET: return stored log entries, newest first
+    DELETE: clear stored log entries
+    """
+
+    search_base = "ta_log/_search"
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    def _build_must_list(validated_query: dict) -> list[dict]:
+        """build the filter part of the query"""
+        must_list: list[dict] = []
+        for field in ("source", "level", "task_name"):
+            value = validated_query.get(field)
+            if value:
+                must_list.append({"term": {field: {"value": value}}})
+
+        query_str = validated_query.get("q")
+        if query_str:
+            must_list.append({"match": {"message": {"query": query_str}}})
+
+        return must_list
+
+    @extend_schema(
+        parameters=[LogQueryFilterSerializer()],
+        responses={200: OpenApiResponse(LogListSerializer())},
+    )
+    def get(self, request):
+        """get log entries"""
+        query_serializer = LogQueryFilterSerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        validated_query = query_serializer.validated_data
+
+        must_list = self._build_must_list(validated_query)
+        if must_list:
+            self.data["query"] = {"bool": {"must": must_list}}
+
+        self.data["sort"] = [{"timestamp": {"order": "desc"}}]
+        self.data["aggs"] = self._build_task_aggs(validated_query)
+        self.initiate_pagination(request)
+
+        response, _ = ElasticWrap(self.search_base).get(data=self.data)
+        # deliberately not get_document_list: that 404s on an empty
+        # result, and an empty log is the normal state of a fresh
+        # install rather than a missing page
+        hits = response.get("hits", {})
+        self.pagination_handler.validate(hits.get("total", {}).get("value", 0))
+        serializer = LogListSerializer(
+            {
+                "data": SearchProcess(response).process() or [],
+                "paginate": self.pagination_handler.pagination,
+                "tasks": self._parse_task_aggs(response),
+            }
+        )
+
+        return Response(serializer.data)
+
+    @staticmethod
+    def _build_task_aggs(validated_query: dict) -> dict:
+        """
+        build the aggs for the task filter dropdown
+
+        Deliberately scoped to the source alone rather than the active
+        filters: an agg over the current result set would drop every
+        other task the moment one is picked, leaving no way back to
+        them, and would miss any task whose entries all sit on a later
+        page. With no source given the list spans every source, exactly
+        as the unfiltered result set does.
+        """
+        source = validated_query.get("source")
+        source_filter: dict = (
+            {"term": {"source": {"value": source}}}
+            if source
+            else {"match_all": {}}
+        )
+
+        return {
+            "all": {
+                "global": {},
+                "aggs": {
+                    "in_source": {
+                        "filter": source_filter,
+                        "aggs": {
+                            "tasks": {
+                                "multi_terms": {
+                                    "size": 50,
+                                    "terms": [
+                                        {"field": "task_name"},
+                                        # multi_terms drops a document
+                                        # missing any of its fields, and
+                                        # a task with no TASK_CONFIG
+                                        # entry logs without a title.
+                                        # Without this it would have
+                                        # rows in the log that the
+                                        # filter could not select
+                                        {"field": "task_title", "missing": ""},
+                                    ],
+                                    "order": {"_count": "desc"},
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        }
+
+    @staticmethod
+    def _parse_task_aggs(response: dict) -> list[dict]:
+        """pull the task name/title pairs back out of the agg response"""
+        buckets = (
+            response.get("aggregations", {})
+            .get("all", {})
+            .get("in_source", {})
+            .get("tasks", {})
+            .get("buckets", [])
+        )
+
+        return [
+            {"task_name": i["key"][0], "task_title": i["key"][1]}
+            for i in buckets
+        ]
+
+    @extend_schema(
+        parameters=[LogDeleteQuerySerializer()],
+        responses={200: OpenApiResponse(LogDeleteResultSerializer())},
+    )
+    def delete(self, request):
+        """clear log entries, optionally limited to one source"""
+        query_serializer = LogDeleteQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        source = query_serializer.validated_data.get("source")
+
+        deleted = clear_logs(source)
+        serializer = LogDeleteResultSerializer({"deleted": deleted})
+
+        return Response(serializer.data)

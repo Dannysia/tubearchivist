@@ -247,6 +247,7 @@ class Command(BaseCommand):
             "thumbnail_check",
             "version_check",
             "downscale_reap_leases",
+            "log_cleanup",
         ):
             existing = CustomPeriodicTask.objects.filter(
                 name=task_name

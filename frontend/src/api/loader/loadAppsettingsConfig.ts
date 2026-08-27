@@ -39,6 +39,7 @@ export type AppSettingsConfigType = {
     downscale_encoder: 'h264' | 'h264_vaapi' | 'h265' | 'h265_vaapi' | 'av1' | 'av1_vaapi';
     downscale_crf: number;
     downscale_preset: string | null;
+    log_retention_days: number;
   };
 };
 

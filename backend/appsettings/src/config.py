@@ -68,6 +68,7 @@ class ApplicationConfigType(TypedDict):
     ]
     downscale_crf: int | None
     downscale_preset: str | None
+    log_retention_days: int
 
 
 class AppConfigType(TypedDict):
@@ -122,6 +123,7 @@ class AppConfig:
             "downscale_encoder": "h264",
             "downscale_crf": 23,
             "downscale_preset": "veryfast",
+            "log_retention_days": 7,
         },
     }
 

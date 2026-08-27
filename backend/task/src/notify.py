@@ -15,22 +15,39 @@ class Notifications:
     def __init__(self, task_name: str):
         self.task_name = task_name
 
-    def send(self, task_id: str, task_title: str) -> None:
-        """send notifications"""
+    def send(self, task_id: str, task_title: str) -> tuple[bool, str] | None:
+        """
+        send notifications
+
+        Returns (sent, detail) describing a dispatch that was actually
+        attempted, or None when there was nothing to send. The caller
+        logs the result, so this swallows apprise failures rather than
+        letting them surface as the task itself having failed.
+        """
+        # pylint: disable=broad-exception-caught
         apobj = apprise.Apprise()
         urls: list[str] = self.get_urls()
         if not urls:
-            return
+            return None
 
         title, body = self._build_message(task_id, task_title)
 
         if not body:
-            return
+            return None
 
         for url in urls:
             apobj.add(url)
 
-        apobj.notify(body=body, title=title)
+        count = len(urls)
+        try:
+            sent = bool(apobj.notify(body=body, title=title))
+        except Exception as err:
+            return False, f"notification failed for {count} url(s): {err}"
+
+        if not sent:
+            return False, f"notification failed for {count} url(s)"
+
+        return True, f"notification sent to {count} url(s): {body}"
 
     def test(self, url) -> tuple[bool, str]:
         """send test notification"""

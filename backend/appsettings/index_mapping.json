@@ -983,6 +983,42 @@
             "expected_set": {
                 "number_of_replicas": "0"
             }
+        },
+        {
+            "index_name": "log",
+            "expected_map": {
+                "timestamp": {
+                    "type": "date",
+                    "format": "epoch_second"
+                },
+                "source": {
+                    "type": "keyword"
+                },
+                "level": {
+                    "type": "keyword"
+                },
+                "event": {
+                    "type": "keyword"
+                },
+                "task_id": {
+                    "type": "keyword"
+                },
+                "task_name": {
+                    "type": "keyword"
+                },
+                "task_title": {
+                    "type": "keyword"
+                },
+                "group": {
+                    "type": "keyword"
+                },
+                "message": {
+                    "type": "text"
+                }
+            },
+            "expected_set": {
+                "number_of_replicas": "0"
+            }
         }
     ]
 }

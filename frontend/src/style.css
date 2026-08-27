@@ -241,6 +241,45 @@ button:disabled:hover {
   font-weight: bold;
 }
 
+/* log table */
+.log-table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 10px;
+}
+
+.log-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+
+.log-table th,
+.log-table td {
+  border: 1px solid var(--accent-font-light);
+  padding: 3px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* the timestamp and task columns read as one line each, only the
+   message is allowed to wrap and take the leftover width */
+.log-table td:not(.log-message) {
+  white-space: nowrap;
+}
+
+.log-table .log-message {
+  width: 100%;
+  word-break: break-word;
+}
+
+/* the error rows are the reason to open this page at all, so they get
+   the same wash the rest of the ui uses for a failure */
+.log-table .log-error td {
+  background-color: var(--highlight-error);
+  color: #fff;
+}
+
 .help-text {
   width: 100%;
   border-left: 1px solid var(--accent-font-light);

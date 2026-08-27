@@ -97,6 +97,7 @@ class AppConfigAppSerializer(
     downscale_preset = serializers.ChoiceField(
         choices=PRESET_CHOICES, allow_null=True
     )
+    log_retention_days = serializers.IntegerField(min_value=1, max_value=365)
 
 
 class AppConfigSerializer(ValidateUnknownFieldsMixin, serializers.Serializer):

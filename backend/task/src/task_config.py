@@ -131,6 +131,13 @@ DOWNSCALE_REAP_LEASES: TaskItemConfig = {
     "api_stop": False,
 }
 
+LOG_CLEANUP: TaskItemConfig = {
+    "title": "Prune Log Entries",
+    "group": "",
+    "api_start": False,
+    "api_stop": False,
+}
+
 TASK_CONFIG: dict[str, TaskItemConfig] = {
     "update_subscribed": UPDATE_SUBSCRIBED,
     "download_pending": DOWNLOAD_PENDING,
@@ -148,4 +155,5 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "version_check": VERSION_CHECK,
     "downscale_video": DOWNSCALE_VIDEO,
     "downscale_reap_leases": DOWNSCALE_REAP_LEASES,
+    "log_cleanup": LOG_CLEANUP,
 }

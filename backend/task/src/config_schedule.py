@@ -22,6 +22,7 @@ class ScheduleBuilder:
         "run_backup": 168,
         "version_check": 24,
         "downscale_reap_leases": 1,
+        "log_cleanup": 24,
     }
     # tasks not listed here default to hourly intervals. update_subscribed
     # is a lightweight ticker that only checks which subscriptions are due,

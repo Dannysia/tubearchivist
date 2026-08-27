@@ -46,6 +46,12 @@ copying it in.
 `ta_history` index, so a view count or title can be followed over time.
 See [docs/metadata-history](docs/metadata-history/README.md).
 
+**Task notification log.** What each background task did, kept in a
+`ta_log` index and readable under settings → logs long after the
+on-screen message has gone. Only runs that did something are recorded,
+so an overnight failure is not buried under hundreds of "nothing to do".
+Entries are pruned on a daily schedule, seven days by default.
+
 **More stats.** Per channel totals on the channel about page, channel list
 sorting by video count, size, duration, watch progress or archive dates,
 and downscale savings on the dashboard.

@@ -7,7 +7,7 @@ Functionality:
 """
 
 from appsettings.src.backup import ElasticBackup
-from appsettings.src.config import ReleaseVersion
+from appsettings.src.config import AppConfig, ReleaseVersion
 from appsettings.src.filesystem import Scanner
 from appsettings.src.index_setup import ElasticIndexWrap
 from appsettings.src.manual import ImportFolderScanner
@@ -15,6 +15,7 @@ from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
 from celery import Task, shared_task
 from celery.exceptions import Retry
 from channel.src.index import YoutubeChannel
+from common.src.log import prune_logs
 from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import ParsedURLType, Parser
 from download.src.extraction_queue import ExtractionQueue
@@ -25,6 +26,7 @@ from downscale.src.downscale import DownscaleRunner
 from downscale.src.worker import reap_stale_leases
 from task.src.notify import Notifications
 from task.src.task_config import TASK_CONFIG
+from task.src.task_log import log_task_event
 from task.src.task_manager import TaskManager
 from video.src.meta_embed import MetadataEmbed
 
@@ -40,6 +42,7 @@ class BaseTask(Task):
         message, key = self._build_message(level="error")
         message.update({"messages": [f"Task failed: {exc}"]})
         RedisArchivist().set_message(key, message, expire=20)
+        log_task_event(self, "failed", f"Task failed: {exc}")
 
     def on_success(self, retval, task_id, args, kwargs):
         """callback task completed"""
@@ -47,6 +50,12 @@ class BaseTask(Task):
         message, key = self._build_message()
         message.update({"messages": ["Task completed"]})
         RedisArchivist().set_message(key, message, expire=5)
+        # a task returns a summary string when it did something and None
+        # when it found nothing to do. Logging every run would bury a
+        # real event under hundreds of "nothing to do" from the tasks
+        # that tick every few minutes, so only the former is recorded.
+        if retval:
+            log_task_event(self, "completed", str(retval))
 
     def before_start(self, task_id, args, kwargs):
         """callback before initiating task"""
@@ -59,7 +68,15 @@ class BaseTask(Task):
         """callback after task returns"""
         print(f"{task_id} return callback")
         task_title = TASK_CONFIG.get(self.name).get("title")
-        Notifications(self.name).send(task_id, task_title)
+        result = Notifications(self.name).send(task_id, task_title)
+        # None means there was nothing to send, which is the normal case
+        # on an install with no apprise urls configured and not worth an
+        # entry. Anything else is a dispatch that was actually attempted.
+        if result:
+            sent, detail = result
+            log_task_event(
+                self, "notified" if sent else "notify_failed", detail
+            )
 
     def send_progress(
         self, message_lines, progress=False, title=False, level="info"
@@ -387,3 +404,14 @@ def version_check():
 def downscale_reap_leases():
     """requeue/clean up remote downscale jobs with a stale lease"""
     reap_stale_leases()
+
+
+@shared_task(name="log_cleanup", bind=True, base=BaseTask)
+def log_cleanup(self):
+    """delete log entries past the configured retention window"""
+    days = AppConfig().config["application"]["log_retention_days"]
+    deleted = prune_logs(days)
+    if deleted:
+        return f"Pruned {deleted} log entries older than {days} days."
+
+    return None

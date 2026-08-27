@@ -26,6 +26,11 @@ urlpatterns = [
         name="api-notification",
     ),
     path(
+        "log/",
+        views.LogView.as_view(),
+        name="api-log",
+    ),
+    path(
         "health/",
         views.HealthCheck.as_view(),
         name="api-health",

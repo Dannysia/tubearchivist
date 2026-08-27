@@ -16,6 +16,7 @@ import Video from './pages/Video';
 import Login from './pages/Login';
 import SettingsActions from './pages/SettingsActions';
 import SettingsApplication from './pages/SettingsApplication';
+import SettingsLogs from './pages/SettingsLogs';
 import SettingsScheduling from './pages/SettingsScheduling';
 import SettingsUser from './pages/SettingsUser';
 import loadUserMeConfig from './api/loader/loadUserConfig';
@@ -140,6 +141,10 @@ const router = createBrowserRouter(
         {
           path: Routes.SettingsScheduling,
           element: <SettingsScheduling />,
+        },
+        {
+          path: Routes.SettingsLogs,
+          element: <SettingsLogs />,
         },
         {
           path: Routes.SettingsUser,

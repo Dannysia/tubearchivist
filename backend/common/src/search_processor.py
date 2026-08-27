@@ -19,6 +19,39 @@ class SearchProcess:
         self.response = response
         self.processed = False
         self.position_index = self.get_user_progress(match_video_user_progress)
+        # index prefix to the handler that turns one hit into a frontend
+        # dict. Built once per instance rather than per hit, and first
+        # match wins - no prefix in here is a prefix of another
+        self.processors = (
+            ("ta_video", lambda hit: self._process_video(hit["_source"])),
+            ("ta_channel", lambda hit: self._process_channel(hit["_source"])),
+            (
+                "ta_playlist",
+                lambda hit: self._process_playlist(hit["_source"]),
+            ),
+            (
+                "ta_download",
+                lambda hit: self._process_download(hit["_source"]),
+            ),
+            (
+                "ta_extraction",
+                lambda hit: self._process_extraction(
+                    hit["_id"], hit["_source"]
+                ),
+            ),
+            (
+                "ta_downscale",
+                lambda hit: self._process_downscale(
+                    hit["_id"], hit["_source"]
+                ),
+            ),
+            (
+                "ta_log",
+                lambda hit: self._process_log(hit["_id"], hit["_source"]),
+            ),
+            ("ta_comment", lambda hit: self._process_comment(hit["_source"])),
+            ("ta_subtitle", self._process_subtitle),
+        )
 
     def process(self):
         """detect type and process"""
@@ -56,26 +89,10 @@ class SearchProcess:
         """detect which type of data to process"""
         index = result["_index"]
         processed = False
-        if index.startswith("ta_video"):
-            processed = self._process_video(result["_source"])
-        if index.startswith("ta_channel"):
-            processed = self._process_channel(result["_source"])
-        if index.startswith("ta_playlist"):
-            processed = self._process_playlist(result["_source"])
-        if index.startswith("ta_download"):
-            processed = self._process_download(result["_source"])
-        if index.startswith("ta_extraction"):
-            processed = self._process_extraction(
-                result["_id"], result["_source"]
-            )
-        if index.startswith("ta_downscale"):
-            processed = self._process_downscale(
-                result["_id"], result["_source"]
-            )
-        if index.startswith("ta_comment"):
-            processed = self._process_comment(result["_source"])
-        if index.startswith("ta_subtitle"):
-            processed = self._process_subtitle(result)
+        for prefix, handler in self.processors:
+            if index.startswith(prefix):
+                processed = handler(result)
+                break
 
         if isinstance(processed, dict):
             processed.update(
@@ -224,6 +241,11 @@ class SearchProcess:
 
         downscale_dict.update({"id": doc_id, "vid_thumb_url": vid_thumb_url})
         return dict(sorted(downscale_dict.items()))
+
+    def _process_log(self, doc_id, log_dict):
+        """run on single log entry"""
+        log_dict.update({"id": doc_id})
+        return dict(sorted(log_dict.items()))
 
     def _process_comment(self, comment_dict):
         """run on all comments, create reply thread"""
