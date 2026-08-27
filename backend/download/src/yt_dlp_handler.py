@@ -9,6 +9,7 @@ functionality:
 import os
 import shutil
 from datetime import datetime
+from time import sleep
 
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
@@ -19,6 +20,7 @@ from common.src.helper import (
     get_playlists,
     ignore_filelist,
     rand_sleep,
+    rand_sleep_secs,
 )
 from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
@@ -50,6 +52,10 @@ class DownloaderBase:
 class VideoDownloader(DownloaderBase):
     """handle the video download functionality"""
 
+    # the notification poll is 1s, so a finer step would only write
+    # updates nothing reads
+    COUNTDOWN_STEP = 1
+
     def __init__(self, task=False):
         super().__init__(task)
         self.obs = False
@@ -66,7 +72,10 @@ class VideoDownloader(DownloaderBase):
                 break
 
             if downloaded > 0:
-                rand_sleep(self.config)
+                self._sleep_between(video_data)
+                if self.task.is_stopped():
+                    self._reset_auto()
+                    break
 
             youtube_id = video_data["youtube_id"]
             channel_id = video_data["channel_id"]
@@ -104,6 +113,27 @@ class VideoDownloader(DownloaderBase):
         self.task.send_progress(
             [f"Processing {typ}: {title}", message], progress=progress
         )
+
+    def _sleep_between(self, video_data) -> None:
+        """
+        wait between downloads, counting the wait down in the message
+
+        The sleep sits between the last message of one video and the
+        first of the next, so without this the archive message from the
+        video that just finished stays on screen for the whole interval
+        and the queue reads as stalled. Stepping through it also lets a
+        stop land within a second instead of waiting the interval out.
+        """
+        remaining = rand_sleep_secs(self.config)
+        if not self.task:
+            sleep(remaining)
+            return
+
+        while remaining > 0 and not self.task.is_stopped():
+            self._notify(video_data, f"Waiting {remaining}s before next video")
+            step = min(self.COUNTDOWN_STEP, remaining)
+            sleep(step)
+            remaining -= step
 
     def _get_next(self, auto_only):
         """get next item in queue"""

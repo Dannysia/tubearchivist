@@ -6,6 +6,7 @@ from common.src.helper import (
     get_duration_str,
     get_mapping,
     is_shorts,
+    rand_sleep_secs,
     randomizor,
     time_parser,
 )
@@ -128,3 +129,16 @@ def test_get_duration_str():
     assert get_duration_str(500000) == "5d 18h 53m 20s"
     assert get_duration_str(5000000) == "57d 20h 53m 20s"
     assert get_duration_str(50000000) == "1y 213d 16h 53m 20s"
+
+
+def test_rand_sleep_secs_disabled():
+    """no interval configured means no wait at all"""
+    assert rand_sleep_secs({"downloads": {}}) == 0
+    assert rand_sleep_secs({"downloads": {"sleep_interval": 0}}) == 0
+
+
+def test_rand_sleep_secs_in_range():
+    """half to one and a half times the configured interval"""
+    for _ in range(50):
+        secs = rand_sleep_secs({"downloads": {"sleep_interval": 10}})
+        assert 5 <= secs < 15

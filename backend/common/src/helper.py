@@ -41,14 +41,20 @@ def randomizor(length: int) -> str:
     return "".join(random.choice(pool) for i in range(length))
 
 
-def rand_sleep(config) -> None:
-    """randomized sleep based on config"""
+def rand_sleep_secs(config) -> int:
+    """randomized sleep duration based on config, 0 when disabled"""
     sleep_config = config["downloads"].get("sleep_interval")
     if not sleep_config:
-        return
+        return 0
 
-    secs = random.randrange(int(sleep_config * 0.5), int(sleep_config * 1.5))
-    sleep(secs)
+    return random.randrange(int(sleep_config * 0.5), int(sleep_config * 1.5))
+
+
+def rand_sleep(config) -> None:
+    """randomized sleep based on config"""
+    secs = rand_sleep_secs(config)
+    if secs:
+        sleep(secs)
 
 
 def requests_headers() -> dict[str, str]:
