@@ -24,7 +24,8 @@ from django_celery_beat.models import (
 from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from task.models import CustomPeriodicTask
-from task.src.config_schedule import ScheduleBuilder
+from task.src.config_schedule import ScheduleBuilder, orphaned_schedules
+from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskManager
 from task.tasks import version_check
 
@@ -241,6 +242,7 @@ class Command(BaseCommand):
         pre-existing crontab-based auto schedules to the interval format"""
         self.stdout.write("[8] create initial schedules")
         builder = ScheduleBuilder()
+        self._clear_orphaned_schedules()
 
         for task_name in (
             "check_reindex",
@@ -274,6 +276,35 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS("    ✓ all default schedules created")
         )
+
+    def _clear_orphaned_schedules(self) -> None:
+        """delete schedules whose task no longer exists
+
+        A CustomPeriodicTask row outlives the code that registered it:
+        the db lives on the cache volume, so rolling back to an image
+        without a task, or retiring one for good, leaves beat
+        dispatching something no worker can run. Celery discards those
+        messages rather than requeueing them, so nothing breaks, but it
+        logs a traceback at ERROR every time the schedule comes round,
+        which is a standing red herring in the logs.
+
+        Deleting rather than disabling: nothing else in TA reads or
+        writes `enabled`, and get_set_task would not clear it again, so
+        a disabled row would linger in the scheduling page never
+        running with no way to tell why.
+        """
+        scheduled = CustomPeriodicTask.objects.values_list("name", flat=True)
+        orphaned = orphaned_schedules(scheduled, TASK_CONFIG)
+        if not orphaned:
+            return
+
+        CustomPeriodicTask.objects.filter(name__in=orphaned).delete()
+        for task_name in orphaned:
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"    ✓ removed schedule for unknown task: {task_name}"
+                )
+            )
 
     def _mig_update_subscribed_to_minutes(
         self, builder: ScheduleBuilder

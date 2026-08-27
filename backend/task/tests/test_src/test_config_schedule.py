@@ -11,7 +11,12 @@ django.setup()
 
 import pytest
 from django_celery_beat.models import IntervalSchedule
-from task.src.config_schedule import ScheduleBuilder, ScheduleValidator
+from task.src.config_schedule import (
+    ScheduleBuilder,
+    ScheduleValidator,
+    orphaned_schedules,
+)
+from task.src.task_config import TASK_CONFIG
 
 VALID_SCHEDULES = ["1", "24", "168", 1, 24, "auto", None, "", " 24 "]
 
@@ -91,3 +96,41 @@ def test_other_tasks_default_to_hours():
             ScheduleBuilder.UNITS.get(task_name, IntervalSchedule.HOURS)
             == IntervalSchedule.HOURS
         )
+
+
+class TestOrphanedSchedules:
+    """schedules whose task no longer exists"""
+
+    def test_nothing_orphaned_when_every_name_is_known(self):
+        known = ["download_pending", "log_cleanup"]
+        assert orphaned_schedules(known, known) == []
+
+    def test_finds_a_schedule_with_no_task_behind_it(self):
+        # what a rollback past the commit that added log_cleanup leaves
+        assert orphaned_schedules(
+            ["download_pending", "log_cleanup"], ["download_pending"]
+        ) == ["log_cleanup"]
+
+    def test_a_known_task_without_a_schedule_is_not_orphaned(self):
+        # most TASK_CONFIG entries are on demand and never scheduled
+        assert (
+            orphaned_schedules(["log_cleanup"], ["log_cleanup", "run_backup"])
+            == []
+        )
+
+    def test_refuses_to_act_on_an_empty_known_set(self):
+        # celery's registry reads as empty until task.tasks is imported.
+        # taking that at face value would delete every schedule there is
+        assert (
+            orphaned_schedules(["download_pending", "log_cleanup"], []) == []
+        )
+
+    def test_result_is_ordered_so_the_startup_output_is_stable(self):
+        assert orphaned_schedules(["zeta", "alpha"], []) == []
+        assert orphaned_schedules(["zeta", "alpha"], ["other"]) == [
+            "alpha",
+            "zeta",
+        ]
+
+    def test_the_real_task_config_orphans_nothing_today(self):
+        assert orphaned_schedules(TASK_CONFIG.keys(), TASK_CONFIG) == []
