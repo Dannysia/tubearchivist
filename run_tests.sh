@@ -25,6 +25,9 @@
 #   unrelated to any local change.
 # - dev dependency versions are pinned to requirements-dev.txt and
 #   .pre-commit-config.yaml, keep them in sync.
+# - the container runs as root over the bind mount, so any file it writes
+#   comes back owned by root and unwritable on the host. that is what
+#   PYTHONDONTWRITEBYTECODE is for: no __pycache__, nothing to chown.
 
 set -euo pipefail
 
@@ -56,7 +59,8 @@ function cleanup {
 
 function run_lint {
     echo "==> black, isort, flake8"
-    docker run --rm -v "$REPO_DIR":/src -w /src "$IMAGE" sh -c "
+    docker run --rm -e PYTHONDONTWRITEBYTECODE=1 \
+        -v "$REPO_DIR":/src -w /src "$IMAGE" sh -c "
         pip install --quiet --no-input \
             'black==$BLACK_VERSION' \
             'isort==$ISORT_VERSION' \
@@ -87,6 +91,7 @@ function run_pytest {
     # rootdir/backend itself
     docker run --rm --network "$NETWORK" \
         -v "$REPO_DIR":/src -w /src \
+        -e PYTHONDONTWRITEBYTECODE=1 \
         -e TA_USERNAME=test \
         -e TA_PASSWORD=test \
         -e ELASTIC_PASSWORD=test \
