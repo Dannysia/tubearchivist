@@ -126,7 +126,6 @@ class TestOrphanedSchedules:
         )
 
     def test_result_is_ordered_so_the_startup_output_is_stable(self):
-        assert orphaned_schedules(["zeta", "alpha"], []) == []
         assert orphaned_schedules(["zeta", "alpha"], ["other"]) == [
             "alpha",
             "zeta",

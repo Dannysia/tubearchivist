@@ -241,8 +241,8 @@ class Command(BaseCommand):
         """create default schedules for new installations, migrate any
         pre-existing crontab-based auto schedules to the interval format"""
         self.stdout.write("[8] create initial schedules")
-        builder = ScheduleBuilder()
         self._clear_orphaned_schedules()
+        builder = ScheduleBuilder()
 
         for task_name in (
             "check_reindex",
