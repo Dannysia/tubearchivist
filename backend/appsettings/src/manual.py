@@ -14,7 +14,11 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.helper import ignore_filelist, is_missing, rand_sleep
+from common.src.helper import (
+    countdown_sleep,
+    ignore_filelist,
+    is_missing,
+)
 from download.src.queue_interact import PendingInteract
 from download.src.thumbnails import ThumbManager
 from PIL import Image
@@ -203,12 +207,14 @@ class ImportFolderScanner:
                 # pace metadata extraction like the download queue does.
                 # a bulk import otherwise hits youtube a few hundred times
                 # back to back, which is what gets you blocked
-                if self.task:
-                    # most of a paced run is spent here, so say so rather
-                    # than leaving the last video's message on screen
-                    self._notify(idx, current_video, status="Waiting before")
-
-                rand_sleep(config)
+                if not countdown_sleep(
+                    config,
+                    self.task,
+                    lambda msg: self._notify(idx, current_video, waiting=msg),
+                    label="next video",
+                ):
+                    print("manual import: stopped by user")
+                    break
 
             if self.task:
                 self._notify(idx, current_video)
@@ -227,15 +233,20 @@ class ImportFolderScanner:
                 prefer_local=self.prefer_local,
             ).run()
 
-    def _notify(self, idx, current_video, status: str | bool = False):
+    def _notify(self, idx, current_video, waiting: str | None = None):
         """send notification back to task"""
         filename = os.path.split(current_video["media"])[-1]
         if len(filename) > 50:
             filename = filename[:50] + "..."
 
         total = len(self.to_import)
-        headline = status or "Import queue processing video"
-        message = [f"{headline} {idx + 1}/{total}", filename]
+        message = [
+            f"Import queue processing video {idx + 1}/{total}",
+            filename,
+        ]
+        if waiting:
+            message.append(waiting)
+
         progress = (idx + 1) / total
         self.task.send_progress(message, progress=progress)
 

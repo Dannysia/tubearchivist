@@ -57,6 +57,46 @@ def rand_sleep(config) -> None:
         sleep(secs)
 
 
+# the notification poll is 1s, so a finer step would only write updates
+# nothing reads
+COUNTDOWN_STEP = 1
+
+
+def countdown_sleep(config, task, notify, label: str) -> bool:
+    """
+    sleep the configured interval, counting it down through notify
+
+    These sleeps sit at the end of a loop pass, after the message for
+    the item that just finished. Without a countdown that finished
+    item stays on screen for the whole interval and the loop reads as
+    stalled - on a long queue that is most of the run.
+
+    notify takes the countdown line alone. Call sites append it below
+    whatever they are working on rather than replacing it, so the wait
+    reads as the status of that item.
+
+    Returns False when a stop request cut the wait short. Callers must
+    act on that and leave the loop: the wait is the rate limit, so
+    carrying on after a shortened one would hit youtube harder than a
+    normal pass does.
+    """
+    remaining = rand_sleep_secs(config)
+    if not task:
+        sleep(remaining)
+        return True
+
+    while remaining > 0:
+        if task.is_stopped():
+            return False
+
+        notify(f"Waiting {remaining}s before {label}")
+        step = min(COUNTDOWN_STEP, remaining)
+        sleep(step)
+        remaining -= step
+
+    return True
+
+
 def requests_headers() -> dict[str, str]:
     """build header with random user agent for requests outside of yt-dlp"""
 

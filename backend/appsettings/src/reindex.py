@@ -14,7 +14,7 @@ from channel.src.index import YoutubeChannel
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
-from common.src.helper import rand_sleep
+from common.src.helper import countdown_sleep
 from common.src.history import track_changes, track_deactivation
 from common.src.ta_redis import RedisArchivist, RedisQueue
 from download.src.thumbnails import ThumbManager
@@ -302,11 +302,26 @@ class Reindex(ReindexBase):
 
             self._clear_active(queue_name=queue.key)
 
-            rand_sleep(self.config)
+            if not countdown_sleep(
+                self.config,
+                self.task,
+                lambda msg: self._notify(name, total, idx, waiting=msg),
+                label=f"next {name}",
+            ):
+                break
 
-    def _notify(self, name: str, total: int, idx: int) -> None:
+    def _notify(
+        self,
+        name: str,
+        total: int,
+        idx: int,
+        waiting: str | None = None,
+    ) -> None:
         """send notification back to task"""
         message = [f"Reindexing {name.title()}s {idx}/{total}"]
+        if waiting:
+            message.append(waiting)
+
         progress = idx / total
         self.task.send_progress(message, progress=progress)
 

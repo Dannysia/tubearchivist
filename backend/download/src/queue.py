@@ -14,6 +14,7 @@ from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import (
+    countdown_sleep,
     get_channels,
     get_duration_str,
     is_shorts,
@@ -138,10 +139,7 @@ class PendingList(PendingIndex):
         total = len(self.youtube_ids)
         for idx, entry in enumerate(self.youtube_ids, start=1):
             if self.task:
-                self.task.send_progress(
-                    message_lines=[f"Extracting URL {idx}/{total}"],
-                    progress=idx / total,
-                )
+                self._notify(idx, total)
 
             self._process_entry(entry, idx, total)
 
@@ -152,9 +150,23 @@ class PendingList(PendingIndex):
             if self.task and self.task.is_stopped():
                 break
 
-            rand_sleep(self.config)
+            if not countdown_sleep(
+                self.config,
+                self.task,
+                lambda msg: self._notify(idx, total, waiting=msg),
+                label="next URL",
+            ):
+                break
 
         return self.added
+
+    def _notify(self, idx: int, total: int, waiting: str | None = None):
+        """send progress back to task"""
+        message = [f"Extracting URL {idx}/{total}"]
+        if waiting:
+            message.append(waiting)
+
+        self.task.send_progress(message_lines=message, progress=idx / total)
 
     def _process_entry(self, entry: ParsedURLType, idx: int, total: int):
         """process single entry from url list"""
