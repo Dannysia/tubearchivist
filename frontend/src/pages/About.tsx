@@ -1,3 +1,6 @@
+const FORK_REPO = 'https://github.com/Dannysia/tubearchivist';
+const UPSTREAM_REPO = 'https://github.com/tubearchivist/tubearchivist';
+
 const About = () => {
   return (
     <>
@@ -8,48 +11,57 @@ const About = () => {
           <h1>About The Tube Archivist</h1>
         </div>
         <div className="about-section">
-          <h2>Useful Links</h2>
+          <h2>This Instance</h2>
           <p>
-            This project is in active and constant development, take a look at the{' '}
-            <a href="https://github.com/tubearchivist/tubearchivist#roadmap" target="_blank">
-              roadmap
+            This runs a{' '}
+            <a href={FORK_REPO} target="_blank">
+              personal fork
             </a>{' '}
-            for a overview.
+            of Tube Archivist, with added downscaling, remote encode workers, web UI media import
+            and extra statistics. The version and build it is running are shown in the footer.
           </p>
           <p>
-            All functionality is documented in our up-to-date{' '}
+            Anything specific to this fork — including the features listed above — belongs in the{' '}
+            <a href={`${FORK_REPO}/issues`} target="_blank">
+              fork&apos;s issue tracker
+            </a>
+            , not upstream&apos;s. Pull requests are welcome there, though they are not a priority.
+          </p>
+        </div>
+        <div className="about-section">
+          <h2>Upstream</h2>
+          <p>
+            All of this is built on{' '}
+            <a href={UPSTREAM_REPO} target="_blank">
+              tubearchivist/tubearchivist
+            </a>
+            , where the credit for the project belongs. Their{' '}
             <a href="https://docs.tubearchivist.com" target="_blank">
               user guide
-            </a>
-            .
+            </a>{' '}
+            still documents everything this fork has not changed.
           </p>
           <p>
-            All contributions are welcome: Open an{' '}
-            <a href="https://github.com/tubearchivist/tubearchivist/issues" target="_blank">
-              issue
-            </a>{' '}
-            for any bugs and errors, join us on{' '}
+            The{' '}
             <a href="https://www.tubearchivist.com/discord" target="_blank">
               Discord
             </a>{' '}
-            to discuss details. The{' '}
-            <a
-              href="https://github.com/tubearchivist/tubearchivist/blob/master/CONTRIBUTING.md"
-              target="_blank"
-            >
-              contributing
+            and{' '}
+            <a href={`${UPSTREAM_REPO}#roadmap`} target="_blank">
+              roadmap
             </a>{' '}
-            page is a good place to get started.
+            are upstream&apos;s and describe the upstream project. Please do not take problems
+            caused by this fork to either.
           </p>
         </div>
         <div className="about-section">
           <h2>Donate</h2>
           <p>
-            Here are{' '}
-            <a href="https://github.com/tubearchivist/tubearchivist#donate" target="_blank">
-              some links
-            </a>
-            , if you want to buy the developer a coffee. Thank you for your support!
+            Support upstream rather than this fork —{' '}
+            <a href="https://github.com/sponsors/bbilly1" target="_blank">
+              here are some links
+            </a>{' '}
+            if you want to buy them a coffee. Thank you for your support!
           </p>
         </div>
       </div>

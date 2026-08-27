@@ -173,12 +173,17 @@ const Login = () => {
 
         <p className="login-links">
           <span>
-            <a href="https://github.com/tubearchivist/tubearchivist" target="_blank">
-              Github
+            <a href="https://github.com/Dannysia/tubearchivist" target="_blank">
+              Fork
             </a>
           </span>{' '}
           <span>
-            <a href="https://github.com/tubearchivist/tubearchivist#donate" target="_blank">
+            <a href="https://github.com/tubearchivist/tubearchivist" target="_blank">
+              Upstream
+            </a>
+          </span>{' '}
+          <span>
+            <a href="https://github.com/sponsors/bbilly1" target="_blank">
               Donate
             </a>
           </span>

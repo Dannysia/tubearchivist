@@ -48,12 +48,12 @@ const Footer = () => {
         )}
         <span>
           <Link to={Routes.About}>About</Link> |{' '}
-          <a href="https://github.com/tubearchivist/tubearchivist" target="_blank">
-            GitHub
+          <a href="https://github.com/Dannysia/tubearchivist" target="_blank">
+            Fork
           </a>{' '}
           |{' '}
-          <a href="https://hub.docker.com/r/bbilly1/tubearchivist" target="_blank">
-            Docker Hub
+          <a href="https://github.com/tubearchivist/tubearchivist" target="_blank">
+            Upstream
           </a>{' '}
           |{' '}
           <a href="https://www.tubearchivist.com/discord" target="_blank">

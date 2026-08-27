@@ -81,15 +81,16 @@ const SettingsActions = () => {
         <div className="settings-group">
           <h2>Manual media files import.</h2>
           <p>
-            Add files to the <span className="settings-current">cache/import</span> folder. Make
-            sure to follow the instructions in the{' '}
+            Upload files below, or add them to the{' '}
+            <span className="settings-current">cache/import</span> folder directly. Upstream&apos;s{' '}
             <a
               href="https://docs.tubearchivist.com/settings/actions/#manual-media-files-import"
               target="_blank"
             >
               Docs
-            </a>
-            .
+            </a>{' '}
+            cover the folder method and the file naming rules; uploading and generating a metadata
+            file are additions of this fork and are not described there.
           </p>
           <div id="manual-import">
             <ImportFiles refreshToken={importFilesRefresh} />
