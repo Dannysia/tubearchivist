@@ -1431,6 +1431,85 @@ video:-webkit-full-screen {
   overflow-wrap: anywhere;
 }
 
+.import-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.import-modal {
+  background-color: var(--highlight-bg);
+  border: solid 1px var(--main-font);
+  border-radius: 10px;
+  padding: 20px;
+  width: 600px;
+  max-width: 100%;
+  /* the form is taller than a short viewport, keep the buttons reachable */
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.import-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 0;
+}
+
+.import-modal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.import-modal-form input,
+.import-modal-form select,
+.import-modal-form textarea {
+  width: 100%;
+}
+
+.import-modal-channel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px;
+  border: solid 1px var(--main-font);
+  border-radius: 5px;
+}
+
+.import-modal-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  align-items: center;
+}
+
+.import-modal-modes label {
+  flex-direction: row;
+  align-items: center;
+}
+
+.import-modal-results {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  /* a common name can match a lot of channels */
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.import-modal-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 10px;
+}
+
 /* about */
 .about-section {
   padding: 20px 0;

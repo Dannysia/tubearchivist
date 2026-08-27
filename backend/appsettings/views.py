@@ -7,6 +7,7 @@ from appsettings.serializers import (
     CookieValidationSerializer,
     ImportFileSerializer,
     ImportFileUploadSerializer,
+    ImportMetadataSerializer,
     ManualImportConfig,
     RescanFileSystemConfig,
     SnapshotCreateResponseSerializer,
@@ -473,6 +474,56 @@ class ImportFileView(ApiBaseView):
         serializer = ImportFileSerializer(written, many=True)
 
         return Response(serializer.data)
+
+
+class ImportFileMetadataView(ApiBaseView):
+    """resolves to /api/appsettings/import-file/metadata/
+    POST: write a hand filled info.json into the import folder
+    """
+
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(
+        request=ImportMetadataSerializer,
+        responses={
+            200: OpenApiResponse(ImportFileSerializer()),
+            400: OpenApiResponse(
+                ErrorResponseSerializer(), description="invalid metadata"
+            ),
+            409: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="video already in the archive",
+            ),
+        },
+    )
+    def post(request):
+        """generate an info.json for a manual import"""
+        serializer = ImportMetadataSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+
+        file_name = f"{validated['video_id']}.info.json"
+        # same rule the upload path applies: writing metadata for an
+        # already archived video would reset its watch state on import
+        if ImportFolderFiles.find_indexed([file_name]):
+            message = (
+                f"{validated['video_id']}: already in the archive. delete "
+                "the video first, or copy the file into cache/import "
+                "directly to overwrite it"
+            )
+            print(f"import metadata rejected: {message}")
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=409)
+
+        try:
+            written = ImportFolderFiles.write_metadata(validated)
+        except (ValueError, OSError) as err:
+            print(f"import metadata failed: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
+
+        return Response(ImportFileSerializer(written).data)
 
 
 class ImportFileItemView(ApiBaseView):

@@ -2,6 +2,7 @@
 
 # pylint: disable=abstract-method
 
+from appsettings.src.manual import CHANNEL_ID_PATTERN, VIDEO_ID_PATTERN
 from common.serializers import ValidateUnknownFieldsMixin
 from downscale.src.downscale import PRESET_CHOICES
 from rest_framework import serializers
@@ -146,6 +147,28 @@ class ImportFileUploadSerializer(serializers.Serializer):
     """serialize import folder upload"""
 
     files = serializers.ListField(child=serializers.FileField())
+
+
+class ImportMetadataSerializer(serializers.Serializer):
+    """serialize a hand written info.json for manual import
+
+    the fields the import path actually reads - YoutubeVideo
+    .process_youtube_meta and YoutubeChannel._video_fallback - not the
+    whole yt-dlp schema
+    """
+
+    video_id = serializers.RegexField(f"^{VIDEO_ID_PATTERN}$")
+    # see CHANNEL_ID_PATTERN: this one becomes a directory name
+    channel_id = serializers.RegexField(f"^{CHANNEL_ID_PATTERN}$")
+    channel_name = serializers.CharField(max_length=255)
+    title = serializers.CharField(max_length=500)
+    upload_date = serializers.DateField()
+    description = serializers.CharField(
+        required=False, allow_blank=True, max_length=50000
+    )
+    thumbnail = serializers.URLField(required=False, allow_blank=True)
+    view_count = serializers.IntegerField(required=False, min_value=0)
+    like_count = serializers.IntegerField(required=False, min_value=0)
 
 
 class SnapshotItemSerializer(serializers.Serializer):

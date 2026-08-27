@@ -4,6 +4,7 @@ import uploadImportFile from '../api/actions/uploadImportFile';
 import deleteImportFile from '../api/actions/deleteImportFile';
 import humanFileSize from '../functions/humanFileSize';
 import Button from './Button';
+import ImportMetadataModal from './ImportMetadataModal';
 
 type ImportFilesProps = {
   refreshToken: number;
@@ -39,6 +40,7 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
   const [files, setFiles] = useState<ImportFileType[]>([]);
   const [upload, setUpload] = useState<UploadStateType | null>(null);
   const [failures, setFailures] = useState<FailureType[]>([]);
+  const [showMetadataModal, setShowMetadataModal] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -108,6 +110,20 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
 
   const uploadPercent = upload && upload.size > 0 ? (upload.loaded / upload.size) * 100 : 0;
 
+  const refreshFiles = async () => {
+    const response = await loadImportFiles();
+    setFiles(response.data ?? []);
+  };
+
+  // media staged without a matching json, the videos that actually need
+  // a metadata file written for them
+  const withMetadata = new Set(
+    files.filter(file => file.category === 'metadata').map(file => file.video_id),
+  );
+  const needsMetadata = files.filter(
+    file => file.category === 'media' && file.video_id && !withMetadata.has(file.video_id),
+  );
+
   return (
     <>
       <input
@@ -127,7 +143,23 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
           <progress max={100} value={uploadPercent} />
         </div>
       )}
-      {!upload && <Button label="Upload files" onClick={() => fileInput.current?.click()} />}
+      {!upload && (
+        <>
+          <Button label="Upload files" onClick={() => fileInput.current?.click()} />{' '}
+          <Button
+            label="Generate metadata"
+            title="Write an info.json for a video that is no longer on YouTube"
+            onClick={() => setShowMetadataModal(true)}
+          />
+        </>
+      )}
+      {showMetadataModal && (
+        <ImportMetadataModal
+          candidates={needsMetadata}
+          onClose={() => setShowMetadataModal(false)}
+          onCreated={refreshFiles}
+        />
+      )}
       <p>
         <i>
           Select as many files as you like. Each must be named for its 11 character video ID, either

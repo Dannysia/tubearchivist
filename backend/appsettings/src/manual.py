@@ -38,6 +38,25 @@ def extract_video_id(base_name: str) -> str | None:
     return None
 
 
+# channel_id ends up as a directory name under the media root, through
+# add_file_path -> media_url -> _move_to_archive, so a hand entered one
+# is charset restricted rather than free text. No dot at all, which
+# rules out traversal without having to reason about it
+CHANNEL_ID_PATTERN = r"[a-zA-Z0-9_-]{2,64}"
+# the same eleven characters strict_video_id insists on
+VIDEO_ID_PATTERN = r"[a-zA-Z0-9_-]{11}"
+
+
+def is_safe_channel_id(channel_id: str | None) -> bool:
+    """channel_id is usable as a directory name"""
+    return bool(re.fullmatch(CHANNEL_ID_PATTERN, channel_id or ""))
+
+
+def is_video_id(video_id: str | None) -> bool:
+    """an unambiguous eleven character video id"""
+    return bool(re.fullmatch(VIDEO_ID_PATTERN, video_id or ""))
+
+
 def strict_video_id(base_name: str) -> str | None:
     """video id from a file base name, unambiguous spellings only"""
     # yt-dlp default like [youtubeid]
@@ -698,6 +717,70 @@ class ImportFolderFiles:
             raise
 
         return cls._describe(clean_name)
+
+    @classmethod
+    def write_metadata(cls, validated: dict) -> dict:
+        """
+        write a hand filled info.json into the import folder, named so
+        the scanner pairs it with <video_id>.<media ext> - the secondary
+        .info extension is what _detect_base_name strips to match them
+        """
+        video_id = validated["video_id"]
+        info_json = cls.build_info_json(validated)
+        clean_name = f"{video_id}.info.json"
+        # the name is generated, but run it through the same gate an
+        # upload passes so there is one definition of an acceptable name
+        cls.validate_name(clean_name)
+
+        os.makedirs(cls.IMPORT_DIR, exist_ok=True)
+        file_path = os.path.join(cls.IMPORT_DIR, clean_name)
+        # same part-then-rename as save(): the import task scans this
+        # folder on its own schedule and must never read half a file
+        part_path = f"{file_path}{cls.PART_SUFFIX}"
+
+        try:
+            with open(part_path, "w", encoding="utf-8") as f:
+                json.dump(info_json, f, ensure_ascii=False, indent=2)
+
+            host_uid = EnvironmentSettings.HOST_UID
+            host_gid = EnvironmentSettings.HOST_GID
+            if host_uid and host_gid:
+                os.chown(part_path, host_uid, host_gid)
+
+            os.replace(part_path, file_path)
+        except Exception:
+            if os.path.exists(part_path):
+                os.remove(part_path)
+
+            raise
+
+        return cls._describe(clean_name)
+
+    @staticmethod
+    def build_info_json(validated: dict) -> dict:
+        """
+        build the info.json from validated input. Only the keys the
+        import path reads, but every one it reads without a default:
+        id and title and channel_id and thumbnail are indexed directly,
+        uploader is what the channel falls back to when the channel is
+        neither indexed nor reachable on youtube, and upload_date is the
+        published date when there is no timestamp
+        """
+        return {
+            "id": validated["video_id"],
+            "title": validated["title"],
+            "channel_id": validated["channel_id"],
+            "uploader": validated["channel_name"],
+            # yt-dlp spells this YYYYMMDD, and _build_published parses it
+            # with that exact format
+            "upload_date": validated["upload_date"].strftime("%Y%m%d"),
+            "description": validated.get("description") or "",
+            # read with [] not .get(), so the key has to exist even when
+            # there is no thumbnail to point at
+            "thumbnail": validated.get("thumbnail") or "",
+            "view_count": validated.get("view_count") or 0,
+            "like_count": validated.get("like_count") or 0,
+        }
 
     @classmethod
     def find_indexed(cls, file_names: list[str]) -> list[str]:

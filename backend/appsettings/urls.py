@@ -54,6 +54,12 @@ urlpatterns = [
         views.ImportFileView.as_view(),
         name="api-import-file",
     ),
+    # before the <str:filename> route, which would match this too
+    path(
+        "import-file/metadata/",
+        views.ImportFileMetadataView.as_view(),
+        name="api-import-file-metadata",
+    ),
     path(
         "import-file/<str:filename>/",
         views.ImportFileItemView.as_view(),
