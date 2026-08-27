@@ -66,19 +66,20 @@ def countdown_sleep(config, task, notify, label: str) -> bool:
     """
     sleep the configured interval, counting it down through notify
 
-    These sleeps sit at the end of a loop pass, after the message for
-    the item that just finished. Without a countdown that finished
-    item stays on screen for the whole interval and the loop reads as
-    stalled - on a long queue that is most of the run.
+    These loops spend most of a long run asleep. Without a countdown
+    whichever message was written last stays on screen for the whole
+    interval and the loop reads as stalled.
 
-    notify takes the countdown line alone. Call sites append it below
-    whatever they are working on rather than replacing it, so the wait
-    reads as the status of that item.
+    notify takes the countdown line alone. Where the sleep runs before
+    the item's own message the label names what the wait is for
+    ("download"), and where it runs after the item is done the label
+    names what comes next ("next URL"). Call sites decide whether that
+    line replaces their status line or is appended below it.
 
     Returns False when a stop request cut the wait short. Callers must
-    act on that and leave the loop: the wait is the rate limit, so
-    carrying on after a shortened one would hit youtube harder than a
-    normal pass does.
+    act on that and leave the loop, propagating it all the way up: the
+    wait is the rate limit, so carrying on after a shortened one would
+    hit youtube harder than a normal pass does.
     """
     remaining = rand_sleep_secs(config)
     if not task:

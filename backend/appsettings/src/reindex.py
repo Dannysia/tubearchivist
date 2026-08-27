@@ -274,10 +274,11 @@ class Reindex(ReindexBase):
             if not RedisQueue(index_config["queue_name"]).length():
                 continue
 
-            self.reindex_type(name, index_config)
+            if not self.reindex_type(name, index_config):
+                break
 
-    def reindex_type(self, name: str, index_config: ReindexConfigType) -> None:
-        """reindex all of a single index"""
+    def reindex_type(self, name: str, index_config: ReindexConfigType) -> bool:
+        """reindex all of a single index, False when a stop cut it short"""
         queue = RedisQueue(index_config["queue_name"])
         while True:
             total = queue.max_score()
@@ -308,7 +309,11 @@ class Reindex(ReindexBase):
                 lambda msg: self._notify(name, total, idx, waiting=msg),
                 label=f"next {name}",
             ):
-                break
+                # all the way out, not just this index: the next type
+                # would start its own run of youtube requests
+                return False
+
+        return True
 
     def _notify(
         self,

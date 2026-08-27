@@ -211,7 +211,7 @@ class ImportFolderScanner:
                     config,
                     self.task,
                     lambda msg: self._notify(idx, current_video, waiting=msg),
-                    label="next video",
+                    label="import",
                 ):
                     print("manual import: stopped by user")
                     break
