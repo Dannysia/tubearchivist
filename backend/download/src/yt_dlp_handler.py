@@ -130,7 +130,7 @@ class VideoDownloader(DownloaderBase):
             return
 
         while remaining > 0 and not self.task.is_stopped():
-            self._notify(video_data, f"Waiting {remaining}s before next video")
+            self._notify(video_data, f"Waiting {remaining}s before download")
             step = min(self.COUNTDOWN_STEP, remaining)
             sleep(step)
             remaining -= step

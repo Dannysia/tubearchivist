@@ -45,9 +45,9 @@ class TestSleepBetween:
         VideoDownloader._sleep_between(fake, VIDEO)
 
         assert notified == [
-            "Waiting 3s before next video",
-            "Waiting 2s before next video",
-            "Waiting 1s before next video",
+            "Waiting 3s before download",
+            "Waiting 2s before download",
+            "Waiting 1s before download",
         ]
         assert sum(slept) == 3
 
@@ -80,8 +80,8 @@ class TestSleepBetween:
         VideoDownloader._sleep_between(fake, VIDEO)
 
         assert notified == [
-            "Waiting 30s before next video",
-            "Waiting 29s before next video",
+            "Waiting 30s before download",
+            "Waiting 29s before download",
         ]
         assert sum(slept) == 2
 
