@@ -184,6 +184,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             # file came from elsewhere: treat local sidecar files as
             # authoritative like any other offline import
             self.offline_import = True
+            self.youtube_meta = self._merge_offline_meta(
+                self.youtube_meta, youtube_meta_overwrite
+            )
 
         self.process_youtube_meta()
         self._add_channel()
@@ -198,6 +201,36 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             self._get_sponsorblock()
 
         return
+
+    @staticmethod
+    def _merge_offline_meta(youtube_meta: dict, overwrite) -> dict:
+        """
+        let a local info.json fill in what YT could not serve.
+
+        A video removed by YT still answers, with a stub: the real id and
+        thumbnail, a "youtube video #<id>" placeholder title, and null
+        for everything else. That is truthy, so without this the whole
+        sidecar file is discarded and the import dies on the null
+        upload_date - for exactly the videos a hand written info.json
+        exists to rescue.
+
+        Only set values from the file win, so a blank field in it does
+        not clobber something real from the stub, e.g. the thumbnail url
+        YT still serves for a removed video.
+        """
+        if not overwrite:
+            return youtube_meta
+
+        merged = dict(youtube_meta)
+        merged.update(
+            {
+                key: value
+                for key, value in overwrite.items()
+                if value not in (None, "", [], {})
+            }
+        )
+
+        return merged
 
     def _check_get_sb(self):
         """check if need to run sponsor block"""
