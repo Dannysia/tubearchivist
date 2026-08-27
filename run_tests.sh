@@ -11,6 +11,7 @@
 #   ./run_tests.sh backend/common  run a subset, args go to pytest
 #   ./run_tests.sh -k history -v   any pytest flags work
 #   ./run_tests.sh lint            black, isort and flake8 check only
+#   ./run_tests.sh format          let black and isort rewrite the files
 #
 # notes:
 #
@@ -28,6 +29,8 @@
 # - the container runs as root over the bind mount, so any file it writes
 #   comes back owned by root and unwritable on the host. that is what
 #   PYTHONDONTWRITEBYTECODE is for: no __pycache__, nothing to chown.
+#   format is the one mode that rewrites tracked files, so it runs as the
+#   host user instead, with HOME pointed somewhere it can pip install.
 
 set -euo pipefail
 
@@ -78,6 +81,27 @@ function run_lint {
 }
 
 
+function run_format {
+    echo "==> black and isort, rewriting"
+    # as the caller, not root: this is the one mode that writes back to
+    # the working tree, and root owned source is unwritable afterwards
+    docker run --rm --user "$(id -u):$(id -g)" \
+        -e HOME=/tmp \
+        -e PYTHONDONTWRITEBYTECODE=1 \
+        -v "$REPO_DIR":/src -w /src "$IMAGE" sh -c "
+        pip install --quiet --no-input --user \
+            'black==$BLACK_VERSION' \
+            'isort==$ISORT_VERSION' >/dev/null 2>&1
+        set -e
+        python -m black --line-length=79 \
+            --extend-exclude '/migrations/' backend
+        python -m isort --profile black -l 79 \
+            --skip-glob '*/migrations/*' backend
+    "
+    echo "==> formatted, run ./run_tests.sh lint for flake8"
+}
+
+
 function run_pytest {
     trap cleanup EXIT
 
@@ -111,6 +135,9 @@ require_image
 case "${1:-}" in
     lint)
         run_lint
+        ;;
+    format)
+        run_format
         ;;
     *)
         run_pytest "$@"
