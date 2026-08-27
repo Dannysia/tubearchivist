@@ -95,8 +95,12 @@ def clear_logs(source: SourceType | None = None) -> int:
     else:
         query = {"match_all": {}}
 
-    response, _ = ElasticWrap(f"{INDEX_NAME}/_delete_by_query").post(
-        {"query": query}
-    )
+    # refresh, unlike prune: this one is triggered from the logs page,
+    # which re-reads immediately afterwards. Without it the deleted
+    # entries are still visible for up to a refresh interval and the
+    # clear button looks like it did nothing
+    response, _ = ElasticWrap(
+        f"{INDEX_NAME}/_delete_by_query?refresh=true"
+    ).post({"query": query})
 
     return response.get("deleted", 0)
