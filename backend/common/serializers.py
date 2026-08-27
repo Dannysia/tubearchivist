@@ -95,6 +95,9 @@ class PingSerializer(serializers.Serializer):
     response = serializers.ChoiceField(choices=["pong"])
     user = serializers.IntegerField()
     version = serializers.CharField()
+    # empty for an image built without the build args
+    build_sha = serializers.CharField(allow_blank=True)
+    build_date = serializers.CharField(allow_blank=True)
     ta_update = PingUpdateSerializer(required=False)
 
 

@@ -92,6 +92,15 @@ COPY ./docker_assets/beat_auto_spawn.sh /app
 
 COPY --from=node-builder ./frontend/dist /app/static
 
+# which build this image is, read back by settings.TA_BUILD_*. Last,
+# after every COPY, so changing it never invalidates a cached layer.
+# Empty when built without these args, e.g. a plain docker build - the
+# footer then shows the version on its own.
+ARG TA_BUILD_SHA=""
+ARG TA_BUILD_DATE=""
+ENV TA_BUILD_SHA=$TA_BUILD_SHA
+ENV TA_BUILD_DATE=$TA_BUILD_DATE
+
 # volumes
 VOLUME /cache
 VOLUME /youtube

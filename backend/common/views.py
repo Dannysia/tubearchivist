@@ -18,6 +18,7 @@ from common.src.searching import SearchForm
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminOnly, ApiBaseView
+from django.conf import settings
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -39,6 +40,8 @@ class PingView(ApiBaseView):
             "response": "pong",
             "user": request.user.id,
             "version": ReleaseVersion().get_local_version(),
+            "build_sha": settings.TA_BUILD_SHA,
+            "build_date": settings.TA_BUILD_DATE,
             "ta_update": ReleaseVersion().get_update(),
         }
         serializer = PingSerializer(data)

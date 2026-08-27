@@ -20,6 +20,9 @@ export type AuthenticationType = {
   response: string;
   user: number;
   version: string;
+  // empty for an image built without the build args
+  build_sha: string;
+  build_date: string;
   ta_update: TaUpdateType;
 };
 

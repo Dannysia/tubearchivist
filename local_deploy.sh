@@ -27,9 +27,33 @@ function require_compose {
 }
 
 
+function build_id {
+    # what is actually going into the image. -uno so an untracked local
+    # file, e.g. worker/start.sh, does not pin every build to dirty -
+    # only modifications to tracked files change what gets built
+    local sha dirty
+    sha="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+    dirty=""
+    if [[ -n "$(git -C "$REPO_DIR" status --porcelain -uno 2>/dev/null)" ]]; then
+        dirty="-dirty"
+    fi
+
+    echo "${sha}${dirty}"
+}
+
+
 function build {
-    echo "==> building $IMAGE from $REPO_DIR"
-    docker build -t "$IMAGE" "$REPO_DIR"
+    local sha date
+    sha="$(build_id)"
+    # build time, not commit time: the sha already pins the code, so the
+    # useful second field is how old this image is
+    date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    echo "==> building $IMAGE from $REPO_DIR ($sha, $date)"
+    docker build \
+        --build-arg "TA_BUILD_SHA=$sha" \
+        --build-arg "TA_BUILD_DATE=$date" \
+        -t "$IMAGE" "$REPO_DIR"
 }
 
 

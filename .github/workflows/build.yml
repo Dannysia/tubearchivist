@@ -102,6 +102,14 @@ jobs:
             type=raw,value=mainline
             type=sha
 
+      # so a ghcr image reports which build it is, the same way
+      # local_deploy.sh does. Short sha to match it, and never dirty
+      # here since CI builds a clean checkout of the commit
+      - id: build_meta
+        run: |
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -109,5 +117,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TA_BUILD_SHA=${{ steps.build_meta.outputs.sha }}
+            TA_BUILD_DATE=${{ steps.build_meta.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

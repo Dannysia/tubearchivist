@@ -222,7 +222,18 @@ CORS_EXPOSE_HEADERS = ["X-Start-Timestamp"]
 
 # TA application settings
 TA_UPSTREAM = "https://github.com/tubearchivist/tubearchivist"
+# upstream's release number, bumped by upstream and arriving through a
+# merge. It says which mainline base this fork sits on, which is what
+# decides the migrations and features inherited, so it is deliberately
+# not a place to record fork changes - ReleaseVersion._parse_version
+# int()s the dot separated parts and raises on any suffix that is not
+# spelled out of the letters in "-unstable".
 TA_VERSION = "v0.5.11"
+# which build of this working tree is running, baked in at image build
+# time - see local_deploy.sh. Empty for an image built without the
+# build args, which then just reports TA_VERSION on its own.
+TA_BUILD_SHA = environ.get("TA_BUILD_SHA", "")
+TA_BUILD_DATE = environ.get("TA_BUILD_DATE", "")
 try:
     TA_START = RedisArchivist().get_message_str("STARTTIMESTAMP")
 except ValueError:
