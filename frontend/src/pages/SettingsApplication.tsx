@@ -18,6 +18,7 @@ import loadCookie, { CookieStateType } from '../api/loader/loadCookie';
 import deleteCookie from '../api/actions/deleteCookie';
 import validateCookie from '../api/actions/validateCookie';
 import { useUserConfigStore } from '../stores/UserConfigStore';
+import TailscaleExitNode from '../components/TailscaleExitNode';
 import MembershipAppsettings from '../components/MembershipAppsettings';
 import testDownscaleEncoders, {
   DownscaleEncoderTestResultType,
@@ -526,6 +527,7 @@ const SettingsApplication = () => {
                 />
               </div>
             </div>
+            <TailscaleExitNode />
             <div className="info-box-item">
               <h2 id="format">Download Format</h2>
               {userConfig.show_help_text && (

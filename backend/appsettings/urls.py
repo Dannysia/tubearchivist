@@ -66,6 +66,16 @@ urlpatterns = [
         name="api-import-file-item",
     ),
     path(
+        "tailscale/",
+        views.TailscaleExitNodeView.as_view(),
+        name="api-tailscale",
+    ),
+    path(
+        "tailscale/egress/",
+        views.TailscaleEgressView.as_view(),
+        name="api-tailscale-egress",
+    ),
+    path(
         "membership/profile/",
         views_mb.MembershipProfileView.as_view(),
         name="api-membership-profile",

@@ -14,8 +14,12 @@ from appsettings.serializers import (
     SnapshotItemSerializer,
     SnapshotListSerializer,
     SnapshotRestoreResponseSerializer,
+    TailscaleEgressSerializer,
+    TailscaleStateSerializer,
+    TailscaleUpdateSerializer,
     TokenResponseSerializer,
 )
+from appsettings.src import tailscale
 from appsettings.src.backup import ElasticBackup
 from appsettings.src.config import AppConfig
 from appsettings.src.manual import ImportFolderFiles
@@ -662,3 +666,135 @@ class TokenView(ApiBaseView):
         print("revoke API token")
         request.user.auth_token.delete()
         return Response(status=204)
+
+
+class TailscaleExitNodeView(ApiBaseView):
+    """resolves to /api/appsettings/tailscale/
+    GET: current exit node and every node selectable
+    POST: set, rotate or clear the exit node
+    """
+
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(TailscaleStateSerializer()),
+            503: OpenApiResponse(
+                ErrorResponseSerializer(), description="tailscaled failed"
+            ),
+        },
+    )
+    def get(request):
+        """current exit node and the options"""
+        try:
+            state = tailscale.get_state()
+        except tailscale.TailscaleError as err:
+            print(f"tailscale state failed: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=503)
+
+        return Response(TailscaleStateSerializer(state).data)
+
+    @staticmethod
+    @extend_schema(
+        request=TailscaleUpdateSerializer,
+        responses={
+            200: OpenApiResponse(TailscaleStateSerializer()),
+            400: OpenApiResponse(
+                ErrorResponseSerializer(), description="unusable exit node"
+            ),
+            503: OpenApiResponse(
+                ErrorResponseSerializer(), description="tailscaled failed"
+            ),
+        },
+    )
+    def post(request):
+        """set, rotate or clear the exit node"""
+        serializer = TailscaleUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        validated = serializer.validated_data
+        action = validated["action"]
+
+        try:
+            state = tailscale.get_state()
+        except tailscale.TailscaleError as err:
+            print(f"tailscale state failed: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=503)
+
+        if not state["available"]:
+            error = ErrorResponseSerializer(
+                {"error": "no tailscaled socket in this container"}
+            )
+            return Response(error.data, status=503)
+
+        node_id, message = TailscaleExitNodeView._resolve(
+            action, validated, state
+        )
+        if message:
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=400)
+
+        try:
+            tailscale.set_exit_node(node_id)
+            # read back rather than echo the request, so the panel shows
+            # what tailscaled actually settled on
+            new_state = tailscale.get_state()
+        except tailscale.TailscaleError as err:
+            print(f"tailscale exit node change failed: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=503)
+
+        return Response(TailscaleStateSerializer(new_state).data)
+
+    @staticmethod
+    def _resolve(action: str, validated: dict, state: dict) -> tuple:
+        """which node the action lands on, or why it cannot"""
+        if action == "clear":
+            return None, None
+
+        if action == "set":
+            node_id = validated.get("node_id")
+            if not node_id:
+                return None, "set needs a node_id"
+
+            if node_id not in {i["node_id"] for i in state["nodes"]}:
+                return None, f"{node_id} is not an exit node on this tailnet"
+
+            return node_id, None
+
+        current = state["current"] or {}
+        picked = tailscale.pick_random(state["nodes"], current.get("node_id"))
+        if not picked:
+            return None, "no mullvad exit node available on this tailnet"
+
+        return picked["node_id"], None
+
+
+class TailscaleEgressView(ApiBaseView):
+    """resolves to /api/appsettings/tailscale/egress/
+    GET: the address the outside world currently sees
+    """
+
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(TailscaleEgressSerializer()),
+            503: OpenApiResponse(
+                ErrorResponseSerializer(), description="egress check failed"
+            ),
+        },
+    )
+    def get(request):
+        """look up the current public address"""
+        try:
+            egress = tailscale.get_egress()
+        except tailscale.TailscaleError as err:
+            print(f"egress check failed: {err}")
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=503)
+
+        return Response(TailscaleEgressSerializer(egress).data)

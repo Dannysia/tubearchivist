@@ -208,3 +208,52 @@ class TokenResponseSerializer(serializers.Serializer):
     """serialize token response"""
 
     token = serializers.CharField(allow_null=True)
+
+
+class TailscaleNodeSerializer(serializers.Serializer):
+    """serialize a selectable tailscale exit node"""
+
+    node_id = serializers.CharField()
+    hostname = serializers.CharField()
+    country = serializers.CharField(allow_null=True)
+    city = serializers.CharField(allow_null=True)
+    online = serializers.BooleanField()
+    is_mullvad = serializers.BooleanField()
+
+
+class TailscaleStateSerializer(serializers.Serializer):
+    """serialize exit node state
+
+    available false is the whole when-present story: there is no
+    tailscaled socket in this container, so the panel hides itself
+    """
+
+    available = serializers.BooleanField()
+    routes_all_traffic = serializers.BooleanField()
+    current = TailscaleNodeSerializer(allow_null=True)
+    nodes = TailscaleNodeSerializer(many=True)
+
+
+class TailscaleUpdateSerializer(serializers.Serializer):
+    """serialize an exit node change
+
+    node_id belongs to set, rotate and clear take nothing
+    """
+
+    action = serializers.ChoiceField(choices=["set", "rotate", "clear"])
+    node_id = serializers.CharField(required=False)
+
+
+class TailscaleEgressSerializer(serializers.Serializer):
+    """serialize the address the outside world sees
+
+    is_mullvad null means the check fell back to a plain ip echo, which
+    cannot tell whether the traffic left through an exit node
+    """
+
+    ip = serializers.CharField(allow_null=True)
+    country = serializers.CharField(allow_null=True)
+    city = serializers.CharField(allow_null=True)
+    organization = serializers.CharField(allow_null=True)
+    is_mullvad = serializers.BooleanField(allow_null=True)
+    exit_hostname = serializers.CharField(allow_null=True)
