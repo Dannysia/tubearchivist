@@ -48,6 +48,8 @@ class DownloadsConfigType(TypedDict):
     extractor_lang: str | None
     integrate_ryd: bool
     integrate_sponsorblock: bool
+    auto_rotate_exit_node: bool
+    max_exit_node_rotates: int
 
 
 class ApplicationConfigType(TypedDict):
@@ -110,6 +112,8 @@ class AppConfig:
             "extractor_lang": None,
             "integrate_ryd": False,
             "integrate_sponsorblock": False,
+            "auto_rotate_exit_node": False,
+            "max_exit_node_rotates": 3,
         },
         "application": {
             "enable_snapshot": True,

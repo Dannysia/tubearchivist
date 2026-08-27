@@ -113,6 +113,24 @@ class TestPickRandom:
         assert tailscale.pick_random(only_tailnet) is None
 
 
+class TestPickRotationTarget:
+    """the rule the button and the automatic rotate both go through"""
+
+    def test_skips_whatever_is_current(self):
+        state = {"current": NODES[0], "nodes": NODES}
+        for _ in range(50):
+            assert tailscale.pick_rotation_target(state)["node_id"] != "n1"
+
+    def test_handles_being_on_no_exit_node(self):
+        """rotating from direct is still a rotate"""
+        state = {"current": None, "nodes": NODES}
+        assert tailscale.pick_rotation_target(state)["is_mullvad"] is True
+
+    def test_nothing_to_move_to(self):
+        state = {"current": None, "nodes": []}
+        assert tailscale.pick_rotation_target(state) is None
+
+
 class TestSocketDiscovery:
     """when present, and where"""
 

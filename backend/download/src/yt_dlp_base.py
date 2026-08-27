@@ -15,6 +15,7 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.helper import deep_merge, rand_sleep
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
+from download.src.exit_node import clear_budget, rotate_on_bot_block
 
 
 class YtWrap:
@@ -101,13 +102,12 @@ class YtWrap:
                 if "Temporary failure in name resolution" in str(err):
                     raise ConnectionError("lost the internet, abort!") from err
                 if any(m in str(err) for m in self.BOT_MESSAGES):
-                    print(self.BOT_ERROR_LOG)
-                    rand_sleep(self.config)
-                    raise ConnectionError(self.BOT_ERROR_LOG) from err
+                    self._on_bot_block(err)
 
                 return False, str(err)
 
         self._validate_cookie()
+        clear_budget()
 
         return True, True
 
@@ -133,15 +133,28 @@ class YtWrap:
                 if "Temporary failure in name resolution" in str(err):
                     raise ConnectionError("lost the internet, abort!") from err
                 if any(m in str(err) for m in self.BOT_MESSAGES):
-                    print(self.BOT_ERROR_LOG)
-                    rand_sleep(self.config)
-                    raise ConnectionError(self.BOT_ERROR_LOG) from err
+                    self._on_bot_block(err)
 
                 return None, str(err)
 
         self._validate_cookie()
+        clear_budget()
 
         return response, None
+
+    def _on_bot_block(self, err):
+        """youtube called this a bot
+
+        rotates away from the address first when that is switched on,
+        then aborts exactly as it did before. the rotate only changes
+        what the next run goes out on, it does not retry this one.
+        """
+        print(self.BOT_ERROR_LOG)
+        if message := rotate_on_bot_block(self.config):
+            print(message)
+
+        rand_sleep(self.config)
+        raise ConnectionError(self.BOT_ERROR_LOG) from err
 
     def _validate_cookie(self):
         """check cookie and write it back for next use"""

@@ -10,6 +10,8 @@ import updateTailscaleExitNode, {
 import { ApiError } from '../functions/APIClient';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import Button from './Button';
+import InputConfig from './InputConfig';
+import ToggleConfig from './ToggleConfig';
 
 const describeNode = (node: TailscaleNodeType) => {
   const where = [node.city, node.country].filter(Boolean).join(', ');
@@ -35,7 +37,13 @@ const describeEgress = (egress: TailscaleEgressType) => {
 
 const errorMessage = (err: unknown, fallback: string) => (err as ApiError)?.message || fallback;
 
-const TailscaleExitNode = () => {
+type TailscaleExitNodeProps = {
+  autoRotate: boolean;
+  maxRotates: number;
+  updateCallback: (name: string, value: string | boolean | number | null) => void;
+};
+
+const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: TailscaleExitNodeProps) => {
   const { userConfig } = useUserConfigStore();
   const [state, setState] = useState<TailscaleStateType>();
   const [country, setCountry] = useState('');
@@ -48,6 +56,7 @@ const TailscaleExitNode = () => {
   // distinguishes the first read not having landed yet from it having
   // landed and found nothing, which render very differently
   const [loaded, setLoaded] = useState(false);
+  const [maxRotatesInput, setMaxRotatesInput] = useState<number | null>(maxRotates);
 
   useEffect(() => {
     (async () => {
@@ -185,6 +194,20 @@ const TailscaleExitNode = () => {
             </li>
             <li>Changes apply immediately, with no restart.</li>
             <li>
+              Rotate automatically does the same thing unattended, the moment YouTube calls a
+              request a bot.
+              <ul>
+                <li>
+                  It moves the next attempt onto a new address rather than retrying the failed one,
+                  which aborts as it always did.
+                </li>
+                <li>
+                  Giving up after a set number of rotations stops a block that no address fixes from
+                  cycling forever. Any request that gets through hands the whole budget back.
+                </li>
+              </ul>
+            </li>
+            <li>
               Unraid re-applies its own exit node setting when the container starts, so a change
               made here holds only until the next restart.
             </li>
@@ -277,6 +300,31 @@ const TailscaleExitNode = () => {
           disabled={busy || !state.current}
           onClick={() => runAction('clear')}
         />
+        <div className="settings-box-wrapper">
+          <div>
+            <p>Rotate automatically when blocked</p>
+          </div>
+          <ToggleConfig
+            name="downloads.auto_rotate_exit_node"
+            value={autoRotate}
+            updateCallback={updateCallback}
+          />
+        </div>
+        {autoRotate && (
+          <div className="settings-box-wrapper">
+            <div>
+              <p>Give up after this many rotations</p>
+            </div>
+            <InputConfig
+              type="number"
+              name="downloads.max_exit_node_rotates"
+              value={maxRotatesInput}
+              setValue={setMaxRotatesInput}
+              oldValue={maxRotates}
+              updateCallback={updateCallback}
+            />
+          </div>
+        )}
         {error && (
           <p>
             <span className="danger-zone">{error}</span>

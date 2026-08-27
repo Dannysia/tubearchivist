@@ -29,6 +29,8 @@ export type AppSettingsConfigType = {
     extractor_lang: string | null;
     integrate_ryd: boolean;
     integrate_sponsorblock: boolean;
+    auto_rotate_exit_node: boolean;
+    max_exit_node_rotates: number;
   };
   application: {
     enable_snapshot: boolean;

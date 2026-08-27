@@ -527,7 +527,11 @@ const SettingsApplication = () => {
                 />
               </div>
             </div>
-            <TailscaleExitNode />
+            <TailscaleExitNode
+              autoRotate={appSettingsConfig.downloads.auto_rotate_exit_node}
+              maxRotates={appSettingsConfig.downloads.max_exit_node_rotates}
+              updateCallback={handleUpdateConfig}
+            />
             <div className="info-box-item">
               <h2 id="format">Download Format</h2>
               {userConfig.show_help_text && (

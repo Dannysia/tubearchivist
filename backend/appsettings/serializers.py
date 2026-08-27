@@ -67,6 +67,8 @@ class AppConfigDownloadsSerializer(
     extractor_lang = serializers.CharField(allow_null=True)
     integrate_ryd = serializers.BooleanField()
     integrate_sponsorblock = serializers.BooleanField()
+    auto_rotate_exit_node = serializers.BooleanField()
+    max_exit_node_rotates = serializers.IntegerField(min_value=1, max_value=25)
 
 
 class AppConfigAppSerializer(

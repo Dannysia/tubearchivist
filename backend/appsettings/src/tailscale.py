@@ -183,6 +183,17 @@ def pick_random(
     )
 
 
+def pick_rotation_target(state: dict) -> dict | None:
+    """the node a rotate from this state should land on
+
+    shared by the button and the automatic rotate on a bot block, so the
+    two cannot end up disagreeing about what rotating means.
+    """
+    current = state["current"] or {}
+
+    return pick_random(state["nodes"], current.get("node_id"))
+
+
 def get_egress() -> dict:
     """what the outside world currently sees this container as"""
     try:

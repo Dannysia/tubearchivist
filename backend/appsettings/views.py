@@ -764,10 +764,9 @@ class TailscaleExitNodeView(ApiBaseView):
 
             return node_id, None
 
-        current = state["current"] or {}
-        picked = tailscale.pick_random(state["nodes"], current.get("node_id"))
+        picked = tailscale.pick_rotation_target(state)
         if not picked:
-            return None, "no mullvad exit node available on this tailnet"
+            return None, "no mullvad exit node available to rotate onto"
 
         return picked["node_id"], None
 
