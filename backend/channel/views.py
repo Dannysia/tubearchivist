@@ -9,13 +9,17 @@ from channel.serializers import (
     ChannelSearchQuerySerializer,
     ChannelSerializer,
     ChannelUpdateSerializer,
+    ChannelVideoDeleteQuerySerializer,
 )
 from channel.src.aggs import ChannelAggs
 from channel.src.constants import ChannelSortEnum
 from channel.src.index import YoutubeChannel, channel_overwrites
 from channel.src.list_query import ChannelListQuery
 from channel.src.nav import ChannelNav
-from common.serializers import ErrorResponseSerializer
+from common.serializers import (
+    AsyncTaskResponseSerializer,
+    ErrorResponseSerializer,
+)
 from common.src.es_connect import IndexPaginate
 from common.src.index_generic import Pagination
 from common.src.urlparser import Parser
@@ -28,7 +32,11 @@ from drf_spectacular.utils import (
     extend_schema,
 )
 from rest_framework.response import Response
-from task.tasks import index_channel_playlists, subscribe_to
+from task.tasks import (
+    delete_channel_videos,
+    index_channel_playlists,
+    subscribe_to,
+)
 from video.serializers import VideoDownscaleSerializer
 
 
@@ -225,6 +233,51 @@ class ChannelNavApiView(ApiBaseView):
         nav = ChannelNav(channel_id).get_nav()
         serializer = ChannelNavSerializer(nav)
         return Response(serializer.data)
+
+
+class ChannelVideoDeleteView(ApiBaseView):
+    """resolves to /api/channel/<channel_id>/videos/
+    DELETE: delete every video of one vid_type from the channel
+    """
+
+    search_base = "ta_channel/_doc/"
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        parameters=[ChannelVideoDeleteQuerySerializer],
+        responses={
+            202: OpenApiResponse(AsyncTaskResponseSerializer()),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(), description="channel not found"
+            ),
+        },
+    )
+    def delete(self, request, channel_id):
+        """delete all videos of one type from the channel"""
+        self.get_document(channel_id)
+        if not self.response:
+            error = ErrorResponseSerializer({"error": "channel not found"})
+            return Response(error.data, status=404)
+
+        query_serializer = ChannelVideoDeleteQuerySerializer(
+            data=request.query_params
+        )
+        query_serializer.is_valid(raise_exception=True)
+        validated = query_serializer.validated_data
+        vid_type = validated["vid_type"]
+        ignore = validated["ignore"]
+
+        # backgrounded, not inline: this is one es round trip per video
+        # plus its playlist entries, subtitles and comments, which on a
+        # channel with a few thousand of a type outlives the request
+        task = delete_channel_videos.delay(channel_id, vid_type, ignore)
+        message = {
+            "message": f"deleting {vid_type} from {channel_id}",
+            "task_id": task.id,
+        }
+        serializer = AsyncTaskResponseSerializer(message)
+
+        return Response(serializer.data, status=202)
 
 
 class ChannelDownscaleView(ApiBaseView):

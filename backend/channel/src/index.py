@@ -4,6 +4,7 @@ functionality:
 - index and update in es
 """
 
+import json
 import os
 from datetime import datetime
 
@@ -378,6 +379,146 @@ class ChannelDelete(YouTubeItem):
 
         all_playlists = IndexPaginate("ta_playlist", data).get_results()
         return all_playlists
+
+
+class ChannelVideoTypeDelete:
+    """delete every video of one type from a channel
+
+    Video by video, not a delete_by_query. ChannelDelete can be that
+    blunt because it removes the whole channel folder afterwards, which
+    takes the subtitle files with it. Here the folder stays and the
+    other types stay in it, so every video has to go through
+    YoutubeVideo.delete_media_file() - the only path that clears
+    subtitle files off disk as well as comments, playlist entries and
+    the index.
+    """
+
+    def __init__(
+        self,
+        channel_id: str,
+        vid_type: str,
+        task=None,
+        ignore: bool = False,
+    ):
+        self.channel_id = channel_id
+        self.vid_type = vid_type
+        self.task = task
+        self.ignore = ignore
+
+    def delete(self) -> int:
+        """delete all videos of the type, return how many went"""
+        # local import, video.src.index imports this module
+        from video.src.index import YoutubeVideo
+
+        youtube_ids = self.get_video_ids()
+        total = len(youtube_ids)
+        print(f"{self.channel_id}: delete {total} {self.vid_type}")
+
+        deleted = 0
+        to_ignore: list[dict] = []
+        for idx, youtube_id in enumerate(youtube_ids, start=1):
+            if self.task:
+                if self.task.is_stopped():
+                    print(f"{self.channel_id}: delete stopped by user")
+                    break
+
+                self._notify(idx, total)
+
+            video = YoutubeVideo(youtube_id)
+            if self.ignore:
+                # read it before the delete takes the document away
+                video.get_from_es()
+                if video.json_data:
+                    to_ignore.append(self._build_ignore_doc(video.json_data))
+
+            try:
+                video.delete_media_file()
+                deleted += 1
+            except FileNotFoundError:
+                # already gone from the index between the query and here
+                print(f"{youtube_id}: not indexed, skipping")
+
+        # after the loop, so a stopped run still ignores what it deleted
+        self._write_ignore(to_ignore)
+
+        return deleted
+
+    @staticmethod
+    def _build_ignore_doc(json_data: dict) -> dict:
+        """build a ta_download ignore entry from the indexed video
+
+        Everything the download queue needs is already on the video
+        document, so this costs no youtube requests - unlike the single
+        video "Delete and Ignore" button, which routes through
+        extract_download and re-extracts the metadata it already has.
+        """
+        channel = json_data.get("channel") or {}
+        player = json_data.get("player") or {}
+
+        return {
+            "channel_id": channel.get("channel_id"),
+            "channel_indexed": True,
+            "channel_name": channel.get("channel_name"),
+            "duration": player.get("duration_str") or "NA",
+            "published": json_data.get("published"),
+            "timestamp": int(datetime.now().timestamp()),
+            "title": json_data.get("title"),
+            "vid_thumb_url": json_data.get("vid_thumb_url"),
+            "vid_type": json_data.get("vid_type"),
+            "youtube_id": json_data["youtube_id"],
+            "status": "ignore",
+            "auto_start": False,
+        }
+
+    def _write_ignore(self, docs: list[dict]) -> None:
+        """bulk add the deleted videos to the ignore list"""
+        if not docs:
+            return
+
+        bulk_list = []
+        for doc in docs:
+            action = {
+                "index": {"_index": "ta_download", "_id": doc["youtube_id"]}
+            }
+            bulk_list.append(json.dumps(action))
+            bulk_list.append(json.dumps(doc))
+
+        bulk_list.append("\n")
+        query_str = "\n".join(bulk_list)
+        _, status_code = ElasticWrap("_bulk").post(query_str, ndjson=True)
+        if status_code not in [200, 201]:
+            print(f"{self.channel_id}: failed writing ignore entries")
+            return
+
+        print(f"{self.channel_id}: ignored {len(docs)} {self.vid_type}")
+
+    def get_video_ids(self) -> list[str]:
+        """every indexed video id of this type in the channel"""
+        data = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "term": {
+                                "channel.channel_id": {
+                                    "value": self.channel_id
+                                }
+                            }
+                        },
+                        {"term": {"vid_type": {"value": self.vid_type}}},
+                    ]
+                }
+            },
+            "_source": ["youtube_id"],
+        }
+        all_videos = IndexPaginate("ta_video", data).get_results()
+
+        return [i["youtube_id"] for i in all_videos]
+
+    def _notify(self, idx: int, total: int) -> None:
+        """send progress back to task"""
+        message = [f"Deleting {self.vid_type} {idx}/{total}"]
+        self.task.send_progress(message, progress=idx / total)
 
 
 def channel_overwrites(channel_id, overwrites):

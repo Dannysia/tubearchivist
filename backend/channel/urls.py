@@ -30,6 +30,11 @@ urlpatterns = [
         name="api-channel-nav",
     ),
     path(
+        "<slug:channel_id>/videos/",
+        views.ChannelVideoDeleteView.as_view(),
+        name="api-channel-video-delete",
+    ),
+    path(
         "<slug:channel_id>/downscale/",
         views.ChannelDownscaleView.as_view(),
         name="api-channel-downscale",

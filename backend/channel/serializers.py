@@ -193,3 +193,17 @@ class ChannelDownscaleSerializer(serializers.Serializer):
 
     queued = serializers.ListField(child=serializers.CharField())
     skipped = DownscaleBulkResultItemSerializer(many=True)
+
+
+class ChannelVideoDeleteQuerySerializer(serializers.Serializer):
+    """serialize query parameters for deleting videos by type"""
+
+    # required and with no default on purpose: this endpoint is a
+    # narrower delete than DELETE /api/channel/<id>/, and a missing or
+    # misspelled type has to fail rather than fall back to everything
+    vid_type = serializers.ChoiceField(
+        choices=VideoTypeEnum.values_known(), required=True
+    )
+    # add the deleted videos to the ignore list so a subscribed channel
+    # does not just download them again on the next scan
+    ignore = serializers.BooleanField(required=False, default=False)

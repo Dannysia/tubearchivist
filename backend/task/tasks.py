@@ -14,7 +14,7 @@ from appsettings.src.manual import ImportFolderScanner
 from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
 from celery import Task, shared_task
 from celery.exceptions import Retry
-from channel.src.index import YoutubeChannel
+from channel.src.index import ChannelVideoTypeDelete, YoutubeChannel
 from common.src.log import prune_logs
 from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import ParsedURLType, Parser
@@ -374,6 +374,28 @@ def index_channel_playlists(self, channel_id):
     """add all playlists of channel to index"""
     channel = YoutubeChannel(channel_id, task=self)
     channel.index_channel_playlists()
+
+
+@shared_task(bind=True, name="delete_channel_videos", base=BaseTask)
+def delete_channel_videos(
+    self, channel_id: str, vid_type: str, ignore: bool = False
+):
+    """delete every video of one type from a channel"""
+    manager = TaskManager()
+    if manager.is_pending(self):
+        print(f"[task][{self.name}] delete already running")
+        self.send_progress(["A channel delete is already running."])
+        return None
+
+    manager.init(self)
+    deleted = ChannelVideoTypeDelete(
+        channel_id, vid_type, task=self, ignore=ignore
+    ).delete()
+    if deleted:
+        suffix = " and ignored them" if ignore else ""
+        return f"Deleted {deleted} {vid_type} from {channel_id}{suffix}."
+
+    return None
 
 
 @shared_task(

@@ -103,6 +103,15 @@ INDEX_PLAYLISTS: TaskItemConfig = {
     "api_stop": False,
 }
 
+DELETE_CHANNEL_VIDEOS: TaskItemConfig = {
+    "title": "Delete Channel Videos",
+    "group": "channel:deletevideos",
+    "api_start": False,
+    # deleting a few thousand shorts is one es round trip per video, so
+    # long enough that being unable to stop it is a real problem
+    "api_stop": True,
+}
+
 DOWNSCALE_VIDEO: TaskItemConfig = {
     "title": "Downscale Video",
     "group": "downscale:run",
@@ -151,6 +160,7 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "thumbnail_check": THUMBNAIL_CHECK,
     "resync_metadata": RESYNC_METADATA,
     "index_playlists": INDEX_PLAYLISTS,
+    "delete_channel_videos": DELETE_CHANNEL_VIDEOS,
     "subscribe_to": SUBSCRIBE_TO,
     "version_check": VERSION_CHECK,
     "downscale_video": DOWNSCALE_VIDEO,

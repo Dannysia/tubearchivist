@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import loadChannelById, { ChannelResponseType } from '../api/loader/loadChannelById';
 import Linkify from '../components/Linkify';
 import deleteChannel from '../api/actions/deleteChannel';
+import deleteChannelVideos, { ChannelVideoType } from '../api/actions/deleteChannelVideos';
 import Routes from '../configuration/routes/RouteList';
 import queueReindex, { ReindexType, ReindexTypeEnum } from '../api/actions/queueReindex';
 import formatDate from '../functions/formatDates';
@@ -20,9 +21,18 @@ import startChannelDownscale, {
 } from '../api/actions/startChannelDownscale';
 import loadChannelAggs, { ChannelAggsType } from '../api/loader/loadChannelAggs';
 import ChannelStats from '../components/ChannelStats';
+import humanFileSize from '../functions/humanFileSize';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 
 const DOWNSCALE_LADDER = [2160, 1440, 1080, 720, 480, 360, 240];
+
+// label in the singular too, so a channel with one short does not offer
+// to "Delete 1 Shorts"
+const VIDEO_TYPES: { key: ChannelVideoType; one: string; many: string }[] = [
+  { key: 'videos', one: 'Video', many: 'Videos' },
+  { key: 'streams', one: 'Stream', many: 'Streams' },
+  { key: 'shorts', one: 'Short', many: 'Shorts' },
+];
 
 export type ChannelBaseOutletContextType = {
   currentPage: number;
@@ -48,6 +58,8 @@ const ChannelAbout = () => {
   const isAdmin = useIsAdmin();
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [confirmDeleteType, setConfirmDeleteType] = useState<ChannelVideoType | null>(null);
+  const [deletingType, setDeletingType] = useState<ChannelVideoType | null>(null);
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [reindex, setReindex] = useState(false);
   const [refresh, setRefresh] = useState(true);
@@ -197,6 +209,77 @@ const ChannelAbout = () => {
                       </div>
                     )}
                   </div>
+
+                  <div id="delete-by-type" className="button-box">
+                    {VIDEO_TYPES.map(({ key, one, many }) => {
+                      const bucket = channelAggs?.by_type?.[key];
+                      const count = bucket?.doc_count ?? 0;
+                      // a type the channel has none of is not an option
+                      if (!count) {
+                        return null;
+                      }
+
+                      const label = count === 1 ? one : many;
+                      const size = humanFileSize(bucket?.media_size ?? 0, useSiUnits);
+
+                      if (confirmDeleteType === key) {
+                        return (
+                          <div key={key} className="delete-confirm">
+                            <span>
+                              Delete all {count} {label} from {channel.channel_name}? The channel
+                              itself stays. Delete and Ignore also adds them to the ignore list, so
+                              a subscribed channel will not download them again.{' '}
+                            </span>
+                            <Button
+                              label="Delete"
+                              className="danger-button"
+                              onClick={async () => {
+                                await deleteChannelVideos(channelId, key);
+                                setConfirmDeleteType(null);
+                                setDeletingType(key);
+                                setStartNotification(true);
+                              }}
+                            />{' '}
+                            <Button
+                              label="Delete and Ignore"
+                              className="danger-button"
+                              title={`Delete and never download ${label.toLowerCase()} from this channel again`}
+                              onClick={async () => {
+                                await deleteChannelVideos(channelId, key, true);
+                                setConfirmDeleteType(null);
+                                setDeletingType(key);
+                                setStartNotification(true);
+                              }}
+                            />{' '}
+                            <Button label="Cancel" onClick={() => setConfirmDeleteType(null)} />
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <Button
+                          key={key}
+                          label={`Delete ${count} ${label} (${size})`}
+                          title={`Delete all ${label.toLowerCase()} of ${channel.channel_name}`}
+                          onClick={() => setConfirmDeleteType(key)}
+                        />
+                      );
+                    })}
+
+                    {deletingType && (
+                      <p>
+                        Deleting {deletingType}, progress is shown above.{' '}
+                        <Button
+                          label="Refresh counts"
+                          onClick={() => {
+                            setDeletingType(null);
+                            setRefresh(true);
+                          }}
+                        />
+                      </p>
+                    )}
+                  </div>
+
                   <br></br>
                   {reindex && <p>Reindex scheduled</p>}
                   {!reindex && (
