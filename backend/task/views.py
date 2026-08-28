@@ -164,7 +164,8 @@ class TaskIDView(ApiBaseView):
 
             TaskCommand().stop(task_id)
         if command == "kill":
-            if not task_conf.get("api_stop"):
+            # defaults to api_stop, so only tasks that opt out differ
+            if not task_conf.get("api_kill", task_conf.get("api_stop")):
                 error = ErrorResponseSerializer(
                     {"error": "task can not be killed"}
                 )

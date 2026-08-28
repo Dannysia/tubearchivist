@@ -147,3 +147,35 @@ class TestSilentWait:
         assert countdown_sleep(CONFIG, None)
 
         assert clock == [9]
+
+
+class TestPollsEvenWithPacingOff:
+    """sleep_interval empty is a supported setting, not an edge case
+
+    countdown_sleep is the only place most of these loops ever look for
+    a stop - reindex and the comment index have no other check at all.
+    Polling only inside the countdown loop meant Stop did nothing for
+    anyone who had turned pacing off.
+    """
+
+    @pytest.mark.parametrize("interval", [None, 0])
+    def test_a_stop_is_seen_with_no_wait_to_step_through(
+        self, monkeypatch, clock, interval
+    ):
+        set_interval(monkeypatch, 0)
+        checks = []
+        task = SimpleNamespace(is_stopped=lambda: checks.append(1) or True)
+
+        assert not countdown_sleep(CONFIG, task)
+
+        assert len(checks) == 1, "must poll once even with nothing to wait"
+        assert clock == [], "and must not invent a wait"
+
+    def test_a_running_task_still_passes_straight_through(
+        self, monkeypatch, clock, running
+    ):
+        set_interval(monkeypatch, 0)
+
+        assert countdown_sleep(CONFIG, running)
+
+        assert clock == []

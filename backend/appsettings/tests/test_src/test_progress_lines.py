@@ -132,6 +132,38 @@ class TestReindexStopPropagates:
             is False
         )
 
+    def test_reindex_type_stops_popping_the_queue(self, monkeypatch):
+        """a queue of one ends the loop by itself, so it cannot show
+        the break is there; this one never drains"""
+        from appsettings.src import reindex as reindex_mod
+
+        popped = []
+
+        def get_next():
+            popped.append(len(popped) + 1)
+            assert len(popped) < 50, "loop did not break on the refusal"
+            return f"id{len(popped)}", len(popped)
+
+        monkeypatch.setattr(
+            reindex_mod, "countdown_sleep", lambda *a, **kw: False
+        )
+        monkeypatch.setattr(
+            reindex_mod,
+            "RedisQueue",
+            lambda name: SimpleNamespace(
+                key="q",
+                max_score=lambda: 99,
+                get_next=get_next,
+                length=lambda: 99,
+            ),
+        )
+
+        instance = _reindex_instance()
+        assert not reindex_mod.Reindex.reindex_type(
+            instance, "video", {"queue_name": "q", "index_name": "ta_video"}
+        )
+        assert len(popped) == 1, "one item, then out"
+
     def test_reindex_all_stops_at_the_first_refusal(self, monkeypatch):
         from appsettings.src import reindex as reindex_mod
 

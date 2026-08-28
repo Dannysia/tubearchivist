@@ -5,7 +5,7 @@ Functionality:
 - separate to avoid circular imports
 """
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 
 class TaskItemConfig(TypedDict):
@@ -15,6 +15,10 @@ class TaskItemConfig(TypedDict):
     group: str
     api_start: bool
     api_stop: bool
+    # optional, defaults to api_stop. Only set it to split the two:
+    # stop asks the loop to finish the item it is on and leave, kill
+    # terminates the worker wherever it happens to be.
+    api_kill: NotRequired[bool]
 
 
 UPDATE_SUBSCRIBED: TaskItemConfig = {
@@ -49,7 +53,17 @@ CHECK_REINDEX: TaskItemConfig = {
     "title": "Reindex Documents",
     "group": "reindex:run",
     "api_start": False,
-    "api_stop": False,
+    # stoppable: the run only checks between items, after the current
+    # one is fully indexed and cleared, so a stop never leaves a half
+    # written document. Whatever is still queued stays queued in redis
+    # and is picked up first on the next scheduled run.
+    "api_stop": True,
+    # but not killable. None of the above holds for a terminate: the id
+    # has already been popped off the queue, and reindex_single_video
+    # deletes the old subtitle files before it writes the new document,
+    # so a kill in that window loses the queue entry and leaves ES
+    # advertising subtitles that are gone from disk.
+    "api_kill": False,
 }
 
 MANUAL_IMPORT: TaskItemConfig = {

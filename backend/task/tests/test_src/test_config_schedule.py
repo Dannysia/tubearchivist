@@ -133,3 +133,36 @@ class TestOrphanedSchedules:
 
     def test_the_real_task_config_orphans_nothing_today(self):
         assert orphaned_schedules(TASK_CONFIG.keys(), TASK_CONFIG) == []
+
+
+def test_reindex_is_stoppable():
+    """the reindex spends hours asleep between youtube requests
+
+    task/views.py refuses a stop for anything without this flag, so the
+    propagation the reindex loop implements was unreachable while it was
+    False. A stop is only ever checked between items, after the current
+    one is indexed and cleared, and whatever is still queued stays in
+    redis for the next scheduled run.
+    """
+    assert TASK_CONFIG["check_reindex"]["api_stop"] is True
+
+
+def test_reindex_is_not_killable():
+    """stop and kill are different things and share one flag by default
+
+    A stop asks the loop to finish its item and leave. A kill terminates
+    the worker wherever it is - the id is already popped off the queue,
+    and reindex_single_video deletes the old subtitle files before
+    writing the new document, so a kill in that window loses the entry
+    and leaves ES advertising subtitles that are gone from disk.
+    """
+    assert TASK_CONFIG["check_reindex"]["api_kill"] is False
+
+
+def test_api_kill_defaults_to_api_stop():
+    """only check_reindex splits them, everything else must be unchanged"""
+    for name, config in TASK_CONFIG.items():
+        if name == "check_reindex":
+            continue
+
+        assert "api_kill" not in config, f"{name} should not need to opt out"

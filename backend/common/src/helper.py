@@ -104,9 +104,16 @@ def countdown_sleep(config, task, notify=None, label: str = "") -> bool:
         sleep(remaining)
         return True
 
-    while remaining > 0:
+    while True:
+        # before the length check, not inside it: with pacing disabled
+        # there is no wait to step through, and this is the only place
+        # most of these loops ever look for a stop. Skipping the poll
+        # made Stop inert for exactly the users who turned pacing off.
         if task.is_stopped():
             return False
+
+        if remaining <= 0:
+            return True
 
         if notify:
             notify(f"Waiting {remaining}s before {label}")
@@ -114,8 +121,6 @@ def countdown_sleep(config, task, notify=None, label: str = "") -> bool:
         step = min(COUNTDOWN_STEP, remaining)
         sleep(step)
         remaining -= step
-
-    return True
 
 
 def requests_headers() -> dict[str, str]:
