@@ -25,7 +25,7 @@ from download.src.yt_dlp_handler import VideoDownloader
 from downscale.src.downscale import DownscaleRunner
 from downscale.src.worker import reap_stale_leases
 from task.src.notify import Notifications
-from task.src.task_config import TASK_CONFIG
+from task.src.task_config import get_task_config
 from task.src.task_log import log_task_event
 from task.src.task_manager import TaskManager
 from video.src.meta_embed import MetadataEmbed
@@ -67,7 +67,7 @@ class BaseTask(Task):
     def after_return(self, status, retval, task_id, args, kwargs, einfo):
         """callback after task returns"""
         print(f"{task_id} return callback")
-        task_title = TASK_CONFIG.get(self.name).get("title")
+        task_title = get_task_config(self.name).get("title")
         result = Notifications(self.name).send(task_id, task_title)
         # None means there was nothing to send, which is the normal case
         # on an install with no apprise urls configured and not worth an
@@ -95,9 +95,24 @@ class BaseTask(Task):
         RedisArchivist().set_message(key, message)
 
     def _build_message(self, level="info"):
-        """build message dict"""
+        """build message dict
+
+        The four keys below are required by NotificationSerializer, and
+        /api/notification/ serializes every stored message as one list -
+        so one message missing them fails that response for every
+        client, not just for the task it belongs to. Nothing expires the
+        key send_progress writes either, so it would stay broken until
+        the next restart. A task with no config gets its own name and no
+        stop button rather than a hole.
+        """
         task_id = self.request.id
-        message = TASK_CONFIG.get(self.name).copy()
+        message = {
+            "title": self.name,
+            "group": self.name,
+            "api_start": False,
+            "api_stop": False,
+        }
+        message.update(get_task_config(self.name))
         message.update({"level": level, "id": task_id})
         task_result = TaskManager().get_task(task_id)
         if task_result:

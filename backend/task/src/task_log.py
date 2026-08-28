@@ -8,7 +8,7 @@ concerns, and out of notify.py so apprise stays free of both.
 """
 
 from common.src.log import LevelType, write_log
-from task.src.task_config import TASK_CONFIG
+from task.src.task_config import get_task_config
 
 # the level an outcome maps to, so the writer and the UI filter agree
 EVENT_LEVELS: dict[str, LevelType] = {
@@ -31,7 +31,7 @@ def log_task_event(task, event: str, message: str) -> None:
     """
     # pylint: disable=broad-except
     try:
-        config = TASK_CONFIG.get(task.name) or {}
+        config = get_task_config(task.name)
         write_log(
             source="notification",
             level=EVENT_LEVELS.get(event, "info"),

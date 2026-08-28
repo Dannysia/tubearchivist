@@ -20,7 +20,7 @@ from task.serializers import (
 )
 from task.src.config_schedule import ScheduleBuilder, ScheduleValidator
 from task.src.notify import Notifications, get_all_notifications
-from task.src.task_config import TASK_CONFIG
+from task.src.task_config import TASK_CONFIG, get_task_config
 from task.src.task_manager import TaskCommand, TaskManager
 
 
@@ -154,7 +154,7 @@ class TaskIDView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "task ID not found"})
             return Response(error.data, status=404)
 
-        task_conf = TASK_CONFIG.get(task_result.get("name"))
+        task_conf = get_task_config(task_result.get("name"))
         if command == "stop":
             if not task_conf.get("api_stop"):
                 error = ErrorResponseSerializer(

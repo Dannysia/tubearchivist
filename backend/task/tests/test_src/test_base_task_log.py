@@ -125,3 +125,70 @@ class TestAfterReturn:
     def test_a_failed_send_is_logged(self, monkeypatch, logged):
         self._run(monkeypatch, (False, "notification failed for 1 url(s)"))
         assert logged[0][0] == "notify_failed"
+
+
+class UnknownTask(StubTask):
+    """a registered celery task with no TASK_CONFIG entry"""
+
+    name = "task_nobody_registered"
+
+
+class TestATaskWithNoConfig:
+    """the callbacks used to raise on one, which is the worst place
+
+    An exception in on_failure or after_return is attributed to the task
+    that just finished, so a missing line in a dict read as that task
+    having failed. It also meant the log writer's own guard, and the log
+    page's task filter clause for a missing title, could never fire.
+    """
+
+    def test_success_still_logs(self, logged):
+        UnknownTask().on_success("did a thing.", "abc-123", (), {})
+        assert logged == [("completed", "did a thing.")]
+
+    def test_failure_still_logs(self, logged):
+        UnknownTask().on_failure(ValueError("boom"), "abc-123", (), {}, None)
+        assert logged[0][0] == "failed"
+
+    def test_after_return_still_dispatches(self, monkeypatch, logged):
+        monkeypatch.setattr(
+            tasks,
+            "Notifications",
+            lambda name: type(
+                "N", (), {"send": lambda s, i, t: (True, "sent to 1 url(s)")}
+            )(),
+        )
+        UnknownTask().after_return("SUCCESS", None, "abc-123", (), {}, None)
+        assert logged[0][0] == "notified"
+
+    def test_progress_is_still_serializable(self, monkeypatch, logged):
+        """one malformed message fails the endpoint for every client
+
+        /api/notification/ serializes every stored message as one list,
+        and nothing expires the key send_progress writes, so a task with
+        no config would have taken the whole notification feed down
+        until the next restart rather than merely looking wrong.
+        """
+        from common.serializers import NotificationSerializer
+
+        sent: dict = {}
+        monkeypatch.setattr(
+            tasks,
+            "RedisArchivist",
+            lambda: type(
+                "R",
+                (),
+                {
+                    "set_message": lambda s, key, message, **kw: sent.update(
+                        {"key": key, "message": message}
+                    )
+                },
+            )(),
+        )
+        UnknownTask().send_progress(["still going"])
+
+        data = NotificationSerializer(sent["message"]).data
+        assert data["title"] == "task_nobody_registered"
+        assert data["api_stop"] is False
+        assert data["messages"] == ["still going"]
+        assert "None" not in sent["key"]

@@ -2,7 +2,7 @@
 
 import apprise
 from common.src.es_connect import ElasticWrap
-from task.src.task_config import TASK_CONFIG
+from task.src.task_config import get_task_config
 from task.src.task_manager import TaskManager
 
 
@@ -182,7 +182,11 @@ def get_all_notifications() -> dict[str, list[str]]:
             {
                 task_id: {
                     "urls": urls,
-                    "title": TASK_CONFIG[task_id]["title"],
+                    # falls back to the raw name rather than raising:
+                    # this reads stored config, so it outlives the task
+                    # it names, and an entry nothing can identify is
+                    # also an entry nothing can delete
+                    "title": get_task_config(task_id).get("title", task_id),
                 }
             }
         )

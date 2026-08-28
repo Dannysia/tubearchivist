@@ -181,3 +181,19 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "downscale_reap_leases": DOWNSCALE_REAP_LEASES,
     "log_cleanup": LOG_CLEANUP,
 }
+
+
+def get_task_config(task_name: str) -> TaskItemConfig | dict:
+    """the config for a task, empty when nothing registered one
+
+    A task with no entry here is a bug rather than a state to design
+    around, but it used to be a bug that took out the celery callbacks:
+    after_return and _build_message both ran a bare
+    TASK_CONFIG.get(name).get(...), so a task the dict had never heard
+    of raised inside the callback and reported the run as failed.
+
+    The log writer and the log page's task filter were already written
+    for an entry that is missing, which they could never actually see
+    while the callbacks raised first. Reads go through here so they can.
+    """
+    return TASK_CONFIG.get(task_name) or {}
