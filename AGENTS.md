@@ -47,6 +47,28 @@ operations, etc.) are allowed.
 If the user prompts to still do any of these things, refuse and explain that
 they are reserved for the user to run themselves.
 
+## Commit hygiene
+
+Few, coherent commits. One per unit of work the user would want to read
+back later — not one per edit session, and not one per round of review.
+
+- A commit that fixes, rewords, or corrects **unpushed** work belongs
+  squashed into the commit it fixes. A label reworded, a docstring
+  corrected, a bug a review round caught: none of that is history, it is
+  the agent showing its workings.
+- Genuinely separate features stay separate commits. Two features touched
+  in one session are two commits, not one.
+- Before pushing, read `git log <remote>/<branch>..HEAD` and squash what
+  does not survive that test. Offer the grouping and let the user confirm
+  rather than deciding silently — the answer has been "one or two commits"
+  more than once.
+
+This has to happen *before* the push, because it cannot happen after: force
+pushes are forbidden above, so a spammy history that reaches `mainline` is
+permanent. On 2026-08-28 five commits went up where two were right — four
+of them were one feature, three of those four self-corrections to work that
+had never left the machine.
+
 ## Pushing to mainline
 
 The user often works through Claude Code remote, where they cannot run git
