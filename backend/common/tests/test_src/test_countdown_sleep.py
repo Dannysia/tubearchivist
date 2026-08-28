@@ -111,3 +111,39 @@ class TestCountdownSleep:
 
         assert seen == []
         assert clock == [7]
+
+
+class TestSilentWait:
+    """no notify: the waits with nothing honest to say
+
+    After the last item of a queue there is no next one to name, but the
+    wait still happens and is exactly where a stop request tends to
+    land. Dropping to a plain sleep there would make stop look broken.
+    """
+
+    def test_waits_the_full_interval_silently(
+        self, monkeypatch, clock, running
+    ):
+        set_interval(monkeypatch, 7)
+
+        assert countdown_sleep(CONFIG, running)
+
+        assert sum(clock) == 7
+
+    def test_still_stops(self, monkeypatch, clock):
+        """the whole reason it is not a plain sleep"""
+        set_interval(monkeypatch, 30)
+        checks = iter([False, True])
+        task = SimpleNamespace(is_stopped=lambda: next(checks))
+
+        assert not countdown_sleep(CONFIG, task)
+
+        assert sum(clock) == 1, "stopped after one step, not 30"
+
+    def test_no_task_still_takes_the_wait(self, monkeypatch, clock):
+        """nothing to poll, but youtube still has to be paced"""
+        set_interval(monkeypatch, 9)
+
+        assert countdown_sleep(CONFIG, None)
+
+        assert clock == [9]

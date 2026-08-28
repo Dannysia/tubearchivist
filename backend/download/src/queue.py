@@ -18,7 +18,6 @@ from common.src.helper import (
     get_channels,
     get_duration_str,
     is_shorts,
-    rand_sleep,
 )
 from common.src.urlparser import ParsedURLType
 from download.serializers import DownloadItemSerializer
@@ -150,15 +149,27 @@ class PendingList(PendingIndex):
             if self.task and self.task.is_stopped():
                 break
 
-            if not countdown_sleep(
-                self.config,
-                self.task,
-                lambda msg: self._notify(idx, total, waiting=msg),
-                label="next URL",
-            ):
+            if not self._wait_for_next(idx, total):
                 break
 
         return self.added
+
+    def _wait_for_next(self, idx: int, total: int) -> bool:
+        """pace the next youtube request, naming it when there is one
+
+        At the last entry there is no next url to name, but the wait
+        still paces the next extraction queue entry - run_queue goes
+        straight on to it - and still has to be stoppable.
+        """
+        if idx == total:
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self._notify(idx, total, waiting=msg),
+            label="next URL",
+        )
 
     def _notify(self, idx: int, total: int, waiting: str | None = None):
         """send progress back to task"""
@@ -237,10 +248,14 @@ class PendingList(PendingIndex):
             self.extraction_failed = True
             return
 
+        channel_name = channel_handler.json_data["channel_name"]
         total = len(video_results)
         for idx, video_data in enumerate(video_results, start=1):
             to_add = self._parse_channel_video(
-                video_data, vid_type, channel_handler.json_data
+                video_data,
+                vid_type,
+                channel_handler.json_data,
+                notify=self._pace_notify("channel", channel_name, idx, total),
             )
             if self.task and self.task.is_stopped():
                 break
@@ -257,7 +272,7 @@ class PendingList(PendingIndex):
             )
 
     def _parse_channel_video(
-        self, video_data, vid_type, channel_json
+        self, video_data, vid_type, channel_json, notify=None
     ) -> dict | None:
         """parse video of channel"""
         video_id = video_data["id"]
@@ -280,7 +295,9 @@ class PendingList(PendingIndex):
                 video_data=video_data,
             )
         else:
-            to_add = self._parse_video(video_id, vid_type, track_failure=False)
+            to_add = self._parse_video(
+                video_id, vid_type, track_failure=False, notify=notify
+            )
 
         return to_add
 
@@ -317,7 +334,15 @@ class PendingList(PendingIndex):
                 to_add = self._parse_entry(video_id, video_data)
             else:
                 to_add = self._parse_video(
-                    video_id, vid_type=None, track_failure=False
+                    video_id,
+                    vid_type=None,
+                    track_failure=False,
+                    notify=self._pace_notify(
+                        "playlist",
+                        playlist.json_data["playlist_name"],
+                        idx,
+                        total,
+                    ),
                 )
 
             if not to_add:
@@ -332,7 +357,7 @@ class PendingList(PendingIndex):
             )
 
     def _parse_video(
-        self, url: str, vid_type, track_failure: bool = True
+        self, url: str, vid_type, track_failure: bool = True, notify=None
     ) -> dict | None:
         """parse video when not flat, fetch from YT"""
         video = YoutubeVideo(youtube_id=url)
@@ -378,9 +403,45 @@ class PendingList(PendingIndex):
             return None
 
         ThumbManager(item_id=url).download_video_thumb(to_add["vid_thumb_url"])
-        rand_sleep(self.config)
+        self._pace(notify)
 
         return to_add
+
+    def _pace_notify(self, item_type: str, name: str, idx: int, total: int):
+        """build the callback _pace reports the countdown through
+
+        None at the tail: after the last video there is no next one to
+        name, and this is the highest volume wait in here - one per
+        video of every channel and playlist add. The wait still happens,
+        it just is not narrated as something it is not.
+        """
+        if not self.task or idx == total:
+            return None
+
+        return lambda msg: self._notify_add(
+            item_type=item_type,
+            name=name,
+            idx=idx,
+            total=total,
+            waiting=msg,
+        )
+
+    def _pace(self, notify) -> None:
+        """the per video wait, counted down when there is a line for it
+
+        This is the wait that dominates a channel or playlist add - one
+        per video, behind a counter that only moves once it is over. A
+        single video add has no counter to hang it off, so it waits
+        without narrating - but still stoppably.
+
+        Every caller checks is_stopped() before the next youtube request
+        - the channel loop right after this returns, the playlist loop
+        at the top of the next pass, parse_url_list before its own wait
+        - which is the break countdown_sleep's contract asks for.
+        Nothing reaches youtube in between, so a shortened wait cannot
+        turn into an unpaced request.
+        """
+        countdown_sleep(self.config, self.task, notify, label="next video")
 
     def _parse_entry(
         self,
@@ -532,7 +593,12 @@ class PendingList(PendingIndex):
         return len(self.missing_videos)
 
     def _notify_add(
-        self, item_type: str, name: str, idx: int, total: int
+        self,
+        item_type: str,
+        name: str,
+        idx: int,
+        total: int,
+        waiting: str | None = None,
     ) -> None:
         """notify"""
         if not self.task:
@@ -548,6 +614,9 @@ class PendingList(PendingIndex):
                 f"Full extracting {item_type.title()}: '{name}'",
                 f"Parsing item {idx}/{total}.",
             ]
+
+        if waiting:
+            lines.append(waiting)
 
         self.task.send_progress(
             message_lines=lines,

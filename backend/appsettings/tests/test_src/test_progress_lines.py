@@ -154,17 +154,24 @@ class TestReindexStopPropagates:
         assert started == ["video"], "later index types must not start"
 
 
-def _queue_of_one():
-    """a queue holding one item, then empty"""
+def _queue_of_one(length=1):
+    """a queue holding one item, then empty
+
+    length is what is left *after* the item comes off, which is what
+    decides whether the wait gets counted down or just taken quietly.
+    """
     items = iter([("abc", 1), (None, None)])
     return SimpleNamespace(
-        key="q", max_score=lambda: 1, get_next=lambda: next(items)
+        key="q",
+        max_score=lambda: 1,
+        get_next=lambda: next(items),
+        length=lambda: length,
     )
 
 
 def _reindex_instance():
     """enough of a Reindex for the loop, no ES or redis"""
-    return SimpleNamespace(
+    instance = SimpleNamespace(
         task=None,
         config={"downloads": {"sleep_interval": 10}},
         REINDEX_CONFIG={
@@ -178,3 +185,80 @@ def _reindex_instance():
         reindex_single_video=lambda vid: None,
         _reindex_video_related=lambda video: None,
     )
+    # the real one, so the tests see how the loop actually waits
+    instance._wait_for_next = lambda *a: Reindex._wait_for_next(instance, *a)
+
+    return instance
+
+
+class TestReindexTrailingWait:
+    """the wait after the last item must not name a next one"""
+
+    def test_drained_queue_waits_without_narrating(self, monkeypatch):
+        """otherwise it says 'before next video' with none left
+
+        Still through countdown_sleep though, with no notify: the wait
+        paces the next index type and has to stay stoppable.
+        """
+        from appsettings.src import reindex as reindex_mod
+
+        waits = []
+        monkeypatch.setattr(
+            reindex_mod,
+            "countdown_sleep",
+            lambda config, task, notify=None, label="": waits.append(
+                (notify, label)
+            )
+            or True,
+        )
+        monkeypatch.setattr(
+            reindex_mod, "RedisQueue", lambda name: _queue_of_one(length=0)
+        )
+
+        instance = _reindex_instance()
+        assert reindex_mod.Reindex.reindex_type(
+            instance, "video", {"queue_name": "q", "index_name": "ta_video"}
+        )
+
+        assert waits == [(None, "")], "the wait happens, unnarrated"
+
+    def test_a_stop_in_the_drained_wait_leaves_the_whole_run(
+        self, monkeypatch
+    ):
+        """the next index type would start its own youtube requests"""
+        from appsettings.src import reindex as reindex_mod
+
+        monkeypatch.setattr(
+            reindex_mod,
+            "countdown_sleep",
+            lambda config, task, notify=None, label="": False,
+        )
+        monkeypatch.setattr(
+            reindex_mod, "RedisQueue", lambda name: _queue_of_one(length=0)
+        )
+
+        instance = _reindex_instance()
+
+        assert not reindex_mod.Reindex.reindex_type(
+            instance, "video", {"queue_name": "q", "index_name": "ta_video"}
+        )
+
+    def test_more_in_the_queue_counts_down(self, monkeypatch):
+        from appsettings.src import reindex as reindex_mod
+
+        counted = []
+        monkeypatch.setattr(
+            reindex_mod,
+            "countdown_sleep",
+            lambda *a, **kw: counted.append(kw.get("label")) or True,
+        )
+        monkeypatch.setattr(
+            reindex_mod, "RedisQueue", lambda name: _queue_of_one(length=4)
+        )
+
+        instance = _reindex_instance()
+        reindex_mod.Reindex.reindex_type(
+            instance, "video", {"queue_name": "q", "index_name": "ta_video"}
+        )
+
+        assert counted == ["next video"]

@@ -303,17 +303,28 @@ class Reindex(ReindexBase):
 
             self._clear_active(queue_name=queue.key)
 
-            if not countdown_sleep(
-                self.config,
-                self.task,
-                lambda msg: self._notify(name, total, idx, waiting=msg),
-                label=f"next {name}",
-            ):
+            if not self._wait_for_next(queue, name, total, idx):
                 # all the way out, not just this index: the next type
                 # would start its own run of youtube requests
                 return False
 
         return True
+
+    def _wait_for_next(self, queue, name: str, total: int, idx: int) -> bool:
+        """pace the next youtube request, naming it when there is one
+
+        A drained queue has no next item to name, but the wait still
+        paces the next index type and still has to be stoppable.
+        """
+        if not queue.length():
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self._notify(name, total, idx, waiting=msg),
+            label=f"next {name}",
+        )
 
     def _notify(
         self,

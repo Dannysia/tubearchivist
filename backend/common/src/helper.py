@@ -62,9 +62,9 @@ def rand_sleep(config) -> None:
 COUNTDOWN_STEP = 1
 
 
-def countdown_sleep(config, task, notify, label: str) -> bool:
+def countdown_sleep(config, task, notify=None, label: str = "") -> bool:
     """
-    sleep the configured interval, counting it down through notify
+    sleep the configured interval, staying responsive to a stop request
 
     These loops spend most of a long run asleep. Without a countdown
     whichever message was written last stays on screen for the whole
@@ -75,6 +75,12 @@ def countdown_sleep(config, task, notify, label: str) -> bool:
     ("download"), and where it runs after the item is done the label
     names what comes next ("next URL"). Call sites decide whether that
     line replaces their status line or is appended below it.
+
+    Pass no notify for the waits that have nothing to narrate - the one
+    after the last item of a queue, where naming a next item would be a
+    lie. Those still have to be interruptible: this is the wait a stop
+    request most likely lands in, so polling is the whole point and the
+    countdown line is the optional part.
 
     Returns False when a stop request cut the wait short. Callers must
     act on that and leave the loop, propagating it all the way up: the
@@ -90,7 +96,9 @@ def countdown_sleep(config, task, notify, label: str) -> bool:
         if task.is_stopped():
             return False
 
-        notify(f"Waiting {remaining}s before {label}")
+        if notify:
+            notify(f"Waiting {remaining}s before {label}")
+
         step = min(COUNTDOWN_STEP, remaining)
         sleep(step)
         remaining -= step
