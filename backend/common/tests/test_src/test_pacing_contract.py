@@ -279,7 +279,7 @@ class TestPostProcessPlaylists:
             PLAYLIST_QUEUE="q",
             config=CONFIG,
             task=task,
-            add_playlists_to_refresh=lambda: None,
+            add_playlists_to_refresh=lambda: True,
         )
         handler._notify_playlist = (
             lambda *a, **kw: DownloadPostProcess._notify_playlist(
@@ -304,46 +304,103 @@ class TestPostProcessPlaylists:
             DownloadPostProcess.refresh_playlist(handler) is False
         ), "must report the stop"
 
-    def test_run_does_not_go_to_youtube_after_a_refusal(self):
-        """the stop was swallowed here: refresh_playlist broke out of a
-        wait that had been cut short and get_comments went straight to
-        youtube with no pacing, which is what the wait exists to stop"""
-        ran = []
-        handler = SimpleNamespace(
+    @staticmethod
+    def _run_handler(ran, refresh=True, stopped=False):
+        """a post process with every step of run recorded as it goes"""
+        return SimpleNamespace(
             VIDEO_QUEUE="v",
+            task=SimpleNamespace(is_stopped=lambda: stopped),
             auto_delete_all=lambda: ran.append("auto_delete_all"),
             auto_delete_overwrites=lambda: ran.append("overwrites"),
-            refresh_playlist=lambda: ran.append("refresh") or False,
+            refresh_playlist=lambda: ran.append("refresh") or refresh,
+            _add_video_playlists=lambda: ran.append("quick sync"),
             match_videos=lambda: ran.append("match"),
-            get_comments=lambda: ran.append("comments") or True,
             embed_metadata=lambda: ran.append("embed"),
         )
 
+    @staticmethod
+    def _run(handler, ran):
+        """drive run() with the redis and comment queues recorded"""
+        comment_list = SimpleNamespace(
+            add=lambda video_ids: ran.append("queue comments"),
+            index=lambda: ran.append("comments") or True,
+        )
         with mock.patch.object(post_mod, "RedisQueue") as queue:
-            queue.return_value = SimpleNamespace(clear=lambda: None)
-            DownloadPostProcess.run(handler)
+            queue.return_value = SimpleNamespace(
+                clear=lambda: ran.append("clear"),
+                get_all=lambda: ["abc"],
+            )
+            with mock.patch.object(
+                post_mod, "CommentList", lambda task: comment_list
+            ):
+                DownloadPostProcess.run(handler)
+
+    def test_run_does_not_go_to_youtube_after_a_refusal(self):
+        """the stop was swallowed here: refresh_playlist broke out of a
+        wait that had been cut short and the comment index went straight
+        to youtube with no pacing, which is what the wait exists to stop
+        """
+        ran = []
+        self._run(self._run_handler(ran, refresh=False), ran)
 
         assert "comments" not in ran, "youtube step must be skipped"
         # the local ones still run, so downloaded work is fully filed
         assert "match" in ran and "embed" in ran
 
+    def test_run_queues_comments_even_after_a_refusal(self):
+        """queueing is a redis write, not a youtube request
+
+        Skipping it along with the index lost the comments for good:
+        the clear at the end of run is the last thing holding those
+        video ids, and the comment queue is what carries them into the
+        next run.
+        """
+        ran = []
+        self._run(self._run_handler(ran, refresh=False), ran)
+
+        assert "queue comments" in ran
+        assert ran.index("queue comments") < ran.index("clear")
+
+    def test_run_skips_the_youtube_steps_when_already_stopped(self):
+        """run_queue calls this even when a stop broke its own loop
+
+        Everything up to refresh_playlist's return reaches youtube too -
+        auto delete re-extracts each video it ignores - so the check has
+        to be up front, not only on that return.
+        """
+        ran = []
+        self._run(self._run_handler(ran, stopped=True), ran)
+
+        assert "auto_delete_all" not in ran
+        assert "refresh" not in ran
+        assert "comments" not in ran
+        assert "queue comments" in ran
+        assert "match" in ran and "embed" in ran
+
+    def test_a_stopped_run_still_queues_the_quick_sync(self):
+        """_add_video_playlists hangs off refresh_playlist, which a stop
+        skips whole - so run has to do it itself or the ids are cleared
+        below and those playlists never learn what was downloaded"""
+        ran = []
+        self._run(self._run_handler(ran, stopped=True), ran)
+
+        assert "quick sync" in ran
+        assert ran.index("quick sync") < ran.index("match")
+
+    def test_the_normal_path_leaves_the_quick_sync_to_refresh(self):
+        """where it has to run before the full refresh queue is drained,
+        so its must_not still excludes what is about to be refreshed"""
+        ran = []
+        self._run(self._run_handler(ran), ran)
+
+        assert "quick sync" not in ran
+
     def test_run_does_everything_when_nothing_stops_it(self):
         ran = []
-        handler = SimpleNamespace(
-            VIDEO_QUEUE="v",
-            auto_delete_all=lambda: ran.append("auto_delete_all"),
-            auto_delete_overwrites=lambda: ran.append("overwrites"),
-            refresh_playlist=lambda: ran.append("refresh") or True,
-            match_videos=lambda: ran.append("match"),
-            get_comments=lambda: ran.append("comments") or True,
-            embed_metadata=lambda: ran.append("embed"),
-        )
-
-        with mock.patch.object(post_mod, "RedisQueue") as queue:
-            queue.return_value = SimpleNamespace(clear=lambda: None)
-            DownloadPostProcess.run(handler)
+        self._run(self._run_handler(ran), ran)
 
         assert "comments" in ran
+        assert "auto_delete_all" in ran and "refresh" in ran
 
     def test_countdown_goes_under_the_counter(self, monkeypatch):
         sent, task = capture_task()
@@ -374,3 +431,101 @@ class TestPostProcessPlaylists:
         DownloadPostProcess.refresh_playlist(handler)
 
         assert seen == [""], "an untasked refresh still paces"
+
+
+class TestPostProcessChannelScan:
+    """download/src/yt_dlp_handler.py DownloadPostProcess
+
+    _add_channel_playlists asks youtube for the playlists of every
+    channel with index_playlists set, and used to do it with neither
+    pacing nor a stop check - so it was the first thing a stopped
+    download run went on to hammer youtube with.
+    """
+
+    @staticmethod
+    def _queue(length=1, endless=False):
+        """a channel queue that also takes the playlists back"""
+        queue = endless_queue() if endless else queue_of_one(length)
+        queue.add_list = lambda to_add: None
+
+        return queue
+
+    def _handler(self, task, monkeypatch, length=1, indexes=True):
+        monkeypatch.setattr(
+            post_mod, "RedisQueue", lambda name: self._queue(length)
+        )
+        monkeypatch.setattr(
+            post_mod,
+            "YoutubeChannel",
+            lambda channel_id: SimpleNamespace(
+                get_from_es=lambda: None,
+                json_data={"channel_name": "Some Channel"},
+                get_overwrites=lambda: {"index_playlists": indexes},
+                get_all_playlists=lambda: None,
+                all_playlists=[("PL1", "One")],
+            ),
+        )
+        handler = SimpleNamespace(
+            CHANNEL_QUEUE="c", PLAYLIST_QUEUE="q", config=CONFIG, task=task
+        )
+        handler._notify_channel_scan = (
+            lambda *a, **kw: DownloadPostProcess._notify_channel_scan(
+                handler, *a, **kw
+            )
+        )
+        handler._wait_for_next_channel = (
+            lambda *a: DownloadPostProcess._wait_for_next_channel(handler, *a)
+        )
+
+        return handler
+
+    def test_a_stop_leaves_the_loop(self, monkeypatch):
+        _, task = capture_task()
+        handler = self._handler(task, monkeypatch)
+        monkeypatch.setattr(
+            post_mod, "RedisQueue", lambda name: self._queue(endless=True)
+        )
+        refuse(monkeypatch, post_mod)
+
+        assert (
+            DownloadPostProcess._add_channel_playlists(handler) is False
+        ), "must report the stop"
+
+    def test_a_stop_request_ends_it_before_the_next_channel(self, monkeypatch):
+        """the check sits before get_next, so the channel stays queued"""
+        _, task = capture_task()
+        task.is_stopped = lambda: True
+        popped = []
+        queue = self._queue(endless=True)
+        inner = queue.get_next
+        queue.get_next = lambda: popped.append(1) or inner()
+        handler = self._handler(task, monkeypatch)
+        monkeypatch.setattr(post_mod, "RedisQueue", lambda name: queue)
+
+        assert DownloadPostProcess._add_channel_playlists(handler) is False
+        assert not popped, "a popped channel is off the queue for good"
+
+    def test_countdown_goes_under_the_counter(self, monkeypatch):
+        sent, task = capture_task()
+        handler = self._handler(task, monkeypatch, length=3)
+        seen = []
+        record(monkeypatch, post_mod, seen)
+
+        DownloadPostProcess._add_channel_playlists(handler)
+
+        assert seen == ["next channel"]
+        assert sent[-1] == [
+            "Post Processing Playlists",
+            "Scanning channel 1/1 for playlists",
+            "Waiting 8s before next channel",
+        ]
+
+    def test_no_wait_when_nothing_went_to_youtube(self, monkeypatch):
+        """a channel without index_playlists never leaves elasticsearch"""
+        _, task = capture_task()
+        handler = self._handler(task, monkeypatch, indexes=False)
+        seen = []
+        record(monkeypatch, post_mod, seen)
+
+        assert DownloadPostProcess._add_channel_playlists(handler) is True
+        assert seen == [], "nothing to pace"

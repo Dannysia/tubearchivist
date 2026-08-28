@@ -285,20 +285,46 @@ class DownloadPostProcess(DownloaderBase):
     def run(self):
         """run all functions
 
-        A stop skips only the steps that would reach youtube. The local
-        ones still run: they file work that is already downloaded rather
-        than leaving it half done, and none of them cost a request.
-        Without this the stop was swallowed here - refresh_playlist
-        broke out of a wait that had been cut short and get_comments
-        went straight to youtube with no pacing at all, which is the one
+        A stop skips the steps that would reach youtube. The local ones
+        still run: they file work that is already downloaded rather than
+        leaving it half done, and none of them cost a request. Without
+        this the stop was swallowed here - refresh_playlist broke out of
+        a wait that had been cut short and the comment index went
+        straight to youtube with no pacing at all, which is the one
         thing the shortened wait is supposed to prevent.
+
+        run_queue calls this even when a stop broke its own loop, so the
+        first check is up front rather than only on refresh_playlist's
+        return. Everything before that return reaches youtube too:
+        auto delete re-extracts each video it ignores, and
+        add_playlists_to_refresh asks youtube for the playlists of every
+        channel with index_playlists set.
+
+        Queueing the new videos for comments is not one of those steps -
+        it is a redis write - so it happens either way. It has to: the
+        clear below is the last thing holding those ids, and the comment
+        queue is what carries them into the next run.
         """
-        self.auto_delete_all()
-        self.auto_delete_overwrites()
-        keep_going = self.refresh_playlist()
-        self.match_videos()
+        keep_going = not (self.task and self.task.is_stopped())
         if keep_going:
-            self.get_comments()
+            self.auto_delete_all()
+            self.auto_delete_overwrites()
+            keep_going = self.refresh_playlist()
+        else:
+            # refresh_playlist owns this on the way past normally, where
+            # it has to run before the full refresh queue is drained. A
+            # stop skips that queue outright, so nothing was fully
+            # refreshed and everything holding a new video wants the
+            # quick match - without this the ids are cleared below and
+            # those playlists never learn what was downloaded
+            self._add_video_playlists()
+
+        self.match_videos()
+
+        comment_list = CommentList(task=self.task)
+        comment_list.add(video_ids=RedisQueue(self.VIDEO_QUEUE).get_all())
+        if keep_going:
+            comment_list.index()
 
         self.embed_metadata()
 
@@ -380,7 +406,8 @@ class DownloadPostProcess(DownloaderBase):
 
     def refresh_playlist(self) -> bool:
         """match videos with playlists, False when a stop cut it short"""
-        self.add_playlists_to_refresh()
+        if not self.add_playlists_to_refresh():
+            return False
 
         queue = RedisQueue(self.PLAYLIST_QUEUE)
         while True:
@@ -453,15 +480,25 @@ class DownloadPostProcess(DownloaderBase):
             label="next playlist",
         )
 
-    def add_playlists_to_refresh(self) -> None:
-        """add playlists to refresh"""
+    def add_playlists_to_refresh(self) -> bool:
+        """collect the playlists to refresh, False when a stop cut it short
+
+        _add_video_playlists has to run here rather than in run(),
+        because its must_not reads the full refresh queue that the loop
+        below has not drained yet - after the drain it would exclude
+        nothing and re-queue everything just refreshed. That makes run()
+        the second owner: a stop skips this method whole, so it calls
+        _add_video_playlists itself on that path. Keep the two in step.
+        """
         if self.task:
             message = ["Post Processing Playlists", "Scanning for Playlists"]
             self.task.send_progress(message)
 
         self._add_playlist_sub()
-        self._add_channel_playlists()
+        keep_going = self._add_channel_playlists()
         self._add_video_playlists()
+
+        return keep_going
 
     def _add_playlist_sub(self):
         """add subscribed playlists to refresh"""
@@ -469,12 +506,27 @@ class DownloadPostProcess(DownloaderBase):
         to_add = [i["playlist_id"] for i in playlists]
         RedisQueue(self.PLAYLIST_QUEUE).add_list(to_add)
 
-    def _add_channel_playlists(self):
-        """add playlists from channels to refresh"""
+    def _add_channel_playlists(self) -> bool:
+        """add playlists from channels, False when a stop cut it short
+
+        get_all_playlists is a youtube request per channel that has
+        index_playlists set, so this loop paces like every other one
+        that reaches out. It used to do neither that nor a stop check,
+        which made it the first thing a stopped download run went on to
+        hammer youtube with.
+
+        The stop check sits before get_next: a popped channel is off
+        the queue for good, so leaving it unpopped is what gives its
+        playlists another go on the next run.
+        """
         queue = RedisQueue(self.CHANNEL_QUEUE)
         while True:
-            channel_id, _ = queue.get_next()
-            if not channel_id:
+            if self.task and self.task.is_stopped():
+                return False
+
+            total = queue.max_score()
+            channel_id, idx = queue.get_next()
+            if not channel_id or not idx or not total:
                 break
 
             channel = YoutubeChannel(channel_id)
@@ -484,10 +536,45 @@ class DownloadPostProcess(DownloaderBase):
                 continue
 
             overwrites = channel.get_overwrites()
-            if overwrites.get("index_playlists"):
-                channel.get_all_playlists()
-                to_add = [i[0] for i in channel.all_playlists]
-                RedisQueue(self.PLAYLIST_QUEUE).add_list(to_add)
+            if not overwrites.get("index_playlists"):
+                # nothing went to youtube, so there is nothing to pace
+                continue
+
+            self._notify_channel_scan(idx, total)
+            channel.get_all_playlists()
+            to_add = [i[0] for i in channel.all_playlists]
+            RedisQueue(self.PLAYLIST_QUEUE).add_list(to_add)
+
+            if not self._wait_for_next_channel(queue, idx, total):
+                return False
+
+        return True
+
+    def _notify_channel_scan(self, idx, total, waiting=None) -> None:
+        """send progress for one channel scanned for playlists"""
+        if not self.task:
+            return
+
+        message = [
+            "Post Processing Playlists",
+            f"Scanning channel {idx}/{total} for playlists",
+        ]
+        if waiting:
+            message.append(waiting)
+
+        self.task.send_progress(message, progress=idx / total)
+
+    def _wait_for_next_channel(self, queue, idx: int, total: int) -> bool:
+        """pace the next youtube request, naming it when there is one"""
+        if not self.task or not queue.length():
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self._notify_channel_scan(idx, total, waiting=msg),
+            label="next channel",
+        )
 
     def _add_video_playlists(self):
         """add other playlists for quick sync"""
@@ -531,14 +618,6 @@ class DownloadPostProcess(DownloaderBase):
             ]
             progress = idx / total
             self.task.send_progress(message, progress=progress)
-
-    def get_comments(self) -> bool:
-        """get comments from youtube, False when a stop cut it short"""
-        video_queue = RedisQueue(self.VIDEO_QUEUE)
-        comment_list = CommentList(task=self.task)
-        comment_list.add(video_ids=video_queue.get_all())
-
-        return comment_list.index()
 
     def embed_metadata(self):
         """embed metadata in media file"""
