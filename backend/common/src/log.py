@@ -71,7 +71,13 @@ def write_log(
 
 
 def prune_logs(days: int | None = None) -> int:
-    """delete entries older than the retention window, return the count"""
+    """delete entries older than the retention window, return the count
+
+    A days of 0 falls back rather than pruning everything, which is only
+    safe because AppConfigAppSerializer.log_retention_days sets
+    min_value=1 - there is no way to store a 0 for this to read. Keep
+    that floor if the field ever moves.
+    """
     retention = days or FALLBACK_RETENTION_DAYS
     cutoff = now_epoch() - retention * DAY_SECONDS
     data = {

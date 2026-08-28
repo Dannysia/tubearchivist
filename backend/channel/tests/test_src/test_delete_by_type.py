@@ -181,6 +181,9 @@ class TestBuildIgnoreDoc:
         assert doc["channel_name"] == "Some Channel"
         assert doc["channel_indexed"] is True
         assert doc["duration"] == "42s"
+        # equality, not just presence: this is what pins that the doc
+        # indexed is the built one and not the serializer's copy, where
+        # a CharField would have turned the epoch into a string
         assert doc["published"] == 1717607899
         assert doc["title"] == "Some Short"
         assert doc["vid_type"] == "shorts"
@@ -194,6 +197,27 @@ class TestBuildIgnoreDoc:
         doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
         serializer = DownloadItemSerializer(data=doc)
         assert serializer.is_valid(), serializer.errors
+
+    def test_a_partial_video_document_is_refused(self):
+        """this writes to ta_download without going through PendingList
+
+        So it runs PendingList's own check itself, or a video document
+        with no channel on it puts an entry in the queue that nothing
+        can render and nobody asked for.
+        """
+        doc = ChannelVideoTypeDelete._build_ignore_doc(
+            {**VIDEO_DOC, "channel": {}}
+        )
+        assert doc is None
+
+    def test_a_blank_thumb_url_is_not_a_refusal(self):
+        """the field takes a null but not a blank, and older docs have
+        one where they have no thumb"""
+        doc = ChannelVideoTypeDelete._build_ignore_doc(
+            {**VIDEO_DOC, "vid_thumb_url": ""}
+        )
+        assert doc is not None
+        assert doc["vid_thumb_url"] is None
 
     def test_missing_duration_does_not_break_it(self):
         """older docs predate player.duration_str"""
@@ -226,6 +250,39 @@ class TestDeleteWithIgnore:
             return video
 
         monkeypatch.setattr(video_index, "YoutubeVideo", deleter)
+
+    def test_a_refused_doc_is_reported_not_just_dropped(self, monkeypatch):
+        """the video goes either way, so this is the only trace
+
+        Without an ignore entry a subscribed channel downloads it again
+        on the next scan, which is the whole reason the button is not
+        just Delete. A progress line would not survive to be read - the
+        next loop pass overwrites the one redis key they share - so the
+        task reads this back for its summary, which the log keeps.
+        """
+        broken = {**VIDEO_DOC, "youtube_id": "def", "channel": {}}
+        self._patch(monkeypatch, [VIDEO_DOC, broken])
+        written = []
+        monkeypatch.setattr(
+            ChannelVideoTypeDelete,
+            "_write_ignore",
+            lambda self, d: written.extend(d),
+        )
+        handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
+
+        assert handler.delete() == 2, "both videos still go"
+        assert [d["youtube_id"] for d in written] == ["abc"]
+        assert handler.not_ignored == ["def"]
+
+    def test_nothing_refused_reports_nothing(self, monkeypatch):
+        self._patch(monkeypatch, [VIDEO_DOC])
+        monkeypatch.setattr(
+            ChannelVideoTypeDelete, "_write_ignore", lambda self, d: None
+        )
+        handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
+        handler.delete()
+
+        assert handler.not_ignored == []
 
     def test_writes_one_ignore_entry_per_video(self, monkeypatch):
         written = []

@@ -13,6 +13,7 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import countdown_sleep
 from common.src.index_generic import YouTubeItem
+from download.serializers import DownloadItemSerializer
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import YtWrap
 from video.src.constants import VideoTypeEnum
@@ -429,6 +430,11 @@ class ChannelVideoTypeDelete:
         self.vid_type = vid_type
         self.task = task
         self.ignore = ignore
+        # ids deleted without reaching the ignore list, read back by the
+        # task for its summary. A progress line would not survive: they
+        # all share one redis key, and the next loop pass overwrites it
+        # a few milliseconds later
+        self.not_ignored: list[str] = []
 
     def delete(self) -> int:
         """delete all videos of the type, return how many went"""
@@ -454,7 +460,11 @@ class ChannelVideoTypeDelete:
                 # read it before the delete takes the document away
                 video.get_from_es()
                 if video.json_data:
-                    to_ignore.append(self._build_ignore_doc(video.json_data))
+                    doc = self._build_ignore_doc(video.json_data)
+                    if doc:
+                        to_ignore.append(doc)
+                    else:
+                        self.not_ignored.append(youtube_id)
 
             try:
                 video.delete_media_file()
@@ -469,18 +479,27 @@ class ChannelVideoTypeDelete:
         return deleted
 
     @staticmethod
-    def _build_ignore_doc(json_data: dict) -> dict:
-        """build a ta_download ignore entry from the indexed video
+    def _build_ignore_doc(json_data: dict) -> dict | None:
+        """build a ta_download ignore entry, None when it does not hold up
 
         Everything the download queue needs is already on the video
         document, so this costs no youtube requests - unlike the single
         video "Delete and Ignore" button, which routes through
         extract_download and re-extracts the metadata it already has.
+
+        Checked against the same serializer PendingList runs before its
+        own bulk index, and for the same reason: this writes straight to
+        ta_download without going near that path, so a video document
+        missing a channel or a title would otherwise put an entry in the
+        queue that nothing can render and nobody asked for. Validation
+        only - what gets indexed is this dict, not the serializer's
+        coerced copy, which is how PendingList uses it too.
         """
         channel = json_data.get("channel") or {}
         player = json_data.get("player") or {}
+        youtube_id = json_data["youtube_id"]
 
-        return {
+        doc = {
             "channel_id": channel.get("channel_id"),
             "channel_indexed": True,
             "channel_name": channel.get("channel_name"),
@@ -488,12 +507,21 @@ class ChannelVideoTypeDelete:
             "published": json_data.get("published"),
             "timestamp": int(datetime.now().timestamp()),
             "title": json_data.get("title"),
-            "vid_thumb_url": json_data.get("vid_thumb_url"),
+            # or None, not as read: the field allows a null but not a
+            # blank, and a video indexed without a thumb url carries ""
+            "vid_thumb_url": json_data.get("vid_thumb_url") or None,
             "vid_type": json_data.get("vid_type"),
-            "youtube_id": json_data["youtube_id"],
+            "youtube_id": youtube_id,
             "status": "ignore",
             "auto_start": False,
         }
+
+        serializer = DownloadItemSerializer(data=doc)
+        if not serializer.is_valid():
+            print(f"{youtube_id}: skip ignore entry: {serializer.errors}")
+            return None
+
+        return doc
 
     def _write_ignore(self, docs: list[dict]) -> None:
         """bulk add the deleted videos to the ignore list"""

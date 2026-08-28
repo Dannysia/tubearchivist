@@ -403,14 +403,26 @@ def delete_channel_videos(
         return None
 
     manager.init(self)
-    deleted = ChannelVideoTypeDelete(
+    handler = ChannelVideoTypeDelete(
         channel_id, vid_type, task=self, ignore=ignore
-    ).delete()
-    if deleted:
-        suffix = " and ignored them" if ignore else ""
-        return f"Deleted {deleted} {vid_type} from {channel_id}{suffix}."
+    )
+    deleted = handler.delete()
+    if not deleted:
+        return None
 
-    return None
+    suffix = " and ignored them" if ignore else ""
+    message = f"Deleted {deleted} {vid_type} from {channel_id}{suffix}."
+    if handler.not_ignored:
+        # the log is the only durable place for this, and it matters:
+        # without an ignore entry a subscribed channel downloads them
+        # again on the next scan, which is the whole reason the button
+        # is not just Delete
+        message += (
+            f" {len(handler.not_ignored)} could not be ignored, "
+            "incomplete metadata."
+        )
+
+    return message
 
 
 @shared_task(

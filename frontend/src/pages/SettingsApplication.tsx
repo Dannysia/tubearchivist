@@ -501,8 +501,8 @@ const SettingsApplication = () => {
               <div className="settings-box-wrapper">
                 <div>
                   <p>
-                    Sleep interval (s), minimum 5, 10 or more recommended. Empty disables pacing
-                    entirely.
+                    Sleep interval (s), minimum 5, 10 or more recommended. Empty or 0 disables
+                    pacing entirely.
                   </p>
                 </div>
                 <InputConfig
