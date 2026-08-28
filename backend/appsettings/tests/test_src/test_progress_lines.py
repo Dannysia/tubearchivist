@@ -204,7 +204,8 @@ def _queue_of_one(length=1):
 def _reindex_instance():
     """enough of a Reindex for the loop, no ES or redis"""
     instance = SimpleNamespace(
-        task=None,
+        # a task, so the loop takes its narrated path
+        task=SimpleNamespace(is_stopped=lambda: False),
         config={"downloads": {"sleep_interval": 10}},
         REINDEX_CONFIG={
             "video": {"queue_name": "qv", "index_name": "ta_video"},

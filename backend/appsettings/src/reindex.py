@@ -316,7 +316,7 @@ class Reindex(ReindexBase):
         A drained queue has no next item to name, but the wait still
         paces the next index type and still has to be stoppable.
         """
-        if not queue.length():
+        if not self.task or not queue.length():
             return countdown_sleep(self.config, self.task)
 
         return countdown_sleep(

@@ -161,7 +161,7 @@ class PendingList(PendingIndex):
         still paces the next extraction queue entry - run_queue goes
         straight on to it - and still has to be stoppable.
         """
-        if idx == total:
+        if not self.task or idx == total:
             return countdown_sleep(self.config, self.task)
 
         return countdown_sleep(

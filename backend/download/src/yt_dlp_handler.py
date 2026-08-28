@@ -19,7 +19,6 @@ from common.src.helper import (
     get_channel_overwrites,
     get_playlists,
     ignore_filelist,
-    rand_sleep,
 )
 from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
@@ -284,12 +283,23 @@ class DownloadPostProcess(DownloaderBase):
     """handle task to run after download queue finishes"""
 
     def run(self):
-        """run all functions"""
+        """run all functions
+
+        A stop skips only the steps that would reach youtube. The local
+        ones still run: they file work that is already downloaded rather
+        than leaving it half done, and none of them cost a request.
+        Without this the stop was swallowed here - refresh_playlist
+        broke out of a wait that had been cut short and get_comments
+        went straight to youtube with no pacing at all, which is the one
+        thing the shortened wait is supposed to prevent.
+        """
         self.auto_delete_all()
         self.auto_delete_overwrites()
-        self.refresh_playlist()
+        keep_going = self.refresh_playlist()
         self.match_videos()
-        self.get_comments()
+        if keep_going:
+            self.get_comments()
+
         self.embed_metadata()
 
         RedisQueue(self.VIDEO_QUEUE).clear()
@@ -368,8 +378,8 @@ class DownloadPostProcess(DownloaderBase):
 
         PendingList(youtube_ids=parsed_ids).parse_url_list(status="ignore")
 
-    def refresh_playlist(self) -> None:
-        """match videos with playlists"""
+    def refresh_playlist(self) -> bool:
+        """match videos with playlists, False when a stop cut it short"""
         self.add_playlists_to_refresh()
 
         queue = RedisQueue(self.PLAYLIST_QUEUE)
@@ -396,18 +406,52 @@ class DownloadPostProcess(DownloaderBase):
 
                 continue
 
-            if not self.task:
-                continue
-
             channel_name = playlist.json_data["playlist_channel"]
             playlist_title = playlist.json_data["playlist_name"]
-            message = [
-                f"Post Processing Playlists for: {channel_name}",
-                f"{playlist_title} [{idx}/{total}]",
-            ]
-            progress = idx / total
-            self.task.send_progress(message, progress=progress)
-            rand_sleep(self.config)
+            if self.task:
+                self._notify_playlist(channel_name, playlist_title, idx, total)
+
+            if not self._wait_for_next_playlist(
+                queue, channel_name, playlist_title, idx, total
+            ):
+                return False
+
+        return True
+
+    def _notify_playlist(
+        self, channel_name, playlist_title, idx, total, waiting=None
+    ) -> None:
+        """send progress for one refreshed playlist"""
+        message = [
+            f"Post Processing Playlists for: {channel_name}",
+            f"{playlist_title} [{idx}/{total}]",
+        ]
+        if waiting:
+            message.append(waiting)
+
+        self.task.send_progress(message, progress=idx / total)
+
+    def _wait_for_next_playlist(
+        self, queue, channel_name, playlist_title, idx, total
+    ) -> bool:
+        """pace the next youtube request, naming it when there is one
+
+        The wait used to sit behind an early continue for the no task
+        case, so a scheduled refresh with nothing to report to paced
+        itself not at all. countdown_sleep takes the no task case
+        itself - it just sleeps.
+        """
+        if not self.task or not queue.length():
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self._notify_playlist(
+                channel_name, playlist_title, idx, total, waiting=msg
+            ),
+            label="next playlist",
+        )
 
     def add_playlists_to_refresh(self) -> None:
         """add playlists to refresh"""
@@ -488,12 +532,13 @@ class DownloadPostProcess(DownloaderBase):
             progress = idx / total
             self.task.send_progress(message, progress=progress)
 
-    def get_comments(self):
-        """get comments from youtube"""
+    def get_comments(self) -> bool:
+        """get comments from youtube, False when a stop cut it short"""
         video_queue = RedisQueue(self.VIDEO_QUEUE)
         comment_list = CommentList(task=self.task)
         comment_list.add(video_ids=video_queue.get_all())
-        comment_list.index()
+
+        return comment_list.index()
 
     def embed_metadata(self):
         """embed metadata in media file"""

@@ -11,7 +11,7 @@ from datetime import datetime
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
-from common.src.helper import rand_sleep
+from common.src.helper import countdown_sleep
 from common.src.index_generic import YouTubeItem
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import YtWrap
@@ -211,7 +211,29 @@ class YoutubeChannel(YouTubeItem):
 
             self._index_single_playlist(playlist)
             print("add playlist: " + playlist[1])
-            rand_sleep(self.config)
+            if not self._wait_for_next_playlist(idx, total):
+                break
+
+    def _wait_for_next_playlist(self, idx: int, total: int) -> bool:
+        """pace the next youtube request, when there is one to pace
+
+        idx counts from zero here, so the last pass is total - 1. There
+        is nothing to pace after it: index_channel_playlists is the
+        whole body of the index_playlists task, so a wait there would
+        only delay the task finishing.
+        """
+        if idx + 1 == total:
+            return True
+
+        if not self.task:
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self._notify_single_playlist(idx, total, waiting=msg),
+            label="next playlist",
+        )
 
     def get_all_playlists(self):
         """get all playlists owned by this channel"""
@@ -228,13 +250,16 @@ class YoutubeChannel(YouTubeItem):
         all_entries = [(i["id"], i["title"]) for i in playlists["entries"]]
         self.all_playlists = all_entries
 
-    def _notify_single_playlist(self, idx, total):
+    def _notify_single_playlist(self, idx, total, waiting=None):
         """send notification"""
         channel_name = self.json_data["channel_name"]
         message = [
             f"{channel_name}: Scanning channel for playlists",
             f"Progress: {idx + 1}/{total}",
         ]
+        if waiting:
+            message.append(waiting)
+
         self.task.send_progress(message, progress=(idx + 1) / total)
 
     def _index_single_playlist(self, playlist):

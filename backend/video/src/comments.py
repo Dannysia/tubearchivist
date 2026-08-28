@@ -9,7 +9,7 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.es_connect import ElasticWrap
-from common.src.helper import rand_sleep
+from common.src.helper import countdown_sleep
 from common.src.ta_redis import RedisQueue
 from download.src.yt_dlp_base import YtWrap
 
@@ -206,8 +206,8 @@ class CommentList:
 
         RedisQueue(self.COMMENT_QUEUE).add_list(video_ids)
 
-    def index(self):
-        """run comment index"""
+    def index(self) -> bool:
+        """run comment index, False when a stop cut it short"""
         queue = RedisQueue(self.COMMENT_QUEUE)
         while True:
             total = queue.max_score()
@@ -223,10 +223,32 @@ class CommentList:
             if comment.json_data:
                 comment.upload_comments()
 
-            rand_sleep(self.config)
+            if not self._wait_for_next(queue, idx, total):
+                return False
 
-    def notify(self, idx, total_videos):
+        return True
+
+    def _wait_for_next(self, queue, idx: int, total: int) -> bool:
+        """pace the next youtube request, naming it when there is one
+
+        A drained queue has no next video to name, but the wait still
+        has to happen and still has to be stoppable.
+        """
+        if not self.task or not queue.length():
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self.notify(idx, total, waiting=msg),
+            label="next video",
+        )
+
+    def notify(self, idx, total_videos, waiting: str | None = None):
         """send notification on task"""
         message = [f"Add comments for new videos {idx}/{total_videos}"]
+        if waiting:
+            message.append(waiting)
+
         progress = idx / total_videos
         self.task.send_progress(message, progress=progress)

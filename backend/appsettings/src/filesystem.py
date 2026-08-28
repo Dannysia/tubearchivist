@@ -8,7 +8,7 @@ import os
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import IndexPaginate
-from common.src.helper import ignore_filelist, rand_sleep
+from common.src.helper import countdown_sleep, ignore_filelist
 from download.src.queue_interact import PendingInteract
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo, index_new_video
@@ -105,31 +105,59 @@ class Scanner:
             self._notify(total, youtube_id, idx)
 
             file_path = os.path.join(self.VIDEOS, media_url)
-            if self.prefer_local:
-                # try index from embed
-                success = self._index_from_embed(file_path, youtube_id)
-                if success:
-                    continue
+            if not self._index_one(file_path, youtube_id):
+                continue
 
-            try:
-                # try index from remote
-                index_new_video(youtube_id)
-                self._cleanup(youtube_id)
-                Comments(youtube_id).build_json(upload=True)
-                YoutubeVideo(youtube_id).embed_metadata()
-                rand_sleep(self.config)
-            except ValueError as err:
-                # fallback from index from embed
-                success = self._index_from_embed(file_path, youtube_id)
-                if success:
-                    continue
+            if not self._wait_for_next(total, youtube_id, idx):
+                break
 
-                if self.ignore_error:
-                    self._notify_error(youtube_id)
-                    rand_sleep(self.config)
-                    continue
+    def _index_one(self, file_path: str, youtube_id: str) -> bool:
+        """index one video, True when the caller should pace afterwards
 
+        False for the prefer_local path, which reads the file on disk
+        and never reaches youtube. Also False when a remote index fails
+        and the embedded metadata rescues it - that one did reach
+        youtube first, so it arguably should pace, but mainline skipped
+        the wait there too and changing it is its own decision.
+        """
+        if self.prefer_local:
+            # try index from embed
+            if self._index_from_embed(file_path, youtube_id):
+                return False
+
+        try:
+            # try index from remote
+            index_new_video(youtube_id)
+            self._cleanup(youtube_id)
+            Comments(youtube_id).build_json(upload=True)
+            YoutubeVideo(youtube_id).embed_metadata()
+        except ValueError as err:
+            # fallback from index from embed
+            if self._index_from_embed(file_path, youtube_id):
+                return False
+
+            if not self.ignore_error:
                 raise ValueError from err
+
+            self._notify_error(youtube_id)
+
+        return True
+
+    def _wait_for_next(self, total, youtube_id, idx) -> bool:
+        """pace the next youtube request, naming it when there is one
+
+        Only reached when _index_one asks for it; see its docstring for
+        which paths skip the wait and why.
+        """
+        if not self.task or idx + 1 == total:
+            return countdown_sleep(self.config, self.task)
+
+        return countdown_sleep(
+            self.config,
+            self.task,
+            lambda msg: self._notify(total, youtube_id, idx, waiting=msg),
+            label="next video",
+        )
 
     def _index_from_embed(self, file_path: str, youtube_id: str) -> bool:
         """index from embedded metadata"""
@@ -146,15 +174,19 @@ class Scanner:
         """clean up from queue"""
         PendingInteract(youtube_id=youtube_id).delete_item(print_error=False)
 
-    def _notify(self, total, youtube_id, idx):
+    def _notify(self, total, youtube_id, idx, waiting=None):
         """send notification"""
         if not self.task:
             return
 
+        message_lines = [
+            f"Index missing video {youtube_id}, {idx + 1}/{total}"
+        ]
+        if waiting:
+            message_lines.append(waiting)
+
         self.task.send_progress(
-            message_lines=[
-                f"Index missing video {youtube_id}, {idx + 1}/{total}"
-            ],
+            message_lines=message_lines,
             progress=(idx + 1) / total,
         )
 
