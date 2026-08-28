@@ -4,6 +4,7 @@
 
 from appsettings.src.manual import CHANNEL_ID_PATTERN, VIDEO_ID_PATTERN
 from common.serializers import ValidateUnknownFieldsMixin
+from common.src.helper import MIN_SLEEP_INTERVAL
 from downscale.src.downscale import PRESET_CHOICES
 from rest_framework import serializers
 
@@ -69,6 +70,22 @@ class AppConfigDownloadsSerializer(
     integrate_sponsorblock = serializers.BooleanField()
     auto_rotate_exit_node = serializers.BooleanField()
     max_exit_node_rotates = serializers.IntegerField(min_value=1, max_value=25)
+
+    def validate_sleep_interval(self, value):
+        """0 and null both mean off, and both stay allowed
+
+        Anything between is not a real setting: at 1 the randomised
+        window collapses to always zero, and 2 to 4 are too narrow to
+        be worth the option. Rejecting 0 outright would break stored
+        configs already using it to disable pacing.
+        """
+        if value and value < MIN_SLEEP_INTERVAL:
+            raise serializers.ValidationError(
+                f"use 0 or leave empty to disable pacing, "
+                f"or {MIN_SLEEP_INTERVAL} and above to enable it"
+            )
+
+        return value
 
 
 class AppConfigAppSerializer(

@@ -142,3 +142,25 @@ def test_rand_sleep_secs_in_range():
     for _ in range(50):
         secs = rand_sleep_secs({"downloads": {"sleep_interval": 10}})
         assert 5 <= secs < 15
+
+
+def test_rand_sleep_secs_floors_a_useless_interval():
+    """1 collapsed the range to randrange(0, 1), which is always 0
+
+    A user setting 1 to be gentle got no pacing at all, silently. 2 to 4
+    did pace, just too narrowly to be worth the setting. The serializer
+    rejects all four now, but stored configs predate that.
+    """
+    for value in (1, 2, 3, 4):
+        for _ in range(20):
+            secs = rand_sleep_secs({"downloads": {"sleep_interval": value}})
+            assert secs >= 2, f"{value} must still pace"
+
+
+def test_rand_sleep_secs_floor_leaves_valid_intervals_alone():
+    """at and above the minimum the configured value is what is used"""
+    for _ in range(50):
+        assert 2 <= rand_sleep_secs({"downloads": {"sleep_interval": 5}}) < 7
+        assert (
+            30 <= rand_sleep_secs({"downloads": {"sleep_interval": 60}}) < 90
+        )

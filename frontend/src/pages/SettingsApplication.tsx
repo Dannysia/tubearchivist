@@ -500,7 +500,10 @@ const SettingsApplication = () => {
               </div>
               <div className="settings-box-wrapper">
                 <div>
-                  <p>Sleep interval (s)</p>
+                  <p>
+                    Sleep interval (s), minimum 5, 10 or more recommended. Empty disables pacing
+                    entirely.
+                  </p>
                 </div>
                 <InputConfig
                   type="number"
@@ -509,6 +512,7 @@ const SettingsApplication = () => {
                   setValue={setCurrentScrapingSleep}
                   oldValue={appSettingsConfig?.downloads.sleep_interval}
                   updateCallback={handleUpdateConfig}
+                  min={5}
                 />
               </div>
               <div className="settings-box-wrapper">

@@ -41,11 +41,23 @@ def randomizor(length: int) -> str:
     return "".join(random.choice(pool) for i in range(length))
 
 
+# at 1 the randomised window is randrange(int(0.5), int(1.5)) -
+# randrange(0, 1) - which is always 0, so a user who set 1 to be gentle
+# got no pacing at all and no warning. 2, 3 and 4 do pace, just too
+# little to be worth the setting: 4 spreads requests over 2-5s. 5 is
+# where the range is wide enough to be doing something.
+# the serializer rejects anything lower; this catches configs stored
+# before it did.
+MIN_SLEEP_INTERVAL = 5
+
+
 def rand_sleep_secs(config) -> int:
     """randomized sleep duration based on config, 0 when disabled"""
     sleep_config = config["downloads"].get("sleep_interval")
     if not sleep_config:
         return 0
+
+    sleep_config = max(int(sleep_config), MIN_SLEEP_INTERVAL)
 
     return random.randrange(int(sleep_config * 0.5), int(sleep_config * 1.5))
 
