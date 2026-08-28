@@ -359,7 +359,24 @@ class PendingList(PendingIndex):
     def _parse_video(
         self, url: str, vid_type, track_failure: bool = True, notify=None
     ) -> dict | None:
-        """parse video when not flat, fetch from YT"""
+        """parse video when not flat, fetch from YT
+
+        The wait is in a finally because every exit below has already
+        spent the youtube request it exists to pace. It used to sit on
+        the success path alone, so a channel add whose extractions were
+        failing ran the whole channel at full speed - and a run where
+        extraction is failing is a bot block, which is exactly when the
+        pacing matters.
+        """
+        try:
+            return self._extract_video(url, vid_type, track_failure)
+        finally:
+            self._pace(notify)
+
+    def _extract_video(
+        self, url: str, vid_type, track_failure: bool = True
+    ) -> dict | None:
+        """fetch one video from youtube and parse it"""
         video = YoutubeVideo(youtube_id=url)
         video.get_from_youtube()
 
@@ -403,7 +420,6 @@ class PendingList(PendingIndex):
             return None
 
         ThumbManager(item_id=url).download_video_thumb(to_add["vid_thumb_url"])
-        self._pace(notify)
 
         return to_add
 
@@ -435,11 +451,11 @@ class PendingList(PendingIndex):
         without narrating - but still stoppably.
 
         Every caller checks is_stopped() before the next youtube request
-        - the channel loop right after this returns, the playlist loop
-        at the top of the next pass, parse_url_list before its own wait
-        - which is the break countdown_sleep's contract asks for.
-        Nothing reaches youtube in between, so a shortened wait cannot
-        turn into an unpaced request.
+        - the channel loop right after _parse_video returns, the
+        playlist loop at the top of the next pass, parse_url_list
+        before its own wait - which is the break countdown_sleep's
+        contract asks for. Nothing reaches youtube in between, so a
+        shortened wait cannot turn into an unpaced request.
         """
         countdown_sleep(self.config, self.task, notify, label="next video")
 

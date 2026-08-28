@@ -65,7 +65,11 @@ class VideoDownloader(DownloaderBase):
                 self._reset_auto()
                 break
 
-            if downloaded > 0 and not countdown_sleep(
+            # every attempt spends the request the wait exists to pace,
+            # so failures count too. A run whose downloads are all
+            # failing is a bot block, which is the run that most needs
+            # to slow down rather than the one allowed to skip it
+            if (downloaded or failed) and not countdown_sleep(
                 self.config,
                 self.task,
                 lambda msg: self._notify(video_data, msg),
@@ -416,20 +420,14 @@ class DownloadPostProcess(DownloaderBase):
             if not playlist_id or not idx or not total:
                 break
 
-            try:
-                playlist = YoutubePlaylist(playlist_id)
-                playlist.update_playlist(skip_on_empty=True)
-                if not playlist.json_data:
-                    raise ValueError("no json data extracted for playlist")
-
-            except ValueError as err:
-                message = [
-                    f"{playlist_id}: skip failed playlist import",
-                    str(err),
-                ]
-                print(message)
-                if self.task:
-                    self.task.send_progress(message)
+            playlist = self._refresh_one_playlist(playlist_id)
+            if not playlist:
+                # update_playlist is what failed, so the request this
+                # paces was already spent and the wait is still owed.
+                # No notify: there is no title to count down against,
+                # and the error above is worth leaving on screen
+                if not countdown_sleep(self.config, self.task):
+                    return False
 
                 continue
 
@@ -444,6 +442,27 @@ class DownloadPostProcess(DownloaderBase):
                 return False
 
         return True
+
+    def _refresh_one_playlist(self, playlist_id: str):
+        """refresh a single playlist, None when its import failed"""
+        try:
+            playlist = YoutubePlaylist(playlist_id)
+            playlist.update_playlist(skip_on_empty=True)
+            if not playlist.json_data:
+                raise ValueError("no json data extracted for playlist")
+
+        except ValueError as err:
+            message = [
+                f"{playlist_id}: skip failed playlist import",
+                str(err),
+            ]
+            print(message)
+            if self.task:
+                self.task.send_progress(message)
+
+            return None
+
+        return playlist
 
     def _notify_playlist(
         self, channel_name, playlist_title, idx, total, waiting=None

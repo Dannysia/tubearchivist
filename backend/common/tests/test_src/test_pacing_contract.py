@@ -27,8 +27,10 @@ from appsettings.src import filesystem as filesystem_mod
 from appsettings.src.filesystem import Scanner
 from channel.src import index as channel_mod
 from channel.src.index import YoutubeChannel
+from download.src import queue as queue_mod
 from download.src import yt_dlp_handler as post_mod
-from download.src.yt_dlp_handler import DownloadPostProcess
+from download.src.queue import PendingList
+from download.src.yt_dlp_handler import DownloadPostProcess, VideoDownloader
 from video.src import comments as comments_mod
 from video.src.comments import CommentList
 
@@ -289,6 +291,9 @@ class TestPostProcessPlaylists:
         handler._wait_for_next_playlist = (
             lambda *a: DownloadPostProcess._wait_for_next_playlist(handler, *a)
         )
+        handler._refresh_one_playlist = (
+            lambda *a: DownloadPostProcess._refresh_one_playlist(handler, *a)
+        )
 
         return handler
 
@@ -529,3 +534,87 @@ class TestPostProcessChannelScan:
 
         assert DownloadPostProcess._add_channel_playlists(handler) is True
         assert seen == [], "nothing to pace"
+
+
+class TestFailedRequestsStillPace:
+    """a spent youtube request owes the wait whether or not it worked
+
+    All three of these skipped it on failure, which inverts the point of
+    the setting: a run where requests are failing is a bot block, and a
+    bot block is when pacing matters most.
+    """
+
+    def test_a_failed_extraction_paces(self, monkeypatch):
+        """queue.py PendingList._parse_video"""
+        _, task = capture_task()
+        monkeypatch.setattr(
+            queue_mod,
+            "YoutubeVideo",
+            lambda youtube_id: SimpleNamespace(
+                get_from_youtube=lambda: None,
+                youtube_meta=None,
+                error="no metadata",
+            ),
+        )
+        handler = SimpleNamespace(
+            config=CONFIG,
+            task=task,
+            videos_failed_count=0,
+            extraction_failed=False,
+        )
+        handler._pace = lambda notify: PendingList._pace(handler, notify)
+        handler._extract_video = lambda *a: PendingList._extract_video(
+            handler, *a
+        )
+        seen = []
+        record(monkeypatch, queue_mod, seen)
+
+        assert PendingList._parse_video(handler, "abc", None) is None
+        assert seen == ["next video"], "the spent request still paces"
+
+    def test_a_failed_playlist_import_paces(self, monkeypatch):
+        """yt_dlp_handler.py DownloadPostProcess.refresh_playlist"""
+        _, task = capture_task()
+        handler = TestPostProcessPlaylists._handler(task, monkeypatch)
+        monkeypatch.setattr(
+            post_mod,
+            "YoutubePlaylist",
+            lambda playlist_id: SimpleNamespace(
+                update_playlist=lambda skip_on_empty=False: True,
+                json_data=None,
+            ),
+        )
+        seen = []
+        record(monkeypatch, post_mod, seen)
+
+        assert DownloadPostProcess.refresh_playlist(handler) is True
+        assert seen == [""], "update_playlist is what failed, so it paces"
+
+    def test_a_failed_download_paces(self, monkeypatch):
+        """yt_dlp_handler.py VideoDownloader.run_queue"""
+        _, task = capture_task()
+        pending = [
+            {"youtube_id": i, "channel_id": "c", "vid_type": "videos"}
+            for i in ("a", "b")
+        ]
+        items = iter(pending + [False])
+        handler = SimpleNamespace(
+            config=CONFIG,
+            task=task,
+            _get_next=lambda auto_only: next(items),
+            _reset_auto=lambda: None,
+            _dl_single_vid=lambda youtube_id, channel_id: False,
+        )
+        handler._notify = lambda *a, **kw: VideoDownloader._notify(
+            handler, *a, **kw
+        )
+        monkeypatch.setattr(
+            post_mod,
+            "DownloadPostProcess",
+            lambda task: SimpleNamespace(run=lambda: None),
+        )
+        seen = []
+        record(monkeypatch, post_mod, seen)
+
+        assert VideoDownloader.run_queue(handler) == (0, 2)
+        assert seen == ["download"], "the second attempt paid the wait"
