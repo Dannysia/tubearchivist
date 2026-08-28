@@ -14,6 +14,7 @@ def fake_wrap(config=None):
     """enough of a YtWrap for the unbound method"""
     return SimpleNamespace(
         config=config if config is not None else {"downloads": {}},
+        task=None,
         BOT_ERROR_LOG=yt_dlp_base.YtWrap.BOT_ERROR_LOG,
     )
 
@@ -21,7 +22,9 @@ def fake_wrap(config=None):
 @pytest.fixture
 def no_sleep(monkeypatch):
     """the real one waits out a randomised interval"""
-    monkeypatch.setattr(yt_dlp_base, "rand_sleep", lambda config: None)
+    monkeypatch.setattr(
+        yt_dlp_base, "countdown_sleep", lambda config, task: True
+    )
 
 
 class TestOnBotBlock:
@@ -40,6 +43,31 @@ class TestOnBotBlock:
             yt_dlp_base.YtWrap._on_bot_block(wrap, ValueError("not a bot"))
 
         assert seen == [{"downloads": {"auto_rotate_exit_node": True}}]
+
+    def test_the_wait_can_see_a_stop_request(self, monkeypatch):
+        """a bot block is the moment a user goes and hits stop
+
+        The wait runs up to 1.5x the interval and used to be a plain
+        sleep, so the stop landed whenever it happened to finish. The
+        refusal changes nothing here - this aborts either way - but the
+        poll behind it is the point.
+        """
+        seen = []
+        monkeypatch.setattr(
+            yt_dlp_base, "rotate_on_bot_block", lambda config: None
+        )
+        monkeypatch.setattr(
+            yt_dlp_base,
+            "countdown_sleep",
+            lambda config, task: seen.append(task) or False,
+        )
+        wrap = fake_wrap()
+        wrap.task = "the running task"
+
+        with pytest.raises(ConnectionError, match="bot detection"):
+            yt_dlp_base.YtWrap._on_bot_block(wrap, ValueError("nope"))
+
+        assert seen == ["the running task"]
 
     def test_aborts_the_same_when_rotation_is_off(self, monkeypatch, no_sleep):
         """the silent path, which is every install without tailscale"""

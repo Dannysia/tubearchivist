@@ -434,14 +434,16 @@ class Reindex(ReindexBase):
         thumb_handler.delete_video_thumb()
         thumb_handler.download_video_thumb(video.json_data["vid_thumb_url"])
 
-        Comments(video.youtube_id, config=self.config).reindex_comments()
+        Comments(
+            video.youtube_id, config=self.config, task=self.task
+        ).reindex_comments()
         video.get_from_es()
         video.embed_metadata()
 
     def _reindex_single_channel(self, channel_id: str) -> None:
         """refresh channel data and sync to videos"""
         # read current state
-        channel = YoutubeChannel(channel_id)
+        channel = YoutubeChannel(channel_id, task=self.task)
         channel.get_from_es()
         if not channel.json_data:
             return

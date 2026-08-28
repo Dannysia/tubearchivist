@@ -17,11 +17,13 @@ from download.src.yt_dlp_base import YtWrap
 class Comments:
     """interact with comments per video"""
 
-    def __init__(self, youtube_id, config=False):
+    def __init__(self, youtube_id, config=False, task=None):
         self.youtube_id = youtube_id
         self.es_path = f"ta_comment/_doc/{youtube_id}"
         self.json_data = False
         self.config = config
+        # only reaches YtWrap, to keep the bot block wait interruptible
+        self.task = task
         self.is_activated = False
         self.comments_format = False
 
@@ -81,9 +83,9 @@ class Comments:
     def get_yt_comments(self):
         """get comments from youtube"""
         yt_obs = self.build_yt_obs()
-        info_json, _ = YtWrap(yt_obs, config=self.config).extract(
-            self.youtube_id
-        )
+        info_json, _ = YtWrap(
+            yt_obs, config=self.config, task=self.task
+        ).extract(self.youtube_id)
         if not info_json:
             return False, False
 
@@ -218,7 +220,7 @@ class CommentList:
             if self.task:
                 self.notify(idx, total)
 
-            comment = Comments(youtube_id, config=self.config)
+            comment = Comments(youtube_id, config=self.config, task=self.task)
             comment.build_json()
             if comment.json_data:
                 comment.upload_comments()

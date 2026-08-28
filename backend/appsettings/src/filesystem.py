@@ -129,7 +129,7 @@ class Scanner:
             # try index from remote
             index_new_video(youtube_id)
             self._cleanup(youtube_id)
-            Comments(youtube_id).build_json(upload=True)
+            Comments(youtube_id, task=self.task).build_json(upload=True)
             YoutubeVideo(youtube_id).embed_metadata()
         except ValueError as err:
             # fallback from index from embed

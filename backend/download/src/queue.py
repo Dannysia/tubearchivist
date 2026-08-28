@@ -241,7 +241,7 @@ class PendingList(PendingIndex):
             print(f"{url}: no videos to add from channel, skipping")
             return
 
-        channel_handler = YoutubeChannel(url)
+        channel_handler = YoutubeChannel(url, task=self.task)
         channel_handler.build_json(upload=False)
         if not channel_handler.json_data:
             print(f"{url}: channel metadata extraction failed, skipping")

@@ -220,7 +220,9 @@ class VideoDownloader(DownloaderBase):
         self._set_overwrites(obs, channel_id)
         dl_cache = os.path.join(self.CACHE_DIR, "download")
 
-        success, message = YtWrap(obs, self.config).download(youtube_id)
+        success, message = YtWrap(obs, self.config, task=self.task).download(
+            youtube_id
+        )
         if not success:
             self._handle_error(youtube_id, message)
 
@@ -548,7 +550,7 @@ class DownloadPostProcess(DownloaderBase):
             if not channel_id or not idx or not total:
                 break
 
-            channel = YoutubeChannel(channel_id)
+            channel = YoutubeChannel(channel_id, task=self.task)
             channel.get_from_es()
             if not channel.json_data:
                 print(f"{channel_id}: skip failed channel import")

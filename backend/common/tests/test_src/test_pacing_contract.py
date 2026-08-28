@@ -107,7 +107,7 @@ class TestCommentIndex:
         monkeypatch.setattr(
             comments_mod,
             "Comments",
-            lambda youtube_id, config=None: SimpleNamespace(
+            lambda youtube_id, config=None, task=None: SimpleNamespace(
                 build_json=lambda: None, json_data=None
             ),
         )
@@ -129,7 +129,9 @@ class TestCommentIndex:
         monkeypatch.setattr(
             comments_mod,
             "Comments",
-            lambda youtube_id, config=None: indexed.append(youtube_id)
+            lambda youtube_id, config=None, task=None: indexed.append(
+                youtube_id
+            )
             or SimpleNamespace(build_json=lambda: None, json_data=None),
         )
         refuse(monkeypatch, comments_mod)
@@ -455,14 +457,20 @@ class TestPostProcessChannelScan:
 
         return queue
 
-    def _handler(self, task, monkeypatch, length=1, indexes=True):
+    def _handler(self, task, monkeypatch, length=1, indexes=True, built=None):
         monkeypatch.setattr(
             post_mod, "RedisQueue", lambda name: self._queue(length)
         )
+        # no default on task: this is the loop the bot block wait had to
+        # become interruptible in, so a construction that forgets to
+        # hand the task over has to fail here rather than pass quietly
         monkeypatch.setattr(
             post_mod,
             "YoutubeChannel",
-            lambda channel_id: SimpleNamespace(
+            lambda channel_id, task: (
+                built.append(task) if built is not None else None
+            )
+            or SimpleNamespace(
                 get_from_es=lambda: None,
                 json_data={"channel_name": "Some Channel"},
                 get_overwrites=lambda: {"index_playlists": indexes},
@@ -524,6 +532,18 @@ class TestPostProcessChannelScan:
             "Scanning channel 1/1 for playlists",
             "Waiting 8s before next channel",
         ]
+
+    def test_the_channel_carries_the_task(self, monkeypatch):
+        """get_all_playlists reaches youtube, so its bot block wait has
+        to be able to see a stop"""
+        _, task = capture_task()
+        built: list = []
+        handler = self._handler(task, monkeypatch, built=built)
+        record(monkeypatch, post_mod, [])
+
+        DownloadPostProcess._add_channel_playlists(handler)
+
+        assert built == [task]
 
     def test_no_wait_when_nothing_went_to_youtube(self, monkeypatch):
         """a channel without index_playlists never leaves elasticsearch"""

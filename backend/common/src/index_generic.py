@@ -26,6 +26,9 @@ class YouTubeItem:
         self.youtube_id = youtube_id
         self.es_path = f"{self.index_name}/_doc/{youtube_id}"
         self.config = AppConfig().config
+        # subclasses that run under a task overwrite this; the rest
+        # leave it None, which YtWrap reads as "just sleep"
+        self.task = None
         self.error = None
         self.youtube_meta = False
         self.json_data = False
@@ -50,7 +53,7 @@ class YouTubeItem:
 
         url = self.build_yt_url()
         self.youtube_meta, self.error = YtWrap(
-            obs_request, self.config
+            obs_request, self.config, task=self.task
         ).extract(url)
 
     def get_from_es(self, print_error: bool = True) -> None:
