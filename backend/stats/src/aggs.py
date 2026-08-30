@@ -5,6 +5,7 @@ from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from django.conf import settings
 from downscale.src.constants import downscaled_filter
+from video.src.resolution import parse_resolution, resolution_agg
 
 
 class AggBase:
@@ -489,3 +490,19 @@ class Downscale(AggBase):
             totals["encoder"] = encoder
 
         return totals
+
+
+class Resolution(AggBase):
+    """get videos, duration and media size per resolution tier"""
+
+    name = "resolution_stats"
+    path = "ta_video/_search"
+    data = {"size": 0, "aggs": {"by_resolution": resolution_agg()}}
+
+    def process(self):
+        """process aggregation"""
+        aggregations = self.get()
+        if not aggregations:
+            return None
+
+        return parse_resolution(aggregations["by_resolution"])

@@ -14,6 +14,15 @@
 DOWNSCALED_FIELD = "downscale.new_height"
 
 
+# The target heights offered for a downscale, highest first. The
+# downscale request choices and the resolution breakdown on the
+# dashboard and channel about panels both build from this, so the
+# categories the stats report in are the same ones a downscale can
+# actually target. The two batch downscale dropdowns keep their own copy
+# of the list - nothing ships this one to the frontend.
+DOWNSCALE_LADDER = [2160, 1440, 1080, 720, 480, 360, 240]
+
+
 def downscaled_filter() -> dict:
     """es clause matching videos that have been downscaled"""
     return {"exists": {"field": DOWNSCALED_FIELD}}

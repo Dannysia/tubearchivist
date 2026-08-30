@@ -4,6 +4,11 @@ from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from downscale.src.constants import downscaled_filter
 from video.src.constants import VideoTypeEnum
+from video.src.resolution import (
+    empty_resolution,
+    parse_resolution,
+    resolution_agg,
+)
 
 # without this ES falls back to the mapping's first format (epoch_second)
 DATE_FMT = {"format": "strict_date_optional_time"}
@@ -48,6 +53,7 @@ class ChannelAggs:
                     "terms": {"field": "player.watched"},
                     "aggs": sub_aggs,
                 },
+                "by_resolution": resolution_agg(),
                 "by_active": {"terms": {"field": "active"}},
                 "downscale": {
                     "filter": downscaled_filter(),
@@ -88,6 +94,7 @@ class ChannelAggs:
                 "value_str": get_duration_str(total_duration),
             },
             "by_type": self._parse_type(aggs["by_type"]["buckets"]),
+            "by_resolution": parse_resolution(aggs["by_resolution"]),
             "watch_progress": self._parse_watched(
                 aggs["by_watched"]["buckets"], total_duration
             ),
@@ -188,6 +195,7 @@ class ChannelAggs:
             "by_type": {
                 i: self._empty_bucket() for i in VideoTypeEnum.values()
             },
+            "by_resolution": empty_resolution(),
             "watch_progress": {
                 "watched": self._empty_bucket(),
                 "unwatched": self._empty_bucket(),

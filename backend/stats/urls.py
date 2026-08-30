@@ -20,6 +20,11 @@ urlpatterns = [
         name="api-stats-downscale",
     ),
     path(
+        "resolution/",
+        views.StatResolutionView.as_view(),
+        name="api-stats-resolution",
+    ),
+    path(
         "playlist/",
         views.StatPlaylistView.as_view(),
         name="api-stats-playlist",

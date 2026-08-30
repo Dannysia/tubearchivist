@@ -3,7 +3,11 @@
 # pylint: disable=abstract-method
 
 from channel.src.constants import ChannelSortEnum
-from common.serializers import PaginationSerializer, ValidateUnknownFieldsMixin
+from common.serializers import (
+    PaginationSerializer,
+    ResolutionBucketSerializer,
+    ValidateUnknownFieldsMixin,
+)
 from downscale.serializers import DownscaleBulkResultItemSerializer
 from rest_framework import serializers
 from video.src.constants import OrderEnum, VideoTypeEnum
@@ -165,6 +169,7 @@ class ChannelAggSerializer(serializers.Serializer):
     total_size = ChannelAggBucketSerializer()
     total_duration = ChannelAggBucketSerializer()
     by_type = ChannelAggTypeSerializer()
+    by_resolution = ResolutionBucketSerializer(many=True)
     watch_progress = ChannelAggWatchSerializer()
     availability = ChannelAggActiveSerializer()
     downscale = ChannelAggDownscaleSerializer()

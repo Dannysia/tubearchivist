@@ -1,4 +1,5 @@
 import APIClient from '../../functions/APIClient';
+import { ResolutionStatsType } from './loadStatsResolution';
 
 export type ChannelAggBucketType = {
   doc_count: number;
@@ -24,6 +25,7 @@ export type ChannelAggsType = {
     streams: ChannelAggBucketType;
     unknown: ChannelAggBucketType;
   };
+  by_resolution: ResolutionStatsType;
   watch_progress: {
     watched: ChannelAggBucketType;
     unwatched: ChannelAggBucketType;

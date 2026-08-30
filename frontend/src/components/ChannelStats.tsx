@@ -4,6 +4,7 @@ import humanFileSize from '../functions/humanFileSize';
 import formatNumbers from '../functions/formatNumbers';
 import formatDate from '../functions/formatDates';
 import { ChannelAggBucketType, ChannelAggsType } from '../api/loader/loadChannelAggs';
+import buildResolutionPanels from '../functions/buildResolutionPanels';
 
 const VIDEO_TYPE_TITLES: [keyof ChannelAggsType['by_type'], string][] = [
   ['videos', 'Regular Videos'],
@@ -36,7 +37,8 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
     return <p id="loading">Loading...</p>;
   }
 
-  const { by_type, watch_progress, availability, downscale, date_range } = channelAggs;
+  const { by_type, by_resolution, watch_progress, availability, downscale, date_range } =
+    channelAggs;
   const watchedPercent = (watch_progress.progress * 100).toFixed(1);
 
   const cards = [
@@ -53,6 +55,7 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
       title,
       data: buildBucketCard(by_type[key], useSIUnits),
     })),
+    ...buildResolutionPanels(by_resolution, useSIUnits),
     {
       title: `Watch Progress: ${watchedPercent}%`,
       data: {

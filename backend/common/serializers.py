@@ -49,6 +49,18 @@ class PaginationSerializer(serializers.Serializer):
     total_hits = serializers.IntegerField()
 
 
+class ResolutionBucketSerializer(serializers.Serializer):
+    """serialize one tier of the resolution breakdown"""
+
+    # a rung of the downscale ladder as a string, "1440", or one of the
+    # two catch alls, "below" and "unknown"
+    key = serializers.CharField()
+    doc_count = serializers.IntegerField()
+    media_size = serializers.IntegerField()
+    duration = serializers.IntegerField()
+    duration_str = serializers.CharField()
+
+
 class AsyncTaskResponseSerializer(serializers.Serializer):
     """serialize new async task"""
 

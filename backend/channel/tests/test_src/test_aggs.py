@@ -3,6 +3,7 @@
 # pylint: disable=protected-access
 
 from channel.src.aggs import ChannelAggs
+from video.src.resolution import empty_resolution, resolution_agg
 
 
 def test_query_has_downscale_agg():
@@ -60,3 +61,14 @@ def test_empty_response_has_downscale():
         "new_size": 0,
         "saved": 0,
     }
+
+
+def test_query_has_resolution_agg():
+    """the about panel breaks the channel down by the downscale ladder"""
+    aggs = ChannelAggs("UC1").build_query()["aggs"]
+    assert aggs["by_resolution"] == resolution_agg()
+
+
+def test_empty_response_has_resolution():
+    """a channel without videos still serializes"""
+    assert ChannelAggs("UC1")._empty()["by_resolution"] == empty_resolution()

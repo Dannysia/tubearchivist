@@ -14,6 +14,7 @@ import loadStatsBiggestChannels, {
   BiggestChannelsStatsType,
 } from '../api/loader/loadStatsBiggestChannels';
 import loadStatsDownscale, { DownscaleStatsType } from '../api/loader/loadStatsDownscale';
+import loadStatsResolution, { ResolutionStatsType } from '../api/loader/loadStatsResolution';
 import OverviewStats from '../components/OverviewStats';
 import VideoTypeStats from '../components/VideoTypeStats';
 import ApplicationStats from '../components/ApplicationStats';
@@ -21,6 +22,7 @@ import WatchProgressStats from '../components/WatchProgressStats';
 import DownloadHistoryStats from '../components/DownloadHistoryStats';
 import BiggestChannelsStats from '../components/BiggestChannelsStats';
 import DownscaleStats from '../components/DownscaleStats';
+import ResolutionStats from '../components/ResolutionStats';
 import Notifications from '../components/Notifications';
 import PaginationDummy from '../components/PaginationDummy';
 import { useUserConfigStore } from '../stores/UserConfigStore';
@@ -38,6 +40,7 @@ type DashboardStatsReponses = {
   biggestChannelsStatsByDuration?: ApiResponseType<BiggestChannelsStatsType>;
   biggestChannelsStatsByMediaSize?: ApiResponseType<BiggestChannelsStatsType>;
   downscaleStats?: ApiResponseType<DownscaleStatsType>;
+  resolutionStats?: ApiResponseType<ResolutionStatsType>;
 };
 
 const SettingsDashboard = () => {
@@ -57,6 +60,7 @@ const SettingsDashboard = () => {
   const { data: biggestChannelsStatsByDuration } = response?.biggestChannelsStatsByDuration || {};
   const { data: biggestChannelsStatsByMediaSize } = response?.biggestChannelsStatsByMediaSize || {};
   const { data: downscaleStats } = response?.downscaleStats || {};
+  const { data: resolutionStats } = response?.resolutionStats || {};
 
   useEffect(() => {
     (async () => {
@@ -71,6 +75,7 @@ const SettingsDashboard = () => {
         await loadStatsBiggestChannels('duration'),
         await loadStatsBiggestChannels('media_size'),
         await loadStatsDownscale(),
+        await loadStatsResolution(),
       ]);
 
       const [
@@ -84,6 +89,7 @@ const SettingsDashboard = () => {
         biggestChannelsStatsByDuration,
         biggestChannelsStatsByMediaSize,
         downscaleStats,
+        resolutionStats,
       ] = all;
 
       setResponse({
@@ -97,6 +103,7 @@ const SettingsDashboard = () => {
         biggestChannelsStatsByDuration,
         biggestChannelsStatsByMediaSize,
         downscaleStats,
+        resolutionStats,
       });
     })();
   }, []);
@@ -123,6 +130,12 @@ const SettingsDashboard = () => {
           <h2>Video Type</h2>
           <div className="info-box info-box-3">
             <VideoTypeStats videoStats={videoStats} useSIUnits={useSiUnits} />
+          </div>
+        </div>
+        <div className="settings-item">
+          <h2>Video Stats</h2>
+          <div className="info-box info-box-3">
+            <ResolutionStats resolutionStats={resolutionStats} useSIUnits={useSiUnits} />
           </div>
         </div>
         <div className="settings-item">

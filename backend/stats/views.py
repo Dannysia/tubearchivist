@@ -1,6 +1,9 @@
 """all stats API views"""
 
-from common.serializers import ErrorResponseSerializer
+from common.serializers import (
+    ErrorResponseSerializer,
+    ResolutionBucketSerializer,
+)
 from common.views_base import ApiBaseView
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
@@ -22,6 +25,7 @@ from stats.src.aggs import (
     DownloadHist,
     Downscale,
     Playlist,
+    Resolution,
     Video,
     WatchProgress,
 )
@@ -65,6 +69,21 @@ class StatDownscaleView(ApiBaseView):
         """get downscale stats"""
         # pylint: disable=unused-argument
         serializer = DownscaleStatsSerializer(Downscale().process())
+
+        return Response(serializer.data)
+
+
+class StatResolutionView(ApiBaseView):
+    """resolves to /api/stats/resolution/
+    GET: return videos, duration and media size per resolution tier
+    """
+
+    @extend_schema(responses=ResolutionBucketSerializer(many=True))
+    def get(self, request):
+        """get resolution stats"""
+        # pylint: disable=unused-argument
+        tiers = Resolution().process()
+        serializer = ResolutionBucketSerializer(tiers, many=True)
 
         return Response(serializer.data)
 
