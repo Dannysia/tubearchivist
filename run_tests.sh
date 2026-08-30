@@ -10,7 +10,7 @@
 #   ./run_tests.sh                 run the whole suite
 #   ./run_tests.sh backend/common  run a subset, args go to pytest
 #   ./run_tests.sh -k history -v   any pytest flags work
-#   ./run_tests.sh lint            black, isort and flake8 check only
+#   ./run_tests.sh lint            black, isort, flake8, codespell check
 #   ./run_tests.sh format          let black and isort rewrite the files
 #
 # notes:
@@ -26,6 +26,10 @@
 #   unrelated to any local change.
 # - dev dependency versions are pinned to requirements-dev.txt and
 #   .pre-commit-config.yaml, keep them in sync.
+# - lint is still narrower than CI, which runs pre-commit: end-of-file
+#   fixer, eslint and prettier have no equivalent here. eslint and
+#   prettier at least have node on the host, run them from frontend/ as
+#   npm run lint and npx prettier --check .
 # - the container runs as root over the bind mount, so any file it writes
 #   comes back owned by root and unwritable on the host. that is what
 #   PYTHONDONTWRITEBYTECODE is for: no __pycache__, nothing to chown.
@@ -44,6 +48,7 @@ PYTEST_DJANGO_VERSION="4.14.0"
 BLACK_VERSION="26.3.1"
 ISORT_VERSION="8.0.1"
 FLAKE8_VERSION="7.3.0"
+CODESPELL_VERSION="2.4.2"
 
 
 function require_image {
@@ -78,6 +83,27 @@ function run_lint {
             --extend-exclude '*/migrations/*' backend
     "
     echo "==> lint clean"
+}
+
+
+function run_codespell {
+    echo "==> codespell"
+    # the file list is built on the host because git is not in the image,
+    # and it has to be built at all because this is what pre-commit hands
+    # the hook: tracked files, minus the excludes in
+    # .pre-commit-config.yaml. Left to walk the tree itself codespell
+    # reports on frontend/dist and node_modules, neither of which is in
+    # the repo or checked by CI.
+    git -C "$REPO_DIR" ls-files -z \
+        | grep -zvE '\.svg$|/migrations/|^frontend/package-lock\.json$' \
+        | docker run --rm -i -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$REPO_DIR":/src -w /src "$IMAGE" sh -c "
+            pip install --quiet --no-input \
+                'codespell==$CODESPELL_VERSION' >/dev/null 2>&1 </dev/null
+            set -e
+            xargs -0 python -m codespell_lib
+        "
+    echo "==> codespell clean"
 }
 
 
@@ -135,6 +161,7 @@ require_image
 case "${1:-}" in
     lint)
         run_lint
+        run_codespell
         ;;
     format)
         run_format
