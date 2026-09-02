@@ -4,6 +4,7 @@ import updateChannelSubscription from '../api/actions/updateChannelSubscription'
 import FormattedNumber from './FormattedNumber';
 import Button from './Button';
 import ChannelIcon from './ChannelIcon';
+import ChannelYouTubeLink from './ChannelYouTubeLink';
 import useIsAdmin from '../functions/useIsAdmin';
 
 type ChannelOverviewProps = {
@@ -40,9 +41,9 @@ const ChannelOverview = ({
 
           {channelSubs !== null && <FormattedNumber text="Subscribers:" number={channelSubs} />}
 
-          {isAdmin && (
-            <>
-              {channelSubscribed ? (
+          <div className="button-box">
+            {isAdmin &&
+              (channelSubscribed ? (
                 <Button
                   label="Unsubscribe"
                   className="unsubscribe"
@@ -63,9 +64,10 @@ const ChannelOverview = ({
                     setRefresh(true);
                   }}
                 />
-              )}
-            </>
-          )}
+              ))}
+
+            <ChannelYouTubeLink channelId={channelId} channelname={channelname} />
+          </div>
         </div>
       </div>
     </>

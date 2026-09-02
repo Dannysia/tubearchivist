@@ -7,6 +7,7 @@ import FormattedNumber from './FormattedNumber';
 import Button from './Button';
 import ChannelIcon from './ChannelIcon';
 import ChannelBanner from './ChannelBanner';
+import ChannelYouTubeLink from './ChannelYouTubeLink';
 import LoadingIndicator from './LoadingIndicator';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
@@ -72,30 +73,37 @@ const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
                     </p>
                   )}
                   <p>Last refreshed: {formatDate(channel.channel_last_refresh)}</p>
-                  {channel.channel_subscribed && (
-                    <Button
-                      label="Unsubscribe"
-                      className="unsubscribe"
-                      type="button"
-                      title={`Unsubscribe from ${channel.channel_name}`}
-                      onClick={async () => {
-                        await updateChannelSubscription(channel.channel_id, false);
-                        refreshChannelList(true);
-                      }}
-                    />
-                  )}
+                  <div className="button-box">
+                    {channel.channel_subscribed && (
+                      <Button
+                        label="Unsubscribe"
+                        className="unsubscribe"
+                        type="button"
+                        title={`Unsubscribe from ${channel.channel_name}`}
+                        onClick={async () => {
+                          await updateChannelSubscription(channel.channel_id, false);
+                          refreshChannelList(true);
+                        }}
+                      />
+                    )}
 
-                  {!channel.channel_subscribed && (
-                    <Button
-                      label="Subscribe"
-                      type="button"
-                      title={`Subscribe to ${channel.channel_name}`}
-                      onClick={async () => {
-                        await updateChannelSubscription(channel.channel_id, true);
-                        refreshChannelList(true);
-                      }}
+                    {!channel.channel_subscribed && (
+                      <Button
+                        label="Subscribe"
+                        type="button"
+                        title={`Subscribe to ${channel.channel_name}`}
+                        onClick={async () => {
+                          await updateChannelSubscription(channel.channel_id, true);
+                          refreshChannelList(true);
+                        }}
+                      />
+                    )}
+
+                    <ChannelYouTubeLink
+                      channelId={channel.channel_id}
+                      channelname={channel.channel_name}
                     />
-                  )}
+                  </div>
                 </div>
               </div>
             </div>

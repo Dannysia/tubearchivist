@@ -144,6 +144,24 @@ button:disabled:hover {
   color: #ffffff;
 }
 
+/* an anchor that sits level with the buttons it lines up next to */
+.link-button {
+  display: inline-block;
+  padding: 5px 13px;
+  cursor: pointer;
+  background-color: var(--accent-font-dark);
+  color: #ffffff;
+  /* button carries no font rule here, so match the browser default it renders in */
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13.3333px;
+}
+
+.link-button:hover {
+  background-color: var(--accent-font-light);
+  transform: scale(1.05);
+  color: var(--main-bg);
+}
+
 .video-item.table {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
