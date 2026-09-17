@@ -174,15 +174,16 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
         <h2>Generate metadata file</h2>
         <p>
           <i>
-            Writes <span className="settings-current">&lt;video id&gt;.info.json</span> into the
-            import folder, next to the media file it belongs to. Use this when the video is no
-            longer on YouTube, so there is nothing to look the metadata up from.
+            Writes an <span className="settings-current">.info.json</span> into the import folder,
+            named to match the staged media file it belongs to. Use this when the video is no longer
+            on YouTube, so there is nothing to look the metadata up from.
           </i>
         </p>
         <p>
           <i>
-            These values are a fallback. The import still asks YouTube first, and only falls back to
-            this file when YouTube returns nothing for the video.
+            These values are a fallback. The import still asks YouTube first, and fills in from this
+            file where YouTube has nothing to give - which for a removed video is everything but the
+            id.
           </i>
         </p>
 

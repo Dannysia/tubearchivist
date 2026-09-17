@@ -196,8 +196,14 @@ class ImportFolderScanner:
         config = AppConfig().config
         for idx, current_video in enumerate(self.to_import):
             if not current_video["media"]:
-                print(f"{current_video}: no matching media file found.")
-                raise ValueError
+                message = (
+                    f"{current_video}: no matching media file found. "
+                    "match_files pairs a video's files by base name, so "
+                    "a sidecar has to be named for the media file it "
+                    "belongs to, not just for the same video id"
+                )
+                print(message)
+                raise ValueError(message)
 
             if self.task and self.task.is_stopped():
                 print("manual import: stopped by user")
@@ -730,15 +736,48 @@ class ImportFolderFiles:
         return cls._describe(clean_name)
 
     @classmethod
+    def metadata_name(cls, video_id: str) -> str:
+        """the info.json name that pairs with this video's media file
+
+        ImportFolderScanner.match_files joins a video's files by base
+        name, not by video id, and validate_name accepts a media file
+        under either spelling of that name. So <video_id>.info.json
+        pairs with <video_id>.mp4 but not with the equally valid
+        "Some Title [<video_id>].mp4" - it would sit there as a video
+        of its own with no media and fail the whole import.
+
+        The bare id is the fallback for when no media is staged yet. It
+        only pairs with a media file that arrives under the same bare
+        id - upload "Title [<id>].mp4" afterwards and the two do not
+        match, which is the same problem in reverse. Staging the media
+        first, which is what the modal's candidate list is for, avoids
+        it.
+        """
+        # the listing below needs the folder to exist; write_metadata
+        # makes it too rather than depend on this having run first
+        os.makedirs(cls.IMPORT_DIR, exist_ok=True)
+        media_exts = ImportFolderScanner.EXT_MAP["media"]
+
+        for file_name in sorted(ignore_filelist(os.listdir(cls.IMPORT_DIR))):
+            base_name, ext = ImportFolderScanner._detect_base_name(file_name)
+            if ext.lower() not in media_exts:
+                continue
+
+            if strict_video_id(base_name) == video_id:
+                return f"{base_name}.info.json"
+
+        return f"{video_id}.info.json"
+
+    @classmethod
     def write_metadata(cls, validated: dict) -> dict:
         """
-        write a hand filled info.json into the import folder, named so
-        the scanner pairs it with <video_id>.<media ext> - the secondary
+        write a hand filled info.json into the import folder, named for
+        the media file the scanner has to pair it with - the secondary
         .info extension is what _detect_base_name strips to match them
         """
         video_id = validated["video_id"]
         info_json = cls.build_info_json(validated)
-        clean_name = f"{video_id}.info.json"
+        clean_name = cls.metadata_name(video_id)
         # the name is generated, but run it through the same gate an
         # upload passes so there is one definition of an acceptable name
         cls.validate_name(clean_name)

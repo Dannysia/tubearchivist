@@ -10,6 +10,7 @@ from datetime import date
 import pytest
 from appsettings.src.manual import (
     ImportFolderFiles,
+    ImportFolderScanner,
     is_safe_channel_id,
     is_video_id,
 )
@@ -129,3 +130,84 @@ def test_rejects_a_video_id_that_is_not_eleven_characters(video_id):
 def test_accepts_an_eleven_character_video_id():
     """the happy path"""
     assert is_video_id(VIDEO_ID)
+
+
+class TestMetadataName:
+    """the generated info.json has to pair with its media file
+
+    ImportFolderScanner.match_files joins a video's files by base name,
+    so a media file staged under its full youtube name needs the sidecar
+    under that same name - see the ValueError from process_videos
+    """
+
+    @staticmethod
+    @pytest.fixture
+    def import_dir(tmp_path, monkeypatch):
+        """an empty import folder to stage files in"""
+        monkeypatch.setattr(ImportFolderFiles, "IMPORT_DIR", str(tmp_path))
+
+        return tmp_path
+
+    def test_follows_a_media_file_named_for_its_youtube_title(
+        self, import_dir
+    ):
+        """the spelling yt-dlp writes, and one validate_name accepts"""
+        media = f"Some Title (with parens) [{VIDEO_ID}].mp4"
+        (import_dir / media).touch()
+
+        assert ImportFolderFiles.metadata_name(VIDEO_ID) == (
+            f"Some Title (with parens) [{VIDEO_ID}].info.json"
+        )
+
+    def test_matches_a_bare_id_media_file(self, import_dir):
+        """the other spelling, where both names already agreed"""
+        (import_dir / f"{VIDEO_ID}.mkv").touch()
+
+        assert ImportFolderFiles.metadata_name(VIDEO_ID) == (
+            f"{VIDEO_ID}.info.json"
+        )
+
+    def test_falls_back_to_the_bare_id_with_nothing_staged(self, import_dir):
+        """metadata written before the media file arrives"""
+        assert ImportFolderFiles.metadata_name(VIDEO_ID) == (
+            f"{VIDEO_ID}.info.json"
+        )
+
+    def test_ignores_another_video_s_media_file(self, import_dir):
+        """a busy import folder must not cross the two over"""
+        (import_dir / "Other [hc5gku8LRTQ].mp4").touch()
+
+        assert ImportFolderFiles.metadata_name(VIDEO_ID) == (
+            f"{VIDEO_ID}.info.json"
+        )
+
+    def test_ignores_a_sidecar_that_is_not_media(self, import_dir):
+        """only the media file decides the base name"""
+        (import_dir / f"Some Title [{VIDEO_ID}].jpg").touch()
+        (import_dir / f"Some Title [{VIDEO_ID}].en.vtt").touch()
+
+        assert ImportFolderFiles.metadata_name(VIDEO_ID) == (
+            f"{VIDEO_ID}.info.json"
+        )
+
+    def test_the_followed_name_still_passes_the_upload_name_gate(
+        self, import_dir
+    ):
+        """write_metadata runs it through validate_name before writing"""
+        (import_dir / f"Some Title [{VIDEO_ID}].mp4").touch()
+        clean_name = ImportFolderFiles.metadata_name(VIDEO_ID)
+
+        assert ImportFolderFiles.validate_name(clean_name) == clean_name
+
+    def test_the_followed_name_shares_the_media_file_s_base_name(
+        self, import_dir
+    ):
+        """which is the whole point: match_files groups on this"""
+        media = f"Some Title [{VIDEO_ID}].mp4"
+        (import_dir / media).touch()
+
+        clean_name = ImportFolderFiles.metadata_name(VIDEO_ID)
+
+        assert ImportFolderScanner._detect_base_name(clean_name)[0] == (
+            ImportFolderScanner._detect_base_name(media)[0]
+        )
