@@ -1475,7 +1475,7 @@ video:-webkit-full-screen {
 
 .import-file-row {
   display: grid;
-  /* right third reserved for the video id, then the delete button */
+  /* right third reserved for the video id, then the row's buttons */
   grid-template-columns: 1fr 100px 33% min-content;
   align-items: center;
   gap: 10px;

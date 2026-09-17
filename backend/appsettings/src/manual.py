@@ -879,16 +879,29 @@ class ImportFolderFiles:
         )
 
     @classmethod
-    def delete_file(cls, file_name: str) -> bool:
-        """delete a single staged file, False if it is not there"""
-        # no strict name check here: a file put in the folder by hand can
-        # be named anything, and you still need to be able to remove it
+    def file_path(cls, file_name: str) -> str | None:
+        """absolute path of a staged file, None if it is not there
+
+        No strict name check: a file put in the folder by hand can be
+        named anything, and you still need to reach it. basename first
+        though - the name comes off a url and must not be able to walk
+        out of the import folder.
+        """
         clean_name = os.path.basename(file_name or "").strip()
         if not clean_name or clean_name.startswith("."):
             raise ValueError(f"invalid file name: {file_name}")
 
         file_path = os.path.join(cls.IMPORT_DIR, clean_name)
         if not os.path.isfile(file_path):
+            return None
+
+        return file_path
+
+    @classmethod
+    def delete_file(cls, file_name: str) -> bool:
+        """delete a single staged file, False if it is not there"""
+        file_path = cls.file_path(file_name)
+        if not file_path:
             return False
 
         os.remove(file_path)

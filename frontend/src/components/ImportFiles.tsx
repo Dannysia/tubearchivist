@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import loadImportFiles, { ImportFileType } from '../api/loader/loadImportFiles';
 import uploadImportFile from '../api/actions/uploadImportFile';
 import deleteImportFile from '../api/actions/deleteImportFile';
+import importFileUrl from '../api/loader/importFileUrl';
 import humanFileSize from '../functions/humanFileSize';
 import Button from './Button';
 import ImportMetadataModal from './ImportMetadataModal';
@@ -195,11 +196,25 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
                 <span>{file.filename}</span>
                 <span>{humanFileSize(file.size)}</span>
                 <span>{file.video_id ?? <i>not detected</i>}</span>
-                <Button
-                  label="Delete"
-                  title={`Delete ${file.filename}`}
-                  onClick={() => handleDelete(file.filename)}
-                />
+                <div className="button-box">
+                  {/* an anchor, not a button calling fetch: the file can
+                      be many GB, and this way the browser streams it to
+                      disk itself and middle click and copy link address
+                      behave like the rest of the app's links */}
+                  <a
+                    className="link-button"
+                    href={importFileUrl(file.filename)}
+                    download={file.filename}
+                    title={`Download ${file.filename}`}
+                  >
+                    Download
+                  </a>
+                  <Button
+                    label="Delete"
+                    title={`Delete ${file.filename}`}
+                    onClick={() => handleDelete(file.filename)}
+                  />
+                </div>
               </div>
             );
           })}

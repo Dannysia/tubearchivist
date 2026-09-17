@@ -5,6 +5,8 @@ upload name and a write to disk, so these pin the guarantees it makes
 rather than just its happy path
 """
 
+import os
+
 import pytest
 from appsettings.src.manual import ImportFolderFiles
 
@@ -168,3 +170,80 @@ def test_rejects_a_null_byte_in_the_name(file_name):
     """a truncating name never reaches open()"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
+
+
+class TestStagedFilePath:
+    """file_path backs both the download and the delete
+
+    The name comes off a url, so the basename rule is the only thing
+    between a caller and the rest of the filesystem
+    """
+
+    @staticmethod
+    @pytest.fixture
+    def import_dir(tmp_path, monkeypatch):
+        """an import folder with one staged file"""
+        monkeypatch.setattr(ImportFolderFiles, "IMPORT_DIR", str(tmp_path))
+        (tmp_path / "staged.mp4").write_bytes(b"data")
+
+        return tmp_path
+
+    def test_resolves_a_staged_file(self, import_dir):
+        """the ordinary case"""
+        assert ImportFolderFiles.file_path("staged.mp4") == str(
+            import_dir / "staged.mp4"
+        )
+
+    def test_a_name_with_no_such_file_is_none_not_an_error(self, import_dir):
+        """the view turns this into a 404"""
+        assert ImportFolderFiles.file_path("nothing.mp4") is None
+
+    @pytest.mark.parametrize("file_name", ["", "   ", None, ".hidden"])
+    def test_refuses_an_unusable_name(self, import_dir, file_name):
+        """empty, whitespace and dotfiles never name a staged file"""
+        with pytest.raises(ValueError):
+            ImportFolderFiles.file_path(file_name)
+
+    @pytest.mark.parametrize(
+        "file_name", ["../../../etc/passwd", "/etc/passwd", "../secret.mp4"]
+    )
+    def test_a_traversal_naming_nothing_staged_resolves_to_nothing(
+        self, import_dir, file_name
+    ):
+        """
+        basename first, so a traversal collapses to a plain name that is
+        looked for in the import folder and simply is not there
+        """
+        assert ImportFolderFiles.file_path(file_name) is None
+
+    @pytest.mark.parametrize(
+        "file_name", ["subdir/staged.mp4", "../staged.mp4", "/etc/staged.mp4"]
+    )
+    def test_a_path_can_never_resolve_outside_the_import_folder(
+        self, import_dir, file_name
+    ):
+        """
+        where the basename does name a staged file, it collapses onto
+        that file rather than following the path. Assert the directory
+        rather than a prefix, so this cannot pass by resolving to None
+        """
+        resolved = ImportFolderFiles.file_path(file_name)
+
+        assert resolved == str(import_dir / "staged.mp4")
+        assert os.path.dirname(resolved) == str(import_dir)
+
+    def test_a_traversal_onto_a_real_outside_file_is_not_reachable(
+        self, import_dir, tmp_path
+    ):
+        """the file it points at exists, and still must not be served"""
+        (tmp_path.parent / "outside.mp4").write_bytes(b"secret")
+
+        assert ImportFolderFiles.file_path("../outside.mp4") is None
+
+    def test_delete_still_refuses_the_same_names(self, import_dir):
+        """delete_file shares this gate, it must not have lost it"""
+        with pytest.raises(ValueError):
+            ImportFolderFiles.delete_file(".hidden")
+
+        assert ImportFolderFiles.delete_file("nothing.mp4") is False
+        assert ImportFolderFiles.delete_file("staged.mp4") is True

@@ -1,5 +1,8 @@
 """all app settings API views"""
 
+import os
+from urllib.parse import quote
+
 from appsettings.serializers import (
     AppConfigSerializer,
     ArchiveMetadataSerializer,
@@ -33,8 +36,11 @@ from common.serializers import (
 from common.src.ta_redis import RedisArchivist
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from django.conf import settings
+from django.http import HttpResponse
+from django.utils.http import content_disposition_header
 from download.src.yt_dlp_base import CookieHandler
 from downscale.src.downscale import dispatch_pending_downscales
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -587,12 +593,71 @@ class ImportFileMetadataLookupView(ApiBaseView):
         return Response(ArchiveMetadataSerializer(metadata).data)
 
 
+# nginx serves the bytes, ImportFileItemView.get only decides whether
+# it may. Django's own FileResponse is not an option: over the ASGI
+# worker pool it was found to retain the full file size in the serving
+# process for the life of that process, and an import folder holds
+# exactly the multi GB media that would hit it - see the comment in
+# downscale.src.worker for the measurement. The nginx location is
+# internal, so it is reachable only through this handoff and the
+# AdminOnly check above it still applies.
+IMPORT_INTERNAL_PREFIX = "/internal/import/"
+
+
 class ImportFileItemView(ApiBaseView):
     """resolves to /api/appsettings/import-file/<filename>/
+    GET: download a single file from the import folder
     DELETE: remove a single file from the import folder
     """
 
     permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                OpenApiTypes.BINARY, description="the staged file"
+            ),
+            400: OpenApiResponse(
+                ErrorResponseSerializer(), description="invalid file name"
+            ),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(), description="file not found"
+            ),
+        },
+    )
+    def get(request, filename):
+        """download a staged import file"""
+        # pylint: disable=unused-argument
+        try:
+            file_path = ImportFolderFiles.file_path(filename)
+        except ValueError as err:
+            error = ErrorResponseSerializer({"error": str(err)})
+            return Response(error.data, status=400)
+
+        if not file_path:
+            message = f"{filename}: not found in import folder"
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=404)
+
+        clean_name = os.path.basename(file_path)
+        response = HttpResponse()
+        # safe="" so a separator could never survive into the internal
+        # uri. file_path has already basenamed the name, this keeps the
+        # header construction correct on its own terms
+        response["X-Accel-Redirect"] = IMPORT_INTERNAL_PREFIX + quote(
+            clean_name, safe=""
+        )
+        # quotes and non ascii in a staged name are the caller's to get
+        # wrong, this spells the header for both
+        response["Content-Disposition"] = content_disposition_header(
+            as_attachment=True, filename=clean_name
+        )
+        # nginx fills this in from the file it serves, a leftover
+        # text/html from here would override it
+        del response["Content-Type"]
+
+        return response
 
     @staticmethod
     @extend_schema(
