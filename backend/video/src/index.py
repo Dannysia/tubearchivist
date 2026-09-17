@@ -151,12 +151,30 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
     es_path = False
     index_name = "ta_video"
     yt_base = "https://www.youtube.com/watch?v="
+    # the fields YT fills in for a video it still has. A removed one
+    # answers with a stub instead: the id echoed back, a generic
+    # "youtube video #<id>" title and every one of these null or empty
+    # (measured, not assumed - see REMOVED_STUB in the offline meta
+    # tests). Age gated and members only videos also come back with no
+    # formats, but with all of this intact, and they are still on YT
+    IDENTITY_FIELDS = (
+        "fulltitle",
+        "channel_id",
+        "uploader",
+        "upload_date",
+        "timestamp",
+    )
 
     def __init__(self, youtube_id, video_type=VideoTypeEnum.VIDEOS):
         super().__init__(youtube_id)
         self.channel_id = False
         self.video_type = video_type
         self.offline_import = False
+        # whether youtube's answer carried the video's real metadata, as
+        # opposed to the empty stub it returns for a removed one. Only
+        # a manual import with its own sidecar file can be indexed
+        # without it, so everything else defaults to true
+        self.youtube_answered = True
 
     def build_json(
         self,
@@ -177,6 +195,11 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             return
 
         if not self.youtube_meta:
+            # nothing came back at all. That is a failed lookup - a
+            # network error, a rate limit, a stale cookie - not a
+            # removed video, which answers with a stub and takes the
+            # branch below. youtube_answered stays true: there is no
+            # reindex path back from a wrongly deactivated import
             self.youtube_meta = youtube_meta_overwrite
             self.offline_import = True
         elif from_file and not self.youtube_meta.get("formats"):
@@ -184,6 +207,11 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             # file came from elsewhere: treat local sidecar files as
             # authoritative like any other offline import
             self.offline_import = True
+            # a removed video lands here too, not in the branch above:
+            # YT answers for it with a stub rather than with nothing.
+            # Read before the merge, which fills the stub's gaps from
+            # the file and would make every import look answered
+            self.youtube_answered = self._youtube_answered(self.youtube_meta)
             self.youtube_meta = self._merge_offline_meta(
                 self.youtube_meta, youtube_meta_overwrite
             )
@@ -201,6 +229,16 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             self._get_sponsorblock()
 
         return
+
+    @classmethod
+    def _youtube_answered(cls, youtube_meta: dict) -> bool:
+        """whether YT returned the video's metadata or only a stub
+
+        Any one field is enough. This decides whether to index a video
+        as gone, so the benefit of the doubt goes to it still being
+        there: a partial answer counts as answered.
+        """
+        return any(youtube_meta.get(field) for field in cls.IDENTITY_FIELDS)
 
     @staticmethod
     def _merge_offline_meta(youtube_meta: dict, overwrite) -> dict:
@@ -251,7 +289,16 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         self.channel_id = self.youtube_meta["channel_id"]
         last_refresh = int(datetime.now().timestamp())
         self.json_data = {
-            "active": True,
+            # a video YT no longer serves is indexed inactive straight
+            # away. Before this it went in active and stayed that way
+            # until a reindex pass happened to pick it up and call
+            # deactivate - see appsettings.src.reindex.
+            #
+            # This is close to one way: reindex only queues active
+            # videos, so nothing reconsiders the decision on its own.
+            # That is why _youtube_answered takes any one identifying
+            # field as proof the video is still there
+            "active": self.youtube_answered,
             "category": self.youtube_meta.get("categories", []),
             "date_downloaded": last_refresh,
             "published": self._build_published(),
