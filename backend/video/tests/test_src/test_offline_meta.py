@@ -7,6 +7,7 @@ _build_published on the null upload_date
 """
 
 import pytest
+from appsettings.src.manual import UNKNOWN_COUNT
 from video.src.index import YoutubeVideo
 
 VIDEO_ID = "ibyCDgITtxg"
@@ -132,3 +133,62 @@ def test_the_stub_alone_still_raises():
 
     with pytest.raises(ValueError):
         video._build_published()
+
+
+class TestUnknownCounts:
+    """UNKNOWN_COUNT has to reach the index intact
+
+    It is an in band sentinel, so every hop between the info.json and
+    stats.view_count has to leave it alone. _add_stats in particular
+    only passes it through because -1 is truthy - a rewrite of that line
+    to something like max(0, ...) would silently turn every unknown
+    count into a claimed zero, which is what these pin against.
+    """
+
+    @staticmethod
+    def add_stats(youtube_meta: dict) -> dict:
+        """_add_stats on its own, it reads and writes nothing else"""
+        video = object.__new__(YoutubeVideo)
+        video.youtube_meta = youtube_meta
+        video.json_data = {}
+        video._add_stats()
+
+        return video.json_data["stats"]
+
+    def test_the_merge_keeps_the_sentinel(self):
+        """it is a set value in the file, not a blank one"""
+        merged = YoutubeVideo._merge_offline_meta(
+            REMOVED_STUB,
+            build_info_json(
+                view_count=UNKNOWN_COUNT, like_count=UNKNOWN_COUNT
+            ),
+        )
+
+        assert merged["view_count"] == UNKNOWN_COUNT
+        assert merged["like_count"] == UNKNOWN_COUNT
+
+    def test_the_sentinel_reaches_stats(self):
+        """what actually gets indexed, and read back by StatsSerializer"""
+        stats = self.add_stats(
+            {"view_count": UNKNOWN_COUNT, "like_count": UNKNOWN_COUNT}
+        )
+
+        assert stats["view_count"] == UNKNOWN_COUNT
+        assert stats["like_count"] == UNKNOWN_COUNT
+
+    def test_a_real_zero_still_reaches_stats_as_zero(self):
+        """the sentinel must not swallow a genuine zero"""
+        stats = self.add_stats({"view_count": 0, "like_count": 0})
+
+        assert stats["view_count"] == 0
+        assert stats["like_count"] == 0
+
+    def test_a_missing_count_is_still_zero_for_a_live_video(self):
+        """
+        the sentinel is written by the import form only. A video YT
+        serves without a count is unchanged, zero as it has always been
+        """
+        stats = self.add_stats({"title": "still on youtube"})
+
+        assert stats["view_count"] == 0
+        assert stats["like_count"] == 0

@@ -482,6 +482,14 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
               onChange={event => setField('like_count', event.target.value)}
             />
           </label>
+
+          <p>
+            <i>
+              Leave the counts empty if you do not know them. The video shows them as{' '}
+              <span className="settings-current">unknown</span> rather than claiming zero. A capture
+              rarely has them.
+            </i>
+          </p>
         </div>
 
         {error && <p className="danger-zone">{error}</p>}

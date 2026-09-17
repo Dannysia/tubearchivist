@@ -8,6 +8,7 @@ import WatchedCheckBox from './WatchedCheckBox';
 import GoogleCast from './GoogleCast';
 import updateWatchedState from '../api/actions/updateWatchedState';
 import formatNumbers from '../functions/formatNumbers';
+import formatCount, { isKnownCount } from '../functions/formatCount';
 import { Link, useSearchParams } from 'react-router-dom';
 import Routes from '../configuration/routes/RouteList';
 import loadPlaylistById from '../api/loader/loadPlaylistById';
@@ -93,9 +94,13 @@ const EmbeddableVideoPlayer = ({ videoId }: EmbeddableVideoPlayerProps) => {
   const channelName = video.channel.channel_name;
   const watched = video.player.watched;
   const sponsorblock = video.sponsorblock;
-  const views = formatNumbers(video.stats.view_count);
-  const hasLikes = video.stats.like_count;
-  const likes = formatNumbers(video.stats.like_count);
+  const views = formatCount(video.stats.view_count);
+  // an explicit > 0 rather than the raw number this used to be, which
+  // rendered a bare 0 next to the icon. An unknown count still shows,
+  // as the word: the sentinel is truthy, so the old test took it for a
+  // count worth printing
+  const hasLikes = video.stats.like_count > 0 || !isKnownCount(video.stats.like_count);
+  const likes = formatCount(video.stats.like_count);
   const hasDislikes = video.stats.dislike_count > 0 && appSettingsConfig.downloads.integrate_ryd;
   const dislikes = formatNumbers(video.stats.dislike_count);
   const cast = appSettingsConfig.application.enable_cast;

@@ -50,6 +50,18 @@ CHANNEL_ID_PATTERN = r"[a-zA-Z0-9_-]{2,64}"
 # the same eleven characters strict_video_id insists on
 VIDEO_ID_PATTERN = r"[a-zA-Z0-9_-]{11}"
 
+# view and like counts left blank on a generated info.json. A video that
+# is gone from YouTube and was never captured with its counts has an
+# unknown view count, not a zero one, and 0 claims to know something it
+# does not - it also reads as a real number everywhere it is displayed.
+#
+# -1 rather than null because stats.view_count is read back through a
+# plain IntegerField (video.serializers.StatsSerializer) and is a sort
+# field (video.src.constants.SortEnum), both of which a null breaks.
+# Being in band, it is only correct where a reader knows about it: every
+# display site has to check. See isKnownCount in the frontend.
+UNKNOWN_COUNT = -1
+
 
 def is_safe_channel_id(channel_id: str | None) -> bool:
     """channel_id is usable as a directory name"""
@@ -815,6 +827,10 @@ class ImportFolderFiles:
         uploader is what the channel falls back to when the channel is
         neither indexed nor reachable on youtube, and upload_date is the
         published date when there is no timestamp
+
+        A count left off the form is unknown rather than zero, so it is
+        written as UNKNOWN_COUNT. A count given as 0 is a real zero and
+        is kept - _merge_offline_meta and _add_stats both preserve it.
         """
         return {
             "id": validated["video_id"],
@@ -828,8 +844,10 @@ class ImportFolderFiles:
             # read with [] not .get(), so the key has to exist even when
             # there is no thumbnail to point at
             "thumbnail": validated.get("thumbnail") or "",
-            "view_count": validated.get("view_count") or 0,
-            "like_count": validated.get("like_count") or 0,
+            # .get with a default, not "or": an explicit 0 is a real
+            # count and must not collapse into the unknown sentinel
+            "view_count": validated.get("view_count", UNKNOWN_COUNT),
+            "like_count": validated.get("like_count", UNKNOWN_COUNT),
         }
 
     @classmethod

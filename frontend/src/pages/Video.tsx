@@ -23,6 +23,7 @@ import deleteVideo from '../api/actions/deleteVideo';
 import capitalizeFirstLetter from '../functions/capitalizeFirstLetter';
 import formatDate from '../functions/formatDates';
 import formatNumbers from '../functions/formatNumbers';
+import formatCount from '../functions/formatCount';
 import queueReindex from '../api/actions/queueReindex';
 import GoogleCast from '../components/GoogleCast';
 import WatchedCheckBox from '../components/WatchedCheckBox';
@@ -311,10 +312,10 @@ const Video = () => {
           <div className="info-box-item">
             <div>
               <p className="thumb-icon">
-                <img src={iconEye} alt="views" />: {formatNumbers(video.stats.view_count)}
+                <img src={iconEye} alt="views" />: {formatCount(video.stats.view_count)}
               </p>
               <p className="thumb-icon like">
-                <img src={iconThumb} alt="thumbs-up" />: {formatNumbers(video.stats.like_count)}
+                <img src={iconThumb} alt="thumbs-up" />: {formatCount(video.stats.like_count)}
               </p>
               {video.stats.dislike_count > 0 && (
                 <p className="thumb-icon">

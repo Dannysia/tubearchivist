@@ -197,7 +197,14 @@ class ArchiveMetadataSerializer(serializers.Serializer):
     the same field names ImportMetadataSerializer takes, so a lookup
     drops straight into the form that posts back to it. Everything but
     the title is blank or null when no capture carried it - the wayback
-    machine rarely has the whole picture
+    machine rarely has the whole picture.
+
+    An unknown count is null here and never manual.UNKNOWN_COUNT: that
+    sentinel belongs to the written info.json and the index, and this
+    is json, which has a real null. Posting one back is not possible
+    either way - ImportMetadataSerializer takes no null and no negative,
+    and the form turns a null into an omitted field, which is what
+    build_info_json writes as UNKNOWN_COUNT
     """
 
     video_id = serializers.CharField()

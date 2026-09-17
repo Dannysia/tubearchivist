@@ -9,6 +9,7 @@ from datetime import date
 
 import pytest
 from appsettings.src.manual import (
+    UNKNOWN_COUNT,
     ImportFolderFiles,
     ImportFolderScanner,
     is_safe_channel_id,
@@ -66,18 +67,42 @@ def test_channel_name_maps_to_uploader():
     assert info_json["uploader"] == "Rick Astley"
 
 
-def test_optional_fields_fall_back_to_empty_rather_than_absent():
+def test_optional_text_fields_fall_back_to_empty_rather_than_absent():
     """the keys still have to exist, empty is fine"""
     validated = build_validated()
-    for key in ["description", "thumbnail", "view_count", "like_count"]:
+    for key in ["description", "thumbnail"]:
         validated.pop(key)
 
     info_json = ImportFolderFiles.build_info_json(validated)
 
     assert info_json["description"] == ""
     assert info_json["thumbnail"] == ""
-    assert info_json["view_count"] == 0
-    assert info_json["like_count"] == 0
+
+
+def test_a_count_left_off_the_form_is_unknown_not_zero():
+    """
+    the video is gone and was never captured with its counts. 0 claims
+    to know it had none, and reads as a real number wherever it is shown
+    """
+    validated = build_validated()
+    for key in ["view_count", "like_count"]:
+        validated.pop(key)
+
+    info_json = ImportFolderFiles.build_info_json(validated)
+
+    assert info_json["view_count"] == UNKNOWN_COUNT
+    assert info_json["like_count"] == UNKNOWN_COUNT
+
+
+@pytest.mark.parametrize("key", ["view_count", "like_count"])
+def test_a_count_given_as_zero_is_a_real_zero(key):
+    """
+    the sentinel is for an absent count only - a hand entered 0 says
+    the video really had none, and must survive as 0
+    """
+    info_json = ImportFolderFiles.build_info_json(build_validated(**{key: 0}))
+
+    assert info_json[key] == 0
 
 
 def test_generated_name_passes_the_upload_name_gate():
