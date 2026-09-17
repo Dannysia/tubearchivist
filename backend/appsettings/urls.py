@@ -61,6 +61,11 @@ urlpatterns = [
         name="api-import-file-metadata",
     ),
     path(
+        "import-file/metadata/lookup/<str:video_id>/",
+        views.ImportFileMetadataLookupView.as_view(),
+        name="api-import-file-metadata-lookup",
+    ),
+    path(
         "import-file/<str:filename>/",
         views.ImportFileItemView.as_view(),
         name="api-import-file-item",

@@ -2,6 +2,7 @@
 
 from appsettings.serializers import (
     AppConfigSerializer,
+    ArchiveMetadataSerializer,
     BackupFileSerializer,
     CookieUpdateSerializer,
     CookieValidationSerializer,
@@ -22,8 +23,9 @@ from appsettings.serializers import (
 from appsettings.src import tailscale
 from appsettings.src.backup import ElasticBackup
 from appsettings.src.config import AppConfig
-from appsettings.src.manual import ImportFolderFiles
+from appsettings.src.manual import ImportFolderFiles, is_video_id
 from appsettings.src.snapshot import ElasticSnapshot
+from appsettings.src.wayback import WaybackMetadata
 from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
@@ -528,6 +530,61 @@ class ImportFileMetadataView(ApiBaseView):
             return Response(error.data, status=400)
 
         return Response(ImportFileSerializer(written).data)
+
+
+class ImportFileMetadataLookupView(ApiBaseView):
+    """resolves to /api/appsettings/import-file/metadata/lookup/<video_id>/
+    GET: look a removed video's metadata up on the Internet Archive
+    """
+
+    permission_classes = [AdminOnly]
+
+    @staticmethod
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(ArchiveMetadataSerializer()),
+            400: OpenApiResponse(
+                ErrorResponseSerializer(), description="invalid video id"
+            ),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="nothing archived for this video",
+            ),
+            502: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="the Internet Archive could not be reached",
+            ),
+        },
+    )
+    def get(request, video_id):
+        """look up archived metadata for a video id"""
+        # pylint: disable=unused-argument
+        # outside the try: everything in get() would otherwise be able
+        # to surface as "not a video id", and json.JSONDecodeError deep
+        # in yt-dlp is a ValueError too
+        if not is_video_id(video_id):
+            message = f"{video_id}: not an 11 character video id"
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=400)
+
+        try:
+            metadata = WaybackMetadata(video_id).get()
+        except OSError as err:
+            # ConnectionError, which YtWrap raises, is an OSError
+            message = f"{video_id}: Internet Archive lookup failed, {err}"
+            print(message)
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=502)
+
+        if not metadata:
+            message = (
+                f"{video_id}: the Internet Archive has no capture of this "
+                "video's watch page, fill the form in by hand"
+            )
+            error = ErrorResponseSerializer({"error": message})
+            return Response(error.data, status=404)
+
+        return Response(ArchiveMetadataSerializer(metadata).data)
 
 
 class ImportFileItemView(ApiBaseView):

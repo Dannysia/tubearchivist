@@ -1530,6 +1530,13 @@ video:-webkit-full-screen {
   width: 100%;
 }
 
+.import-modal-lookup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
 .import-modal-channel {
   display: flex;
   flex-direction: column;

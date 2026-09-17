@@ -191,6 +191,27 @@ class ImportMetadataSerializer(serializers.Serializer):
     like_count = serializers.IntegerField(required=False, min_value=0)
 
 
+class ArchiveMetadataSerializer(serializers.Serializer):
+    """serialize metadata recovered from the Internet Archive
+
+    the same field names ImportMetadataSerializer takes, so a lookup
+    drops straight into the form that posts back to it. Everything but
+    the title is blank or null when no capture carried it - the wayback
+    machine rarely has the whole picture
+    """
+
+    video_id = serializers.CharField()
+    title = serializers.CharField()
+    channel_id = serializers.CharField(allow_blank=True)
+    channel_name = serializers.CharField(allow_blank=True)
+    # iso, or blank. not a DateField: blank is a valid answer here
+    upload_date = serializers.CharField(allow_blank=True)
+    description = serializers.CharField(allow_blank=True)
+    thumbnail = serializers.CharField(allow_blank=True)
+    view_count = serializers.IntegerField(allow_null=True)
+    like_count = serializers.IntegerField(allow_null=True)
+
+
 class SnapshotItemSerializer(serializers.Serializer):
     """serialize snapshot response"""
 

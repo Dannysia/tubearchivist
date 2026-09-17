@@ -3,6 +3,7 @@ import Button from './Button';
 import createImportMetadata, { ImportMetadataType } from '../api/actions/createImportMetadata';
 import { ImportFileType } from '../api/loader/loadImportFiles';
 import searchChannels from '../api/loader/searchChannels';
+import loadArchiveMetadata from '../api/loader/loadArchiveMetadata';
 import { ChannelType } from '../pages/Channels';
 
 type ImportMetadataModalProps = {
@@ -39,6 +40,15 @@ const EMPTY_FORM: FormState = {
   like_count: '',
 };
 
+// the fields the save insists on, in form order, for telling the user
+// what an Internet Archive capture did not cover
+const REQUIRED_LABELS: { field: keyof FormState; label: string }[] = [
+  { field: 'title', label: 'title' },
+  { field: 'channel_id', label: 'channel ID' },
+  { field: 'channel_name', label: 'channel name' },
+  { field: 'upload_date', label: 'published date' },
+];
+
 const errorMessage = (err: unknown): string => {
   if (err instanceof Error) return err.message;
   if (typeof err === 'object' && err !== null && 'message' in err) {
@@ -55,6 +65,12 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // the Internet Archive lookup keeps its own two messages: its result
+  // is about the form it just filled, not about the save
+  const [looking, setLooking] = useState(false);
+  const [lookupMessage, setLookupMessage] = useState('');
+  const [lookupError, setLookupError] = useState('');
 
   // picking an indexed channel is the common case and avoids retyping a
   // 24 character id; a new one is only needed for a channel the archive
@@ -115,16 +131,93 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
 
   const setField = (field: keyof FormState, value: string) => {
     setForm(current => ({ ...current, [field]: value }));
+    // a lookup result is about the id it ran against, so it stops being
+    // true the moment that changes
+    if (field === 'video_id') {
+      setLookupMessage('');
+      setLookupError('');
+    }
+  };
+
+  const handleLookup = async () => {
+    const videoId = form.video_id.trim();
+
+    setLooking(true);
+    setLookupMessage('');
+    setLookupError('');
+
+    try {
+      const response = await loadArchiveMetadata(videoId);
+      if (response.error || !response.data) {
+        setLookupError(response.error?.error ?? 'no metadata came back');
+        return;
+      }
+
+      const found = response.data;
+      // only fill what the archive actually had, and never over
+      // something already typed in: a capture is a starting point, not
+      // a correction. The counts in particular come back null far more
+      // often than not, and String(undefined) would put the word
+      // "undefined" in a number input
+      const fill = (current: string, value: string | number | null | undefined) =>
+        current || (value === null || value === undefined ? '' : String(value));
+
+      const merge = (current: FormState): FormState => ({
+        ...current,
+        video_id: videoId,
+        title: fill(current.title, found.title),
+        channel_id: fill(current.channel_id, found.channel_id),
+        channel_name: fill(current.channel_name, found.channel_name),
+        upload_date: fill(current.upload_date, found.upload_date),
+        description: fill(current.description, found.description),
+        thumbnail: fill(current.thumbnail, found.thumbnail),
+        view_count: fill(current.view_count, found.view_count),
+        like_count: fill(current.like_count, found.like_count),
+      });
+
+      // a functional update, so a field typed while the request was in
+      // flight is merged into rather than reverted. The message below
+      // reads a snapshot instead, which at worst names a field the user
+      // filled in during those few seconds
+      let stale = false;
+      setForm(current => {
+        // the id moved while this was in the air, so the answer is for
+        // a video the user is no longer filling in. Dropping it beats
+        // reverting the id and filling the form from the old video
+        if (current.video_id.trim() !== videoId) {
+          stale = true;
+          return current;
+        }
+
+        return merge(current);
+      });
+
+      if (stale) return;
+
+      // a capture regularly has the title and nothing else, so say what
+      // is still needed rather than leave the user hunting for it
+      const filled = merge(form);
+      const stillEmpty = REQUIRED_LABELS.filter(({ field }) => !filled[field]).map(
+        ({ label }) => label,
+      );
+      setLookupMessage(
+        stillEmpty.length
+          ? `Found "${found.title}" on the Internet Archive. Still needed: ${stillEmpty.join(', ')}.`
+          : `Found "${found.title}" on the Internet Archive.`,
+      );
+    } catch (err) {
+      setLookupError(errorMessage(err));
+    } finally {
+      setLooking(false);
+    }
   };
 
   // the backend validates all of this too, this only stops an obviously
   // incomplete form costing a round trip
+  // driven by REQUIRED_LABELS so the save and the lookup's "still
+  // needed" list cannot drift apart
   const isComplete =
-    form.video_id.length === 11 &&
-    !!form.channel_id &&
-    !!form.channel_name &&
-    !!form.title &&
-    !!form.upload_date;
+    form.video_id.length === 11 && REQUIRED_LABELS.every(({ field }) => !!form[field]);
 
   const handleSubmit = async () => {
     setSaving(true);
@@ -211,6 +304,25 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
               onChange={event => setField('video_id', event.target.value)}
             />
           </label>
+
+          <div className="import-modal-lookup">
+            <Button
+              label={looking ? 'Searching the Internet Archive...' : 'Look up on Internet Archive'}
+              title="Fill this form from an archived copy of the YouTube watch page"
+              type="button"
+              disabled={form.video_id.trim().length !== 11 || looking}
+              onClick={handleLookup}
+            />
+            <p>
+              <i>
+                The Wayback Machine kept a copy of a lot of watch pages before the videos came down.
+                This reads one back and fills in whatever it held. Anything already typed in is left
+                alone.
+              </i>
+            </p>
+            {lookupMessage && <p>{lookupMessage}</p>}
+            {lookupError && <p className="danger-zone">{lookupError}</p>}
+          </div>
 
           <label>
             Title*
