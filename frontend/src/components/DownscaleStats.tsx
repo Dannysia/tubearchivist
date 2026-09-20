@@ -4,6 +4,7 @@ import humanFileSize from '../functions/humanFileSize';
 import formatNumbers from '../functions/formatNumbers';
 import { DownscaleSavingsType, DownscaleStatsType } from '../api/loader/loadStatsDownscale';
 import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders';
+import buildTransitionCard from '../functions/buildTransitionCard';
 
 // the backend folds every encoder past its display limit into this one
 // entry, so it never reads as a real encoder string
@@ -46,6 +47,15 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
         data: buildSavingsCard(encoderStats, useSIUnits),
       };
     }),
+    // nothing downscaled yet means no pairs to report
+    ...(downscaleStats.by_transition.transitions.length > 0
+      ? [
+          {
+            title: 'Downscale Counts',
+            data: buildTransitionCard(downscaleStats.by_transition),
+          },
+        ]
+      : []),
   ];
 
   return cards.map(card => {

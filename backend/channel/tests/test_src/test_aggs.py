@@ -3,7 +3,16 @@
 # pylint: disable=protected-access
 
 from channel.src.aggs import ChannelAggs
+from downscale.src.constants import transition_agg
 from video.src.resolution import empty_resolution, resolution_agg
+
+
+def a_transition_agg(buckets=None, other=0):
+    """a multi_terms response as ES returns one"""
+    return {
+        "buckets": buckets or [],
+        "sum_other_doc_count": other,
+    }
 
 
 def test_query_has_downscale_agg():
@@ -15,6 +24,7 @@ def test_query_has_downscale_agg():
     assert aggs["downscale"]["aggs"] == {
         "original_size": {"sum": {"field": "downscale.original_size"}},
         "new_size": {"sum": {"field": "downscale.new_size"}},
+        "by_transition": transition_agg(),
     }
 
 
@@ -24,12 +34,33 @@ def test_parse_downscale():
         "doc_count": 3,
         "original_size": {"value": 3000.0},
         "new_size": {"value": 1200.0},
+        "by_transition": a_transition_agg(
+            [
+                {"key": [2160, 1080], "doc_count": 2},
+                {"key": [1440, 1080], "doc_count": 1},
+            ]
+        ),
     }
     assert ChannelAggs._parse_downscale(agg) == {
         "doc_count": 3,
         "original_size": 3000,
         "new_size": 1200,
         "saved": 1800,
+        "by_transition": {
+            "transitions": [
+                {
+                    "original_height": 2160,
+                    "new_height": 1080,
+                    "doc_count": 2,
+                },
+                {
+                    "original_height": 1440,
+                    "new_height": 1080,
+                    "doc_count": 1,
+                },
+            ],
+            "other_count": 0,
+        },
     }
 
 
@@ -39,6 +70,7 @@ def test_parse_downscale_nothing_downscaled():
         "doc_count": 0,
         "original_size": {"value": 0},
         "new_size": {"value": 0},
+        "by_transition": a_transition_agg(),
     }
     assert ChannelAggs._parse_downscale(agg) == ChannelAggs._empty_downscale()
 
@@ -49,6 +81,7 @@ def test_parse_downscale_grown():
         "doc_count": 1,
         "original_size": {"value": 1000.0},
         "new_size": {"value": 1500.0},
+        "by_transition": a_transition_agg(),
     }
     assert ChannelAggs._parse_downscale(agg)["saved"] == -500
 
@@ -60,6 +93,7 @@ def test_empty_response_has_downscale():
         "original_size": 0,
         "new_size": 0,
         "saved": 0,
+        "by_transition": {"transitions": [], "other_count": 0},
     }
 
 

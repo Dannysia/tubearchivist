@@ -8,7 +8,10 @@ from common.serializers import (
     ResolutionBucketSerializer,
     ValidateUnknownFieldsMixin,
 )
-from downscale.serializers import DownscaleBulkResultItemSerializer
+from downscale.serializers import (
+    DownscaleBulkResultItemSerializer,
+    DownscaleTransitionSerializer,
+)
 from downscale.src.constants import DOWNSCALE_LADDER
 from rest_framework import serializers
 from video.src.constants import OrderEnum, VideoTypeEnum
@@ -162,6 +165,7 @@ class ChannelAggDownscaleSerializer(serializers.Serializer):
     original_size = serializers.IntegerField()
     new_size = serializers.IntegerField()
     saved = serializers.IntegerField()
+    by_transition = DownscaleTransitionSerializer()
 
 
 class ChannelAggDateRangeSerializer(serializers.Serializer):

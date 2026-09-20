@@ -4,7 +4,11 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from django.conf import settings
-from downscale.src.constants import downscaled_filter
+from downscale.src.constants import (
+    downscaled_filter,
+    parse_transitions,
+    transition_agg,
+)
 from video.src.resolution import parse_resolution, resolution_agg
 
 
@@ -413,6 +417,7 @@ class Downscale(AggBase):
                 },
                 "aggs": _size_aggs,
             },
+            "by_transition": transition_agg(),
         },
     }
 
@@ -434,6 +439,9 @@ class Downscale(AggBase):
             by_encoder.append(remainder)
 
         response["by_encoder"] = by_encoder
+        response["by_transition"] = parse_transitions(
+            aggregations["by_transition"]
+        )
 
         return response
 

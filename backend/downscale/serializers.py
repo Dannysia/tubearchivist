@@ -6,6 +6,23 @@ from common.serializers import PaginationSerializer
 from rest_framework import serializers
 
 
+class DownscaleTransitionItemSerializer(serializers.Serializer):
+    """serialize one original -> new height pair and its video count"""
+
+    original_height = serializers.IntegerField()
+    new_height = serializers.IntegerField()
+    doc_count = serializers.IntegerField()
+
+
+class DownscaleTransitionSerializer(serializers.Serializer):
+    """serialize the downscale count breakdown"""
+
+    transitions = DownscaleTransitionItemSerializer(many=True)
+    # downscaled videos outside the top N pairs, so the panel can say
+    # so rather than silently under-reporting the total
+    other_count = serializers.IntegerField()
+
+
 class DownscaleItemSerializer(serializers.Serializer):
     """serialize downscale queue item"""
 

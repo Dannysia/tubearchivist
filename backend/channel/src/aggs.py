@@ -2,7 +2,12 @@
 
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
-from downscale.src.constants import downscaled_filter
+from downscale.src.constants import (
+    downscaled_filter,
+    empty_transitions,
+    parse_transitions,
+    transition_agg,
+)
 from video.src.constants import VideoTypeEnum
 from video.src.resolution import (
     empty_resolution,
@@ -62,6 +67,7 @@ class ChannelAggs:
                             "sum": {"field": "downscale.original_size"}
                         },
                         "new_size": {"sum": {"field": "downscale.new_size"}},
+                        "by_transition": transition_agg(),
                     },
                 },
                 # full timestamps, not yyyy-MM-dd: the frontend renders these
@@ -116,6 +122,7 @@ class ChannelAggs:
             "original_size": original_size,
             "new_size": new_size,
             "saved": original_size - new_size,
+            "by_transition": parse_transitions(agg["by_transition"]),
         }
 
     @staticmethod
@@ -126,6 +133,7 @@ class ChannelAggs:
             "original_size": 0,
             "new_size": 0,
             "saved": 0,
+            "by_transition": empty_transitions(),
         }
 
     @staticmethod
