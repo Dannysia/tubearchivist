@@ -11,6 +11,7 @@ import enum
 OVERWRITE_KEYS = [
     "download_format",
     "autodelete_days",
+    "downscale_target_height",
     "index_playlists",
     "integrate_sponsorblock",
     "subscriptions_channel_size",

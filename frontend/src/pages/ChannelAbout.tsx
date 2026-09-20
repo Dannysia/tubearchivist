@@ -73,6 +73,7 @@ const ChannelAbout = () => {
 
   const [downloadFormat, setDownloadFormat] = useState<string | null>(null);
   const [autoDeleteAfter, setAutoDeleteAfter] = useState<number | null>(null);
+  const [autoDownscaleTo, setAutoDownscaleTo] = useState<number | null>(null);
   const [indexPlaylists, setIndexPlaylists] = useState(false);
   const [enableSponsorblock, setEnableSponsorblock] = useState<boolean | null>(null);
   const [pageSizeVideo, setPageSizeVideo] = useState<number | null>(null);
@@ -98,6 +99,9 @@ const ChannelAbout = () => {
         setChannelAggsResponse(channelAggsResponse);
         setDownloadFormat(channelResponseData?.channel_overwrites?.download_format ?? null);
         setAutoDeleteAfter(channelResponseData?.channel_overwrites?.autodelete_days ?? null);
+        setAutoDownscaleTo(
+          channelResponseData?.channel_overwrites?.downscale_target_height ?? null,
+        );
         setIndexPlaylists(channelResponseData?.channel_overwrites?.index_playlists ?? false);
         setEnableSponsorblock(
           channelResponseData?.channel_overwrites?.integrate_sponsorblock ?? null,
@@ -448,6 +452,34 @@ const ChannelAbout = () => {
                   oldValue={channel.channel_overwrites?.download_format ?? null}
                   updateCallback={handleUpdateConfig}
                 />
+              </div>
+              <div className="settings-box-wrapper">
+                <div>
+                  <p>Auto downscale on download</p>
+                  <p className="settings-current">
+                    Queue a downscale for every newly downloaded video above this height. Jobs wait
+                    in the downscale queue for review — originals are never replaced automatically.
+                  </p>
+                </div>
+                <div>
+                  <select
+                    name="downscale_target_height"
+                    value={autoDownscaleTo ?? ''}
+                    onChange={async event => {
+                      const selected = event.currentTarget.value;
+                      const targetHeight = selected === '' ? null : Number(selected);
+                      setAutoDownscaleTo(targetHeight);
+                      await handleUpdateConfig('downscale_target_height', targetHeight);
+                    }}
+                  >
+                    <option value="">Off</option>
+                    {DOWNSCALE_LADDER.map(height => (
+                      <option key={height} value={height}>
+                        {height}p
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="settings-box-wrapper">
                 <div>

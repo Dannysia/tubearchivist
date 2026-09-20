@@ -27,6 +27,7 @@ import { SortOrderEnum, SortOrderType } from '../api/loader/loadVideoListByPage'
 type ChannelOverwritesType = {
   download_format: string | null;
   autodelete_days: number | null;
+  downscale_target_height: number | null;
   index_playlists: boolean | null;
   integrate_sponsorblock: boolean | null;
   subscriptions_channel_size: number | null;

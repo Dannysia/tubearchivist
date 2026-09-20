@@ -323,6 +323,7 @@ class TestPostProcessPlaylists:
             _add_video_playlists=lambda: ran.append("quick sync"),
             match_videos=lambda: ran.append("match"),
             embed_metadata=lambda: ran.append("embed"),
+            auto_downscale=lambda: ran.append("downscale"),
         )
 
     @staticmethod
@@ -408,6 +409,35 @@ class TestPostProcessPlaylists:
 
         assert "comments" in ran
         assert "auto_delete_all" in ran and "refresh" in ran
+
+    def test_auto_downscale_runs_after_the_file_is_final(self):
+        """embed_metadata rewrites the media file in place
+
+        Queueing a downscale before it would encode a file that is about
+        to be rewritten underneath the job and throw the encode away.
+        """
+        ran = []
+        self._run(self._run_handler(ran), ran)
+
+        assert ran.index("embed") < ran.index("downscale")
+
+    def test_auto_downscale_runs_before_the_ids_are_cleared(self):
+        """it reads the same video queue the clear empties"""
+        ran = []
+        self._run(self._run_handler(ran), ran)
+
+        assert ran.index("downscale") < ran.index("clear")
+
+    def test_a_stopped_run_still_queues_downscales(self):
+        """es and redis only, it never reaches youtube
+
+        Same reason match_videos and the comment queue add survive a
+        stop: it files work that is already downloaded.
+        """
+        ran = []
+        self._run(self._run_handler(ran, stopped=True), ran)
+
+        assert "downscale" in ran
 
     def test_countdown_goes_under_the_counter(self, monkeypatch):
         sent, task = capture_task()

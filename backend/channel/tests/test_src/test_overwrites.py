@@ -78,3 +78,36 @@ class TestSetOverwrites:
         channel = a_channel()
         with pytest.raises(ValueError, match="invalid overwrite key"):
             YoutubeChannel.set_overwrites(channel, {"nonsense": 1})
+
+
+class TestDownscaleTarget:
+    """the auto downscale on download overwrite"""
+
+    def test_is_a_writable_overwrite(self):
+        """the download post process reads this off the channel doc"""
+        assert "downscale_target_height" in OVERWRITE_KEYS
+        assert "downscale_target_height" in ChannelOverwriteSerializer().fields
+
+    def test_accepts_a_height_on_the_ladder(self):
+        serializer = ChannelOverwriteSerializer(
+            data={"downscale_target_height": 1080}
+        )
+
+        assert serializer.is_valid(), serializer.errors
+
+    def test_accepts_null_to_clear(self):
+        """what the ui sends when the select goes back to Off"""
+        serializer = ChannelOverwriteSerializer(
+            data={"downscale_target_height": None}
+        )
+
+        assert serializer.is_valid(), serializer.errors
+
+    def test_rejects_a_height_off_the_ladder(self):
+        """the downscale queue only knows the ladder heights"""
+        serializer = ChannelOverwriteSerializer(
+            data={"downscale_target_height": 900}
+        )
+
+        assert not serializer.is_valid()
+        assert "downscale_target_height" in serializer.errors

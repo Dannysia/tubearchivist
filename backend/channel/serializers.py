@@ -9,6 +9,7 @@ from common.serializers import (
     ValidateUnknownFieldsMixin,
 )
 from downscale.serializers import DownscaleBulkResultItemSerializer
+from downscale.src.constants import DOWNSCALE_LADDER
 from rest_framework import serializers
 from video.src.constants import OrderEnum, VideoTypeEnum
 
@@ -20,6 +21,17 @@ class ChannelOverwriteSerializer(
 
     download_format = serializers.CharField(required=False, allow_null=True)
     autodelete_days = serializers.IntegerField(required=False, allow_null=True)
+    # queue a downscale to this height for every video downloaded for
+    # this channel that lands above it. The point of downloading high
+    # and re-encoding down is that youtube encodes each ladder rung
+    # separately and starves the low ones, so a 2160p rung downscaled
+    # beats the 1080p rung it ships - pair this with a download_format
+    # that actually fetches the high rung or there is nothing to gain.
+    # Jobs land in pending_review like any other, they are not
+    # auto-accepted - the original file is never replaced unattended.
+    downscale_target_height = serializers.ChoiceField(
+        choices=DOWNSCALE_LADDER, required=False, allow_null=True
+    )
     index_playlists = serializers.BooleanField(required=False, allow_null=True)
     integrate_sponsorblock = serializers.BooleanField(
         required=False, allow_null=True

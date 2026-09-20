@@ -24,6 +24,9 @@ from common.src.ta_redis import RedisQueue
 from common.src.urlparser import ParsedURLType
 from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
+from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
+from downscale.src.downscale import dispatch_pending_downscales
+from downscale.src.queue_interact import DownscaleInteract
 from playlist.src.index import YoutubePlaylist
 from video.src.comments import CommentList
 from video.src.constants import VideoTypeEnum
@@ -309,7 +312,9 @@ class DownloadPostProcess(DownloaderBase):
         Queueing the new videos for comments is not one of those steps -
         it is a redis write - so it happens either way. It has to: the
         clear below is the last thing holding those ids, and the comment
-        queue is what carries them into the next run.
+        queue is what carries them into the next run. auto_downscale
+        reads the same queue and is local-only for the same reason, so
+        it runs either way too.
         """
         keep_going = not (self.task and self.task.is_stopped())
         if keep_going:
@@ -333,6 +338,7 @@ class DownloadPostProcess(DownloaderBase):
             comment_list.index()
 
         self.embed_metadata()
+        self.auto_downscale()
 
         RedisQueue(self.VIDEO_QUEUE).clear()
 
@@ -381,6 +387,92 @@ class DownloadPostProcess(DownloaderBase):
                     "sort": [{"player.watched_date": {"order": "desc"}}],
                 }
                 self._auto_delete_watched(data)
+
+    def auto_downscale(self) -> None:
+        """
+        queue a downscale for each freshly downloaded video that landed
+        above its channel's configured target height.
+
+        Runs after embed_metadata() rather than before: that rewrites
+        the media file in place, and encoding a file that is about to be
+        rewritten would throw the encode away. Runs even when the task
+        was stopped, for the reason given in run() - this is ES and
+        redis only, it never reaches youtube.
+
+        Nothing is accepted here. Jobs land in pending_review like any
+        other downscale, so an original is only ever replaced by a
+        deliberate accept.
+        """
+        targets = {
+            channel_id: value["downscale_target_height"]
+            for channel_id, value in self.channel_overwrites.items()
+            if value.get("downscale_target_height")
+        }
+        if not targets:
+            return
+
+        video_ids = RedisQueue(self.VIDEO_QUEUE).get_all()
+        if not video_ids:
+            return
+
+        queued = 0
+        for video in self._get_downscale_candidates(video_ids, targets):
+            youtube_id = video["youtube_id"]
+            target_height = targets[video["channel"]["channel_id"]]
+            streams = video.get("streams") or []
+            heights = [s["height"] for s in streams if s["type"] == "video"]
+            current_height = max(heights) if heights else None
+
+            if not current_height or target_height >= current_height:
+                # already at or below target, nothing to do
+                continue
+
+            if DownscaleInteract.get_active_for_video(youtube_id):
+                # a manual submission got here first
+                continue
+
+            print(
+                f"{youtube_id}: queue downscale "
+                f"{current_height}p -> {target_height}p"
+            )
+            DownscaleInteract().create(
+                DownscaleInteract.build_queued_doc(
+                    youtube_id=youtube_id,
+                    video_json_data=video,
+                    current_height=current_height,
+                    target_height=target_height,
+                )
+            )
+            queued += 1
+
+        if queued:
+            # one dispatch pass after the whole batch, not one per video -
+            # dispatch_pending_downscales() already fills every free slot
+            # in a single call
+            dispatch_pending_downscales()
+
+    @staticmethod
+    def _get_downscale_candidates(
+        video_ids: list[str], targets: dict[str, int]
+    ) -> list[dict]:
+        """
+        the just-downloaded videos belonging to a channel that has a
+        downscale target set, carrying the fields build_queued_doc reads.
+        Filtering on channel here rather than per video keeps this to one
+        query however many channels the run touched.
+        """
+        data = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"ids": {"values": video_ids}},
+                        {"terms": {"channel.channel_id": list(targets)}},
+                    ]
+                }
+            },
+            "_source": QUEUE_DOC_SOURCE_FIELDS,
+        }
+        return IndexPaginate("ta_video", data).get_results()
 
     @staticmethod
     def _auto_delete_watched(data) -> None:

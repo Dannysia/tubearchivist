@@ -24,6 +24,7 @@ from common.src.es_connect import IndexPaginate
 from common.src.index_generic import Pagination
 from common.src.urlparser import Parser
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
+from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
 from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from drf_spectacular.utils import (
@@ -356,15 +357,7 @@ class ChannelDownscaleView(ApiBaseView):
         """get all fields needed to queue a downscale for all channel videos"""
         data = {
             "query": {"term": {"channel.channel_id": {"value": channel_id}}},
-            "_source": [
-                "youtube_id",
-                "streams",
-                "title",
-                "channel",
-                "vid_thumb_url",
-                "media_url",
-                "media_size",
-            ],
+            "_source": QUEUE_DOC_SOURCE_FIELDS,
         }
         return IndexPaginate("ta_video", data).get_results()
 
