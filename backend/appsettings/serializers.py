@@ -49,7 +49,6 @@ class AppConfigDownloadsSerializer(
 
     limit_speed = serializers.IntegerField(allow_null=True)
     sleep_interval = serializers.IntegerField(allow_null=True)
-    autodelete_days = serializers.IntegerField(allow_null=True)
     format = serializers.CharField(allow_null=True)
     format_sort = serializers.CharField(allow_null=True)
     add_metadata = serializers.BooleanField()

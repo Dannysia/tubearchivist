@@ -97,7 +97,6 @@ export type VideoType = {
 export type DownloadsType = {
   limit_speed: boolean;
   sleep_interval: number;
-  autodelete_days: boolean;
   format: boolean;
   format_sort: boolean;
   add_metadata: boolean;

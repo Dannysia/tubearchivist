@@ -21,8 +21,6 @@ from common.src.helper import (
     ignore_filelist,
 )
 from common.src.ta_redis import RedisQueue
-from common.src.urlparser import ParsedURLType
-from download.src.queue import PendingList
 from download.src.yt_dlp_base import YtWrap
 from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
 from downscale.src.downscale import dispatch_pending_downscales
@@ -305,7 +303,6 @@ class DownloadPostProcess(DownloaderBase):
         run_queue calls this even when a stop broke its own loop, so the
         first check is up front rather than only on refresh_playlist's
         return. Everything before that return reaches youtube too:
-        auto delete re-extracts each video it ignores, and
         add_playlists_to_refresh asks youtube for the playlists of every
         channel with index_playlists set.
 
@@ -318,8 +315,6 @@ class DownloadPostProcess(DownloaderBase):
         """
         keep_going = not (self.task and self.task.is_stopped())
         if keep_going:
-            self.auto_delete_all()
-            self.auto_delete_overwrites()
             keep_going = self.refresh_playlist()
         else:
             # refresh_playlist owns this on the way past normally, where
@@ -341,52 +336,6 @@ class DownloadPostProcess(DownloaderBase):
         self.auto_downscale()
 
         RedisQueue(self.VIDEO_QUEUE).clear()
-
-    def auto_delete_all(self):
-        """handle auto delete"""
-        autodelete_days = self.config["downloads"]["autodelete_days"]
-        if not autodelete_days:
-            return
-
-        print(f"auto delete older than {autodelete_days} days")
-        now_lte = str(self.now - autodelete_days * 24 * 60 * 60)
-        channel_overwrite = "channel.channel_overwrites.autodelete_days"
-        data = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"range": {"player.watched_date": {"lte": now_lte}}},
-                        {"term": {"player.watched": True}},
-                    ],
-                    "must_not": [
-                        {"exists": {"field": channel_overwrite}},
-                    ],
-                }
-            },
-            "sort": [{"player.watched_date": {"order": "asc"}}],
-        }
-        self._auto_delete_watched(data)
-
-    def auto_delete_overwrites(self):
-        """handle per channel auto delete from overwrites"""
-        for channel_id, value in self.channel_overwrites.items():
-            if "autodelete_days" in value:
-                autodelete_days = value.get("autodelete_days")
-                if autodelete_days is None:
-                    continue
-
-                print(f"{channel_id}: delete older than {autodelete_days}d")
-                now_lte = str(self.now - autodelete_days * 24 * 60 * 60)
-                must_list = [
-                    {"range": {"player.watched_date": {"lte": now_lte}}},
-                    {"term": {"channel.channel_id": {"value": channel_id}}},
-                    {"term": {"player.watched": True}},
-                ]
-                data = {
-                    "query": {"bool": {"must": must_list}},
-                    "sort": [{"player.watched_date": {"order": "desc"}}],
-                }
-                self._auto_delete_watched(data)
 
     def auto_downscale(self) -> None:
         """
@@ -473,34 +422,6 @@ class DownloadPostProcess(DownloaderBase):
             "_source": QUEUE_DOC_SOURCE_FIELDS,
         }
         return IndexPaginate("ta_video", data).get_results()
-
-    @staticmethod
-    def _auto_delete_watched(data) -> None:
-        """delete watched videos after x days"""
-        to_delete = IndexPaginate("ta_video", data).get_results()
-        if not to_delete:
-            return
-
-        for video in to_delete:
-            youtube_id = video["youtube_id"]
-            print(f"{youtube_id}: auto delete video")
-            YoutubeVideo(youtube_id).delete_media_file()
-
-        print("add deleted to ignore list")
-
-        parsed_ids: list[ParsedURLType] = []
-
-        for video_item in to_delete:
-            vid_type = getattr(VideoTypeEnum, video_item["vid_type"].upper())
-            parsed_ids.append(
-                {
-                    "type": "video",
-                    "url": video_item["youtube_id"],
-                    "vid_type": vid_type,
-                }
-            )
-
-        PendingList(youtube_ids=parsed_ids).parse_url_list(status="ignore")
 
     def refresh_playlist(self) -> bool:
         """match videos with playlists, False when a stop cut it short"""

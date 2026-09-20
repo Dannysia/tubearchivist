@@ -136,7 +136,6 @@ const SettingsApplication = () => {
   const [currentDownloadSpeed, setCurrentDownloadSpeed] = useState<number | null>(null);
   const [currentThrottledRate, setCurrentThrottledRate] = useState<number | null>(null);
   const [currentScrapingSleep, setCurrentScrapingSleep] = useState<number | null>(null);
-  const [currentAutodelete, setCurrentAutodelete] = useState<number | null>(null);
 
   // Download Format
   const [downloadsFormat, setDownloadsFormat] = useState<string | null>(null);
@@ -213,7 +212,6 @@ const SettingsApplication = () => {
     setCurrentDownloadSpeed(appSettingsConfigData?.downloads.limit_speed || null);
     setCurrentThrottledRate(appSettingsConfigData?.downloads.throttledratelimit || null);
     setCurrentScrapingSleep(appSettingsConfigData?.downloads.sleep_interval || null);
-    setCurrentAutodelete(appSettingsConfigData?.downloads.autodelete_days || null);
 
     // Download Format
     setDownloadsFormat(appSettingsConfigData?.downloads.format || null);
@@ -513,21 +511,6 @@ const SettingsApplication = () => {
                   oldValue={appSettingsConfig?.downloads.sleep_interval}
                   updateCallback={handleUpdateConfig}
                   min={5}
-                />
-              </div>
-              <div className="settings-box-wrapper">
-                <div>
-                  <p>
-                    <span className="danger-zone">Danger Zone</span>: Auto delete watched
-                  </p>
-                </div>
-                <InputConfig
-                  type="number"
-                  name="downloads.autodelete_days"
-                  value={currentAutodelete}
-                  setValue={setCurrentAutodelete}
-                  oldValue={appSettingsConfig?.downloads.autodelete_days}
-                  updateCallback={handleUpdateConfig}
                 />
               </div>
             </div>

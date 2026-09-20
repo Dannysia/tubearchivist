@@ -20,7 +20,6 @@ class ChannelOverwriteSerializer(
     """serialize channel overwrites"""
 
     download_format = serializers.CharField(required=False, allow_null=True)
-    autodelete_days = serializers.IntegerField(required=False, allow_null=True)
     # queue a downscale to this height for every video downloaded for
     # this channel that lands above it. The point of downloading high
     # and re-encoding down is that youtube encodes each ladder rung

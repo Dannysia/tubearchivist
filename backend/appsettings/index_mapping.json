@@ -55,9 +55,6 @@
                         "download_format": {
                             "type": "text"
                         },
-                        "autodelete_days": {
-                            "type": "long"
-                        },
                         "index_playlists": {
                             "type": "boolean"
                         },
@@ -173,9 +170,6 @@
                             "properties": {
                                 "download_format": {
                                     "type": "text"
-                                },
-                                "autodelete_days": {
-                                    "type": "long"
                                 },
                                 "index_playlists": {
                                     "type": "boolean"

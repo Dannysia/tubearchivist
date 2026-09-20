@@ -72,7 +72,6 @@ const ChannelAbout = () => {
     useState<ApiResponseType<ChannelAggsType>>();
 
   const [downloadFormat, setDownloadFormat] = useState<string | null>(null);
-  const [autoDeleteAfter, setAutoDeleteAfter] = useState<number | null>(null);
   const [autoDownscaleTo, setAutoDownscaleTo] = useState<number | null>(null);
   const [indexPlaylists, setIndexPlaylists] = useState(false);
   const [enableSponsorblock, setEnableSponsorblock] = useState<boolean | null>(null);
@@ -98,7 +97,6 @@ const ChannelAbout = () => {
         setChannelResponse(channelResponse);
         setChannelAggsResponse(channelAggsResponse);
         setDownloadFormat(channelResponseData?.channel_overwrites?.download_format ?? null);
-        setAutoDeleteAfter(channelResponseData?.channel_overwrites?.autodelete_days ?? null);
         setAutoDownscaleTo(
           channelResponseData?.channel_overwrites?.downscale_target_height ?? null,
         );
@@ -417,7 +415,6 @@ const ChannelAbout = () => {
                 <div className="help-text">
                   <ul>
                     <li>Overwrite the download format over the format set globally.</li>
-                    <li>Autodelete watched after x days overwrites the global setting.</li>
                     <li>
                       Indexing playlists indexes all playlists from that channel.
                       <ul>
@@ -480,21 +477,6 @@ const ChannelAbout = () => {
                     ))}
                   </select>
                 </div>
-              </div>
-              <div className="settings-box-wrapper">
-                <div>
-                  <p>
-                    <span className="danger-zone">Danger Zone</span>: Auto delete watched
-                  </p>
-                </div>
-                <InputConfig
-                  type="number"
-                  name="autodelete_days"
-                  value={autoDeleteAfter}
-                  setValue={setAutoDeleteAfter}
-                  oldValue={channel.channel_overwrites?.autodelete_days ?? null}
-                  updateCallback={handleUpdateConfig}
-                />
               </div>
               <div className="settings-box-wrapper">
                 <div>

@@ -10,7 +10,6 @@ import enum
 # a 500 with nothing in the log, not a 400 saying what was wrong.
 OVERWRITE_KEYS = [
     "download_format",
-    "autodelete_days",
     "downscale_target_height",
     "index_playlists",
     "integrate_sponsorblock",

@@ -52,25 +52,31 @@ class TestSetOverwrites:
 
     def test_writes_a_new_key(self):
         channel = a_channel()
-        YoutubeChannel.set_overwrites(channel, {"autodelete_days": 30})
+        YoutubeChannel.set_overwrites(
+            channel, {"subscriptions_channel_size": 50}
+        )
 
         assert channel.json_data["channel_overwrites"] == {
-            "autodelete_days": 30
+            "subscriptions_channel_size": 50
         }
 
     def test_merges_into_what_is_already_there(self):
         channel = a_channel({"download_format": "bestvideo"})
-        YoutubeChannel.set_overwrites(channel, {"autodelete_days": 30})
+        YoutubeChannel.set_overwrites(
+            channel, {"subscriptions_channel_size": 50}
+        )
 
         assert channel.json_data["channel_overwrites"] == {
             "download_format": "bestvideo",
-            "autodelete_days": 30,
+            "subscriptions_channel_size": 50,
         }
 
     def test_a_null_clears_the_key(self):
         """what the ui sends when a setting goes back to unset"""
-        channel = a_channel({"autodelete_days": 30})
-        YoutubeChannel.set_overwrites(channel, {"autodelete_days": None})
+        channel = a_channel({"subscriptions_channel_size": 50})
+        YoutubeChannel.set_overwrites(
+            channel, {"subscriptions_channel_size": None}
+        )
 
         assert channel.json_data["channel_overwrites"] == {}
 

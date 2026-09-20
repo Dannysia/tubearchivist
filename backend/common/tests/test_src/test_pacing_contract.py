@@ -317,8 +317,6 @@ class TestPostProcessPlaylists:
         return SimpleNamespace(
             VIDEO_QUEUE="v",
             task=SimpleNamespace(is_stopped=lambda: stopped),
-            auto_delete_all=lambda: ran.append("auto_delete_all"),
-            auto_delete_overwrites=lambda: ran.append("overwrites"),
             refresh_playlist=lambda: ran.append("refresh") or refresh,
             _add_video_playlists=lambda: ran.append("quick sync"),
             match_videos=lambda: ran.append("match"),
@@ -372,14 +370,13 @@ class TestPostProcessPlaylists:
     def test_run_skips_the_youtube_steps_when_already_stopped(self):
         """run_queue calls this even when a stop broke its own loop
 
-        Everything up to refresh_playlist's return reaches youtube too -
-        auto delete re-extracts each video it ignores - so the check has
-        to be up front, not only on that return.
+        refresh_playlist reaches youtube on the way to its return, so
+        the check has to gate the call itself, not only act on what it
+        reports back.
         """
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
 
-        assert "auto_delete_all" not in ran
         assert "refresh" not in ran
         assert "comments" not in ran
         assert "queue comments" in ran
@@ -408,7 +405,7 @@ class TestPostProcessPlaylists:
         self._run(self._run_handler(ran), ran)
 
         assert "comments" in ran
-        assert "auto_delete_all" in ran and "refresh" in ran
+        assert "refresh" in ran
 
     def test_auto_downscale_runs_after_the_file_is_final(self):
         """embed_metadata rewrites the media file in place

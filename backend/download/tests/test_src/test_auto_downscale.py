@@ -215,7 +215,7 @@ class TestAutoDownscale:
         interact, created = fake_interact()
         dispatched = patch_env(monkeypatch, interact)
         handler, seen = make_handler(
-            {"chan1": {"autodelete_days": 30, "index_playlists": True}},
+            {"chan1": {"index_playlists": True}},
             [a_video("vid1", "chan1", 2160)],
         )
 

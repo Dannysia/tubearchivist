@@ -33,7 +33,6 @@ class DownloadsConfigType(TypedDict):
 
     limit_speed: int | None
     sleep_interval: int | None
-    autodelete_days: int | None
     format: str | None
     format_sort: str | None
     add_metadata: bool
@@ -98,7 +97,6 @@ class AppConfig:
         "downloads": {
             "limit_speed": None,
             "sleep_interval": 10,
-            "autodelete_days": None,
             "format": None,
             "format_sort": None,
             "add_metadata": False,
