@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime
 
+from channel.src.constants import OVERWRITE_KEYS
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
@@ -291,19 +292,9 @@ class YoutubeChannel(YouTubeItem):
 
     def set_overwrites(self, overwrites):
         """set per channel overwrites"""
-        valid_keys = [
-            "download_format",
-            "autodelete_days",
-            "index_playlists",
-            "integrate_sponsorblock",
-            "subscriptions_channel_size",
-            "subscriptions_live_channel_size",
-            "subscriptions_shorts_channel_size",
-        ]
-
         to_write = self.json_data.get("channel_overwrites", {})
         for key, value in overwrites.items():
-            if key not in valid_keys:
+            if key not in OVERWRITE_KEYS:
                 raise ValueError(f"invalid overwrite key: {key}")
 
             if value is None and key in to_write:

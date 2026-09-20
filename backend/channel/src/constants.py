@@ -2,6 +2,22 @@
 
 import enum
 
+# every key channel_overwrites accepts. Both the serializer that
+# validates an incoming update and YoutubeChannel.set_overwrites, which
+# refuses anything it does not recognise, build from this. They used to
+# hold the list separately, so a field added to the serializer alone
+# validated cleanly and then died in set_overwrites with a ValueError -
+# a 500 with nothing in the log, not a 400 saying what was wrong.
+OVERWRITE_KEYS = [
+    "download_format",
+    "autodelete_days",
+    "index_playlists",
+    "integrate_sponsorblock",
+    "subscriptions_channel_size",
+    "subscriptions_live_channel_size",
+    "subscriptions_shorts_channel_size",
+]
+
 
 class ChannelSortEnum(enum.Enum):
     """all channel list sort options
