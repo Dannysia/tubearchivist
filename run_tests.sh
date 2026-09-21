@@ -94,7 +94,14 @@ function run_codespell {
     # .pre-commit-config.yaml. Left to walk the tree itself codespell
     # reports on frontend/dist and node_modules, neither of which is in
     # the repo or checked by CI.
-    git -C "$REPO_DIR" ls-files -z \
+    #
+    # --others --exclude-standard adds files that are not tracked yet,
+    # which plain ls-files omits. Without them a brand new file is
+    # invisible to this gate until the commit that adds it, so the first
+    # run that can flag anything in it is CI - which is how the savings
+    # filter's dropdown constants got through on 2026-09-21. .gitignore
+    # still applies, so dist and node_modules stay out.
+    git -C "$REPO_DIR" ls-files -z --cached --others --exclude-standard \
         | grep -zvE '\.svg$|/migrations/|^frontend/package-lock\.json$' \
         | docker run --rm -i -e PYTHONDONTWRITEBYTECODE=1 \
             -v "$REPO_DIR":/src -w /src "$IMAGE" sh -c "

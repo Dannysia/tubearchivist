@@ -1,0 +1,14 @@
+# codespell settings, read from the repo root by both the pre-commit
+# hook CI runs and the ./run_tests.sh lint gate, so the list lives once
+# rather than being repeated in .pre-commit-config.yaml and the script.
+#
+# ignore-words-list is for words the dictionary is wrong about here, not
+# for real typos. Identifiers are the usual case: codespell splits no
+# camelCase, so a perfectly ordinary name can collide with an entry in
+# its dictionary. Naming the code around that would be the tail wagging
+# the dog - add the word here and leave the identifier alone.
+#
+# Entries are matched lowercased, one comma separated list.
+#   atleast - atLeast(), summing agg bands in the downscale size filter
+[codespell]
+ignore-words-list = atleast
