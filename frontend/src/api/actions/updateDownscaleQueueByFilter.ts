@@ -1,6 +1,7 @@
 import APIClient from '../../functions/APIClient';
 import { DownscaleBulkAction, DownscaleBulkResultType } from './updateDownscaleQueueByIds';
-import { DownscaleSizeChange, DownscaleStatus } from '../loader/loadDownscaleQueue';
+import { DownscaleStatus } from '../loader/loadDownscaleQueue';
+import { DownscaleSizeChange } from '../../configuration/constants/DownscaleSizeChange';
 
 const updateDownscaleQueueByFilter = async (
   action: DownscaleBulkAction,

@@ -3,6 +3,7 @@
 # pylint: disable=abstract-method
 
 from common.serializers import PaginationSerializer
+from downscale.src.constants import SIZE_CHANGE_VALUES
 from rest_framework import serializers
 
 
@@ -71,9 +72,15 @@ class DownscaleListQuerySerializer(serializers.Serializer):
     channel = serializers.CharField(required=False, help_text="channel ID")
     q = serializers.CharField(required=False, help_text="Search Query")
     size_change = serializers.ChoiceField(
-        choices=["smaller", "larger"],
+        choices=SIZE_CHANGE_VALUES,
         required=False,
-        help_text="only jobs where the encode finished smaller/larger",
+        help_text=(
+            "only jobs where the encode finished smaller/larger, or one "
+            "of the smaller_lt_N / smaller_gt_N rungs for jobs that "
+            "saved less than / at least N percent. Only finished jobs "
+            "carry a new_size, so any value here excludes queued, "
+            "running and failed jobs"
+        ),
     )
     encoder = serializers.CharField(
         required=False,
@@ -129,7 +136,7 @@ class DownscaleAggsQuerySerializer(serializers.Serializer):
         required=False,
     )
     field = serializers.ChoiceField(
-        choices=["channel", "encoder"],
+        choices=["channel", "encoder", "saved"],
         required=False,
         help_text="which field to aggregate on, defaults to channel",
     )
@@ -246,3 +253,26 @@ class DownscaleEncoderAggsSerializer(serializers.Serializer):
     doc_count_error_upper_bound = serializers.IntegerField()
     sum_other_doc_count = serializers.IntegerField()
     buckets = DownscaleEncoderAggBucketSerializer(many=True)
+
+
+class DownscaleSavedAggBucketSerializer(serializers.Serializer):
+    """
+    serialize one savings band - a range agg bucket, keyed by the band
+    name ("larger", or the band's lower edge as a string). The numeric
+    from/to edges ES returns alongside are deliberately not serialized:
+    the frontend matches on key, and `from` cannot be declared as a
+    serializer field name anyway
+    """
+
+    key = serializers.CharField()
+    doc_count = serializers.IntegerField()
+
+
+class DownscaleSavedAggsSerializer(serializers.Serializer):
+    """
+    serialize the savings band aggregation. Bands are disjoint; the
+    dropdown's rungs overlap, so the frontend sums these rather than
+    reading one band per rung
+    """
+
+    buckets = DownscaleSavedAggBucketSerializer(many=True)

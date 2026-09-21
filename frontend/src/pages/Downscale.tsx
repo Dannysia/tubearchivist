@@ -6,16 +6,21 @@ import { ConfigType } from './Home';
 import Pagination, { PaginationType } from '../components/Pagination';
 import Button from '../components/Button';
 import DownscaleListItem from '../components/DownscaleListItem';
-import loadDownscaleQueue, {
-  DownscaleSizeChange,
-  DownscaleStatus,
-} from '../api/loader/loadDownscaleQueue';
+import loadDownscaleQueue, { DownscaleStatus } from '../api/loader/loadDownscaleQueue';
 import loadDownscaleAggs, {
   DownscaleAggsType,
   DownscaleEncoderAggsType,
+  DownscaleSavedAggsType,
   loadDownscaleEncoderAggs,
+  loadDownscaleSavedAggs,
 } from '../api/loader/loadDownscaleAggs';
 import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders';
+import {
+  DOWNSCALE_SIZE_CHANGES,
+  DownscaleSizeChange,
+  countsBySizeChange,
+  sizeChangeLabel,
+} from '../configuration/constants/DownscaleSizeChange';
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
 } from '../api/actions/updateDownscaleQueueByIds';
@@ -69,15 +74,19 @@ const Downscale = () => {
     useState<ApiResponseType<DownscaleAggsType>>();
   const [downscaleEncoderAggsResponse, setDownscaleEncoderAggsResponse] =
     useState<ApiResponseType<DownscaleEncoderAggsType>>();
+  const [downscaleSavedAggsResponse, setDownscaleSavedAggsResponse] =
+    useState<ApiResponseType<DownscaleSavedAggsType>>();
   const [progressByTaskId, setProgressByTaskId] = useState<Record<string, number>>({});
 
   const { data: downscaleResponseData } = downscaleResponse ?? {};
   const { data: downscaleAggsResponseData } = downscaleAggsResponse ?? {};
   const { data: downscaleEncoderAggsResponseData } = downscaleEncoderAggsResponse ?? {};
+  const { data: downscaleSavedAggsResponseData } = downscaleSavedAggsResponse ?? {};
   const jobList = downscaleResponseData?.data;
   const pagination = downscaleResponseData?.paginate;
   const channelAggsList = downscaleAggsResponseData?.buckets;
   const encoderAggsList = downscaleEncoderAggsResponseData?.buckets;
+  const sizeChangeCounts = countsBySizeChange(downscaleSavedAggsResponseData);
 
   const channel_filter_name = jobList?.length ? jobList[0].channel_name : '';
 
@@ -136,6 +145,13 @@ const Downscale = () => {
     (async () => {
       const response = await loadDownscaleEncoderAggs(statusFilterFromUrl);
       setDownscaleEncoderAggsResponse(response);
+    })();
+  }, [statusFilterFromUrl, refreshNonce]);
+
+  useEffect(() => {
+    (async () => {
+      const response = await loadDownscaleSavedAggs(statusFilterFromUrl);
+      setDownscaleSavedAggsResponse(response);
     })();
   }, [statusFilterFromUrl, refreshNonce]);
 
@@ -340,8 +356,18 @@ const Downscale = () => {
             }}
           >
             <option value="all">any size change</option>
-            <option value="smaller">got smaller</option>
-            <option value="larger">got larger</option>
+            {DOWNSCALE_SIZE_CHANGES.map(({ value, label }) => {
+              // a count of 0 is worth showing - it says the rung is
+              // empty rather than leaving it looking unvisited
+              const count = sizeChangeCounts[value];
+
+              return (
+                <option key={value} value={value}>
+                  {label}
+                  {count === undefined ? '' : ` (${count})`}
+                </option>
+              );
+            })}
           </select>
           {encoderAggsList && encoderAggsList.length > 0 && (
             <select
@@ -388,7 +414,7 @@ const Downscale = () => {
           {sizeChangeFilterFromUrl && (
             <>
               {(channelFilterFromUrl || encoderFilterFromUrl) && ' - '}
-              Filtered by size change: <i>{sizeChangeFilterFromUrl}</i>
+              Filtered by size change: <i>{sizeChangeLabel(sizeChangeFilterFromUrl)}</i>
             </>
           )}
         </h3>

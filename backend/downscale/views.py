@@ -11,7 +11,9 @@ from downscale.serializers import (
     DownscaleEncoderTestSerializer,
     DownscaleListQuerySerializer,
     DownscaleListSerializer,
+    DownscaleSavedAggsSerializer,
 )
+from downscale.src.constants import saved_percent_agg, size_change_clause
 from downscale.src.downscale import (
     DownscaleReview,
     dispatch_pending_downscales,
@@ -78,23 +80,10 @@ def _build_must_list(validated_query: dict) -> list[dict]:
     size_change = validated_query.get("size_change")
     if size_change:
         # new_size is only ever set once an encode actually finishes
-        # (_finish_success), so requiring > 0 excludes queued/running/
-        # failed jobs rather than treating their unset 0 as "smaller"
-        operator = "<" if size_change == "smaller" else ">"
-        must_list.append(
-            {
-                "script": {
-                    "script": {
-                        "source": (
-                            "doc['new_size'].size() > 0 && "
-                            "doc['new_size'].value > 0 && "
-                            f"doc['new_size'].value {operator} "
-                            "doc['original_size'].value"
-                        )
-                    }
-                }
-            }
-        )
+        # (_finish_success), so the clause requires it > 0 to keep
+        # queued/running/failed jobs out rather than treating their
+        # unset 0 as "smaller" - see size_change_clause()
+        must_list.append(size_change_clause(size_change))
 
     return must_list
 
@@ -193,21 +182,29 @@ class DownscaleApiListView(ApiBaseView):
 
 CHANNEL_AGGS_KEY = "channel_downscale"
 ENCODER_AGGS_KEY = "encoder_downscale"
+SAVED_AGGS_KEY = "saved_downscale"
 
 
 def _build_aggs_query(field_filter: str) -> tuple[str, dict]:
     """
-    build the aggs block for the queue's channel/encoder filter dropdown,
-    returning (agg_key, agg_body) - the caller needs agg_key to pull the
-    matching bucket set back out of the ES response. encoder is a plain
-    terms agg (a single string key); channel is multi_terms since the
-    frontend needs both a display name and a separately filterable id.
+    build the aggs block for the queue's channel/encoder/saved filter
+    dropdowns, returning (agg_key, agg_body) - the caller needs agg_key
+    to pull the matching bucket set back out of the ES response. encoder
+    is a plain terms agg (a single string key); channel is multi_terms
+    since the frontend needs both a display name and a separately
+    filterable id; saved is a scripted range agg over disjoint savings
+    bands, which the frontend sums into the overlapping rungs its
+    dropdown offers.
+
     encoder is only ever set once a job finishes (see _finish_success()/
     worker.finish()), so this naturally excludes queued/running jobs
     rather than surfacing an empty-string bucket for them.
     """
     if field_filter == "encoder":
         return ENCODER_AGGS_KEY, {"terms": {"field": "encoder", "size": 30}}
+
+    if field_filter == "saved":
+        return SAVED_AGGS_KEY, saved_percent_agg()
 
     return CHANNEL_AGGS_KEY, {
         "multi_terms": {
@@ -234,7 +231,7 @@ class DownscaleAggsApiView(ApiBaseView):
         responses={200: OpenApiResponse(DownscaleAggsSerializer())},
     )
     def get(self, request):
-        """get aggs, field=channel (default) or field=encoder"""
+        """get aggs, field=channel (default), encoder or saved"""
         query_serializer = DownscaleAggsQuerySerializer(
             data=request.query_params
         )
@@ -252,6 +249,8 @@ class DownscaleAggsApiView(ApiBaseView):
 
         if field_filter == "encoder":
             serializer = DownscaleEncoderAggsSerializer(self.response[agg_key])
+        elif field_filter == "saved":
+            serializer = DownscaleSavedAggsSerializer(self.response[agg_key])
         else:
             serializer = DownscaleAggsSerializer(self.response[agg_key])
 

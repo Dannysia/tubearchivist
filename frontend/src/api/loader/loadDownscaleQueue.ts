@@ -1,8 +1,8 @@
 import APIClient from '../../functions/APIClient';
+import { DownscaleSizeChange } from '../../configuration/constants/DownscaleSizeChange';
 import { DownscaleResponseType } from '../../pages/Downscale';
 
 export type DownscaleStatus = 'queued' | 'running' | 'pending_review' | 'failed' | 'cancelled';
-export type DownscaleSizeChange = 'smaller' | 'larger';
 
 const loadDownscaleQueue = async (
   page: number,

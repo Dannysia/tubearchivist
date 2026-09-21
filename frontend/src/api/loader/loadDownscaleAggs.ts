@@ -26,6 +26,19 @@ export type DownscaleEncoderAggsType = {
   buckets: DownscaleEncoderAggsBucket[];
 };
 
+// one disjoint savings band per bucket, keyed by its lower edge as a
+// string, plus 'larger' for jobs whose encode came out bigger. The
+// dropdown's rungs overlap, so countsBySizeChange sums these rather
+// than reading one bucket per rung
+export type DownscaleSavedAggsBucket = {
+  key: string;
+  doc_count: number;
+};
+
+export type DownscaleSavedAggsType = {
+  buckets: DownscaleSavedAggsBucket[];
+};
+
 const loadDownscaleAggs = async (status: DownscaleStatus | null) => {
   const searchParams = new URLSearchParams();
   if (status) searchParams.append('status', status);
@@ -41,6 +54,14 @@ export const loadDownscaleEncoderAggs = async (status: DownscaleStatus | null) =
   if (status) searchParams.append('status', status);
 
   return APIClient<DownscaleEncoderAggsType>(`/api/downscale/aggs/?${searchParams.toString()}`);
+};
+
+export const loadDownscaleSavedAggs = async (status: DownscaleStatus | null) => {
+  const searchParams = new URLSearchParams();
+  searchParams.append('field', 'saved');
+  if (status) searchParams.append('status', status);
+
+  return APIClient<DownscaleSavedAggsType>(`/api/downscale/aggs/?${searchParams.toString()}`);
 };
 
 export default loadDownscaleAggs;
