@@ -5,6 +5,7 @@ import formatNumbers from '../functions/formatNumbers';
 import { DownscaleSavingsType, DownscaleStatsType } from '../api/loader/loadStatsDownscale';
 import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders';
 import buildTransitionCard from '../functions/buildTransitionCard';
+import buildSavingsBandCard from '../functions/buildSavingsBandCard';
 
 // the backend folds every encoder past its display limit into this one
 // entry, so it never reads as a real encoder string
@@ -53,6 +54,18 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
           {
             title: 'Downscale Counts',
             data: buildTransitionCard(downscaleStats.by_transition),
+          },
+        ]
+      : []),
+    // guarded on the downscaled count, not on having any populated
+    // band like the pairs above are: an archive whose downscaled videos
+    // all failed to measure has zero in every band and still has
+    // something to say, in the Unknown row
+    ...(downscaleStats.doc_count > 0
+      ? [
+          {
+            title: 'Savings Distribution',
+            data: buildSavingsBandCard(downscaleStats.by_saved),
           },
         ]
       : []),

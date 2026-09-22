@@ -73,33 +73,47 @@ SIZE_CHANGE_VALUES = [
     "smaller_gt_50",
 ]
 
-# Boundaries of the disjoint savings buckets the aggs endpoint counts.
-# The dropdown's rungs overlap (>5% contains >10%), so they cannot be
-# aggregated directly - the frontend sums these instead. Kept here
-# beside the rungs so a new rung and its bucket edge stay together.
+# Boundaries of the disjoint savings bands. The savings panels report
+# them as they are; the size filter dropdown cannot, because its rungs
+# overlap (>5% contains >10%) and a range agg has no way to express
+# that - it sums these instead. Kept here beside the rungs so a new
+# rung and its band edge stay together.
 SAVED_BUCKET_EDGES = [0, 5, 10, 20, 30, 50]
 
 
-def _finished_guard() -> str:
-    """
-    painless condition for "this job produced a result that changed the
-    size", which every rung and every band is gated on.
+# Where the two sizes live on each document the savings maths runs over.
+# A queue doc carries them at the top level; a video doc carries the
+# numbers an accepted job wrote under downscale.
+QUEUE_SIZE_FIELDS = ("original_size", "new_size")
+VIDEO_SIZE_FIELDS = ("downscale.original_size", "downscale.new_size")
 
-    Both sizes have to be present and positive: new_size is 0 until
-    _finish_success() writes it, so without this a queued job reads as a
-    100% saving and lands in the best rung of the dropdown; and
-    original_size comes off the video doc and can be 0 where media_size
-    was never indexed, which would throw on the division the bands do.
 
-    An encode that came out byte for byte the same size is excluded too.
-    It is neither smaller nor larger, so it matches no rung, and without
-    this it would still land in the 0-5% band and be counted by a rung
-    that cannot return it.
+def _measurable_guard(fields: tuple[str, str] = QUEUE_SIZE_FIELDS) -> str:
     """
+    painless condition for "there is a real size change here to
+    measure", which every rung and every band is gated on. Both sizes
+    present, both positive, and the two different.
+
+    Deliberately not named for jobs: this gates queue documents and
+    video documents alike, and the reason a document fails it differs
+    between them.
+
+    On a queue doc, new_size is 0 until _finish_success() writes it, so
+    without this a queued job reads as a 100% saving and lands in the
+    best rung of the dropdown. On a video doc, original_size comes from
+    the media_size indexed at download and can be 0 where that never
+    happened, which would throw on the division the bands do.
+
+    Either kind can also come out byte for byte the same size, which is
+    neither smaller nor larger. That matches no rung, and without this
+    it would still land in the 0-5% band and be counted by a rung that
+    cannot return it.
+    """
+    original, new = fields
     return (
-        "doc['new_size'].size() > 0 && doc['original_size'].size() > 0 "
-        "&& doc['new_size'].value > 0 && doc['original_size'].value > 0 "
-        "&& doc['new_size'].value != doc['original_size'].value"
+        f"doc['{new}'].size() > 0 && doc['{original}'].size() > 0 "
+        f"&& doc['{new}'].value > 0 && doc['{original}'].value > 0 "
+        f"&& doc['{new}'].value != doc['{original}'].value"
     )
 
 
@@ -111,7 +125,7 @@ def size_change_clause(value: str) -> dict:
     than going through the percentage, so a job that saved a fraction of
     a percent still counts as smaller.
     """
-    guard = _finished_guard()
+    guard = _measurable_guard()
 
     if value in ("smaller", "larger"):
         operator = "<" if value == "smaller" else ">"
@@ -155,28 +169,40 @@ def size_change_clause(value: str) -> dict:
     }
 
 
-# A range agg has to put every document somewhere or nowhere, and an
-# unfinished job belongs nowhere - so the script hands those a sentinel
-# far below any real percentage and no bucket reaches down to it. The
-# "larger" bucket is therefore bounded rather than open ended: left
-# open, it would swallow the sentinel and report every queued job as
-# one that grew. LARGEST_GROWTH is the floor for real growth - a job
-# would have to balloon to ten thousand times its original size to fall
-# past it, which no encode does.
-_UNFINISHED_SENTINEL = -10_000_000
+# A range agg has to put every document somewhere or nowhere, and one
+# that fails _measurable_guard belongs nowhere - so the script hands
+# those a sentinel far below any real percentage and no bucket reaches
+# down to it. The "larger" bucket is therefore bounded rather than open
+# ended: left open it would swallow the sentinel and report every
+# unmeasurable document as one that grew, which on the queue means the
+# entire queued backlog. LARGEST_GROWTH is the floor for real growth -
+# an encode would have to balloon to ten thousand times its original
+# size to fall past it, which none does.
+_UNMEASURABLE_SENTINEL = -10_000_000
 LARGEST_GROWTH = -1_000_000
 
 
-def saved_percent_agg() -> dict:
+def saved_percent_agg(
+    fields: tuple[str, str] = QUEUE_SIZE_FIELDS,
+) -> dict:
     """
-    es agg counting finished jobs per savings band, so the size filter
-    dropdown can show how many jobs each rung would match.
+    es agg counting documents per savings band.
+
+    Three consumers, the same bands: the queue's size filter dropdown
+    sums them into its rungs to show how many jobs each would match, and
+    the savings panels on the dashboard and the channel about page
+    report them as they are. Sharing the edges is what keeps the
+    categories the stats report in the same ones the filter can actually
+    select, the same reason DOWNSCALE_LADDER is shared between the
+    request choices and the resolution breakdown.
 
     Buckets are disjoint because a range agg cannot express the
-    dropdown's overlapping rungs (>5% contains >10%); the frontend sums
-    them back up. Jobs that never finished are counted nowhere, matching
-    what the filter itself does with them.
+    dropdown's overlapping rungs (>5% contains >10%). Anything failing
+    the guard is counted nowhere, matching what the filter does with it;
+    callers that need their rows to reconcile with a total read the
+    shortfall off parse_saved_bands.
     """
+    original, new = fields
     ranges: list[dict] = [{"key": "larger", "from": LARGEST_GROWTH, "to": 0}]
     for position, edge in enumerate(SAVED_BUCKET_EDGES):
         entry: dict = {"key": str(edge), "from": edge}
@@ -188,15 +214,63 @@ def saved_percent_agg() -> dict:
         "range": {
             "script": {
                 "source": (
-                    f"if (!({_finished_guard()})) "
-                    f"return {_UNFINISHED_SENTINEL};"
-                    "return (double)(doc['original_size'].value "
-                    "- doc['new_size'].value) "
-                    "/ doc['original_size'].value * 100;"
+                    f"if (!({_measurable_guard(fields)})) "
+                    f"return {_UNMEASURABLE_SENTINEL};"
+                    f"return (double)(doc['{original}'].value "
+                    f"- doc['{new}'].value) "
+                    f"/ doc['{original}'].value * 100;"
                 )
             },
             "ranges": ranges,
         }
+    }
+
+
+def parse_saved_bands(agg: dict, total: int) -> dict:
+    """
+    turn a saved_percent_agg response into the savings panel payload -
+    the same one backs the dashboard and the channel about page: the
+    bands biggest first, the count that grew instead, and whatever the
+    bands could not account for.
+
+    Bands come back ascending and are reversed here so the panel leads
+    with the biggest saving, the way the transition panel leads with the
+    most common pair.
+
+    unknown is the shortfall against the caller's own total rather than
+    a bucket ES returns. A downscaled video whose media_size was
+    never indexed has an original_size of 0 and fails the guard, as does
+    one whose encode came out byte identical - counting those as a row
+    keeps the panel adding up to the downscaled total instead of quietly
+    losing them, the same contract the transition panel's other_count
+    holds to.
+    """
+    counts = {
+        bucket["key"]: bucket["doc_count"] for bucket in agg.get("buckets", [])
+    }
+    bands = []
+    for position, edge in enumerate(SAVED_BUCKET_EDGES):
+        upper = (
+            SAVED_BUCKET_EDGES[position + 1]
+            if position + 1 < len(SAVED_BUCKET_EDGES)
+            else None
+        )
+        bands.append(
+            {
+                "from": edge,
+                "to": upper,
+                "doc_count": counts.get(str(edge), 0),
+            }
+        )
+
+    bands.reverse()
+    grew = counts.get("larger", 0)
+    accounted = sum(band["doc_count"] for band in bands) + grew
+
+    return {
+        "bands": bands,
+        "grew": grew,
+        "unknown": max(total - accounted, 0),
     }
 
 

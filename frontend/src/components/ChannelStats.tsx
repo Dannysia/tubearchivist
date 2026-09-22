@@ -6,6 +6,7 @@ import formatDate from '../functions/formatDates';
 import { ChannelAggBucketType, ChannelAggsType } from '../api/loader/loadChannelAggs';
 import buildResolutionPanels from '../functions/buildResolutionPanels';
 import buildTransitionCard from '../functions/buildTransitionCard';
+import buildSavingsBandCard from '../functions/buildSavingsBandCard';
 
 const VIDEO_TYPE_TITLES: [keyof ChannelAggsType['by_type'], string][] = [
   ['videos', 'Regular Videos'],
@@ -84,6 +85,10 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
               ['Downscaled Size']: humanFileSize(downscale.new_size, useSIUnits),
               Saved: humanFileSize(downscale.saved, useSIUnits),
             },
+          },
+          {
+            title: 'Savings Distribution',
+            data: buildSavingsBandCard(downscale.by_saved),
           },
           {
             title: 'Downscale Counts',

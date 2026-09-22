@@ -5,8 +5,11 @@ from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from django.conf import settings
 from downscale.src.constants import (
+    VIDEO_SIZE_FIELDS,
     downscaled_filter,
+    parse_saved_bands,
     parse_transitions,
+    saved_percent_agg,
     transition_agg,
 )
 from video.src.resolution import parse_resolution, resolution_agg
@@ -418,6 +421,7 @@ class Downscale(AggBase):
                 "aggs": _size_aggs,
             },
             "by_transition": transition_agg(),
+            "by_saved": saved_percent_agg(VIDEO_SIZE_FIELDS),
         },
     }
 
@@ -441,6 +445,9 @@ class Downscale(AggBase):
         response["by_encoder"] = by_encoder
         response["by_transition"] = parse_transitions(
             aggregations["by_transition"]
+        )
+        response["by_saved"] = parse_saved_bands(
+            aggregations["by_saved"], response["doc_count"]
         )
 
         return response

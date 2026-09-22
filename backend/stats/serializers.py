@@ -2,7 +2,10 @@
 
 # pylint: disable=abstract-method
 
-from downscale.serializers import DownscaleTransitionSerializer
+from downscale.serializers import (
+    DownscaleSavedBandsSerializer,
+    DownscaleTransitionSerializer,
+)
 from rest_framework import serializers
 
 
@@ -70,6 +73,7 @@ class DownscaleStatsSerializer(serializers.Serializer):
     saved_percent = serializers.FloatField()
     by_encoder = DownscaleStatsItemSerializer(many=True)
     by_transition = DownscaleTransitionSerializer()
+    by_saved = DownscaleSavedBandsSerializer()
 
 
 class DownloadStatsSerializer(serializers.Serializer):

@@ -1,5 +1,5 @@
 import APIClient from '../../functions/APIClient';
-import { DownscaleTransitionsType } from './loadStatsDownscale';
+import { DownscaleSavedBandsType, DownscaleTransitionsType } from './loadStatsDownscale';
 import { ResolutionStatsType } from './loadStatsResolution';
 
 export type ChannelAggBucketType = {
@@ -42,6 +42,7 @@ export type ChannelAggsType = {
     new_size: number;
     saved: number;
     by_transition: DownscaleTransitionsType;
+    by_saved: DownscaleSavedBandsType;
   };
   date_range: {
     published_first: string | null;

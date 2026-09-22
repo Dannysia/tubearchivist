@@ -3,9 +3,12 @@
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from downscale.src.constants import (
+    VIDEO_SIZE_FIELDS,
     downscaled_filter,
     empty_transitions,
+    parse_saved_bands,
     parse_transitions,
+    saved_percent_agg,
     transition_agg,
 )
 from video.src.constants import VideoTypeEnum
@@ -68,6 +71,7 @@ class ChannelAggs:
                         },
                         "new_size": {"sum": {"field": "downscale.new_size"}},
                         "by_transition": transition_agg(),
+                        "by_saved": saved_percent_agg(VIDEO_SIZE_FIELDS),
                     },
                 },
                 # full timestamps, not yyyy-MM-dd: the frontend renders these
@@ -123,6 +127,7 @@ class ChannelAggs:
             "new_size": new_size,
             "saved": original_size - new_size,
             "by_transition": parse_transitions(agg["by_transition"]),
+            "by_saved": parse_saved_bands(agg["by_saved"], agg["doc_count"]),
         }
 
     @staticmethod
@@ -134,6 +139,7 @@ class ChannelAggs:
             "new_size": 0,
             "saved": 0,
             "by_transition": empty_transitions(),
+            "by_saved": parse_saved_bands({}, 0),
         }
 
     @staticmethod

@@ -268,11 +268,56 @@ class DownscaleSavedAggBucketSerializer(serializers.Serializer):
     doc_count = serializers.IntegerField()
 
 
+class DownscaleSavedBandSerializer(serializers.Serializer):
+    """
+    serialize one savings band, as from/to percentages and a count. `to`
+    is null on the top band, which has no ceiling - the panels decide
+    how to word that, this only says there is none.
+
+    No declared fields, unusually: `from` is a python keyword, so it
+    cannot be written as a serializer attribute at all. Shaping the
+    output by hand is the way to keep the key named `from` in the API
+    rather than renaming it to something the panels then have to
+    translate back.
+    """
+
+    def to_representation(self, instance):
+        return {
+            "from": instance["from"],
+            "to": instance["to"],
+            "doc_count": instance["doc_count"],
+        }
+
+
+class DownscaleSavedBandsSerializer(serializers.Serializer):
+    """
+    serialize the savings distribution panel, as the dashboard and the
+    channel about page show it.
+
+    Not to be confused with DownscaleSavedAggsSerializer below, which
+    serves the same bands raw to the queue's size filter dropdown - that
+    one sums them into its overlapping rungs, this one is already the
+    rows to render.
+    """
+
+    bands = DownscaleSavedBandSerializer(many=True)
+    # downscaled videos whose encode came out larger
+    grew = serializers.IntegerField()
+    # downscaled videos no band could place, e.g. an original_size of 0
+    # where media_size was never indexed. Named the way the resolution
+    # breakdown names its own no-data bucket, and reported rather than
+    # dropped so the rows reconcile with the downscaled total
+    unknown = serializers.IntegerField()
+
+
 class DownscaleSavedAggsSerializer(serializers.Serializer):
     """
-    serialize the savings band aggregation. Bands are disjoint; the
-    dropdown's rungs overlap, so the frontend sums these rather than
-    reading one band per rung
+    serialize the raw savings band aggregation for the queue's size
+    filter dropdown. Bands are disjoint; the dropdown's rungs overlap,
+    so the frontend sums these rather than reading one band per rung.
+
+    DownscaleSavedBandsSerializer above is the parsed, ready-to-render
+    form of the same bands, used by the savings panels.
     """
 
     buckets = DownscaleSavedAggBucketSerializer(many=True)

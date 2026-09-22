@@ -20,9 +20,25 @@ export type DownscaleTransitionsType = {
   other_count: number;
 };
 
+export type DownscaleSavedBandType = {
+  from: number;
+  // null on the open topped band, which has no ceiling to render
+  to: number | null;
+  doc_count: number;
+};
+
+export type DownscaleSavedBandsType = {
+  bands: DownscaleSavedBandType[];
+  // downscaled videos whose encode came out larger
+  grew: number;
+  // downscaled videos no band could place, e.g. a missing original size
+  unknown: number;
+};
+
 export type DownscaleStatsType = DownscaleSavingsType & {
   by_encoder: (DownscaleSavingsType & { encoder: string })[];
   by_transition: DownscaleTransitionsType;
+  by_saved: DownscaleSavedBandsType;
 };
 
 const loadStatsDownscale = async () => {

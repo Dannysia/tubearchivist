@@ -10,6 +10,7 @@ from common.serializers import (
 )
 from downscale.serializers import (
     DownscaleBulkResultItemSerializer,
+    DownscaleSavedBandsSerializer,
     DownscaleTransitionSerializer,
 )
 from downscale.src.constants import DOWNSCALE_LADDER
@@ -166,6 +167,7 @@ class ChannelAggDownscaleSerializer(serializers.Serializer):
     new_size = serializers.IntegerField()
     saved = serializers.IntegerField()
     by_transition = DownscaleTransitionSerializer()
+    by_saved = DownscaleSavedBandsSerializer()
 
 
 class ChannelAggDateRangeSerializer(serializers.Serializer):
