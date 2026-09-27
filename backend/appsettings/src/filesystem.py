@@ -131,13 +131,15 @@ class Scanner:
             self._cleanup(youtube_id)
             Comments(youtube_id, task=self.task).build_json(upload=True)
             YoutubeVideo(youtube_id).embed_metadata()
-        except ValueError as err:
+        except ValueError:
             # fallback from index from embed
             if self._index_from_embed(file_path, youtube_id):
                 return False
 
             if not self.ignore_error:
-                raise ValueError from err
+                # re-raise: a fresh bare ValueError renders as
+                # "Task failed: " in the ui, saying nothing at all
+                raise
 
             self._notify_error(youtube_id)
 
