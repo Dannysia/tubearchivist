@@ -120,6 +120,7 @@ class ImportFolderScanner:
         self.to_import = False
         self.ignore_error = ignore_error
         self.prefer_local = prefer_local
+        self.failed: list[str] = []
 
     def scan(self):
         """scan and match media files"""
@@ -129,6 +130,10 @@ class ImportFolderScanner:
         all_files = self.get_all_files()
         self.match_files(all_files)
         self.process_videos()
+        if self.failed:
+            # every file got its turn before this, so the report covers
+            # the whole run rather than whichever video failed first
+            raise ValueError("; ".join(self.failed))
 
         return self.to_import
 
@@ -204,8 +209,23 @@ class ImportFolderScanner:
         return False, False
 
     def process_videos(self):
-        """loop through all videos"""
+        """loop through all videos
+
+        A video that cannot be imported is recorded and the run carries
+        on. A bulk import is exactly where one bad file name or one
+        video YT has dropped turns up, it is unattended, and aborting
+        the loop used to leave every queued video after it unprocessed
+        with nothing said about why.
+
+        The three caught here are what one unusable file raises: a
+        ValueError for metadata that cannot be built, CalledProcessError
+        from ffmpeg and ffprobe on a truncated or corrupt media file,
+        and OSError for the disk itself, which PIL also raises on an
+        unreadable thumbnail. Anything else is not about this one file
+        and still stops the run.
+        """
         config = AppConfig().config
+        self.failed = []
         for idx, current_video in enumerate(self.to_import):
             if not current_video["media"]:
                 message = (
@@ -215,7 +235,8 @@ class ImportFolderScanner:
                     "belongs to, not just for the same video id"
                 )
                 print(message)
-                raise ValueError(message)
+                self.failed.append(message)
+                continue
 
             if self.task and self.task.is_stopped():
                 print("manual import: stopped by user")
@@ -237,19 +258,39 @@ class ImportFolderScanner:
             if self.task:
                 self._notify(idx, current_video)
 
-            self._detect_youtube_id(current_video)
-            self._dump_thumb(current_video)
-            self._convert_thumb(current_video)
-            self._get_subtitles(current_video)
-            self._convert_video(current_video)
+            try:
+                self._process_video(current_video, config)
+            except (
+                ValueError,
+                subprocess.CalledProcessError,
+                OSError,
+            ) as err:
+                file_name = os.path.basename(current_video["media"])
+                # a CalledProcessError stringifies as the command line
+                # and its exit code, naming no file, so prefix one
+                message = (
+                    str(err)
+                    if str(err).startswith(file_name)
+                    else f"{file_name}: {err}"
+                )
+                print(f"manual import failed: {message}")
+                self.failed.append(message)
 
-            print(f"manual import: {current_video}")
-            ManualImport(
-                current_video,
-                config,
-                ignore_error=self.ignore_error,
-                prefer_local=self.prefer_local,
-            ).run()
+    def _process_video(self, current_video, config):
+        """identify and import a single video"""
+        self._detect_youtube_id(current_video)
+        self._dump_thumb(current_video)
+        self._convert_thumb(current_video)
+        self._get_subtitles(current_video)
+        self._convert_video(current_video)
+
+        print(f"manual import: {current_video}")
+        ManualImport(
+            current_video,
+            config,
+            ignore_error=self.ignore_error,
+            prefer_local=self.prefer_local,
+        ).run()
 
     def _notify(self, idx, current_video, waiting: str | None = None):
         """send notification back to task"""
@@ -280,7 +321,11 @@ class ImportFolderScanner:
             current_video["video_id"] = youtube_id
             return
 
-        raise ValueError("failed to find video id")
+        file_name = os.path.basename(current_video["media"])
+        raise ValueError(
+            f"{file_name}: failed to find a video id, in the file name or "
+            "in an info.json beside it"
+        )
 
     @staticmethod
     def _extract_id_from_filename(file_name):
@@ -524,8 +569,19 @@ class ManualImport:
                 use_user_conf=False,
                 config=self.config,
             ).run_index()
-            if not json_data and not self.ignore_error:
-                raise ValueError from err
+            if not json_data:
+                if not self.ignore_error:
+                    # re-raise rather than build a fresh ValueError: a
+                    # bare one renders as "Task failed: " in the ui,
+                    # which is the whole reason an import failure used
+                    # to say nothing
+                    raise
+
+                # ignore_error carries on, but this video is still not
+                # imported and its file stays in the import folder.
+                # Unsaid, it disappears into a run that then reports
+                # success
+                print(f"manual import: skipping, {err}")
 
         if not json_data:
             return
@@ -540,11 +596,21 @@ class ManualImport:
         """get metadata from yt or json"""
         video_id = self.current_video["video_id"]
         video = YoutubeVideo(video_id)
-        video.build_json(
-            youtube_meta_overwrite=self._get_info_json(),
-            media_path=self.current_video["media"],
-            from_file=True,
-        )
+        info_json = self._get_info_json()
+        try:
+            video.build_json(
+                youtube_meta_overwrite=info_json,
+                media_path=self.current_video["media"],
+                from_file=True,
+            )
+        except ValueError as err:
+            # not printed here: the fallbacks below may still rescue
+            # this video, and "check the id for a typo" in the log of an
+            # import that then succeeded is worse than no line at all.
+            # run() and process_videos print it once it is terminal
+            message = self._why_no_metadata(video, info_json, err)
+            raise ValueError(message) from err
+
         if not video.json_data:
             message = (
                 f"{video_id}: manual import failed, and no metadata found."
@@ -568,6 +634,40 @@ class ManualImport:
             ThumbManager(video_id).download_video_thumb(url)
 
         return video.json_data
+
+    def _why_no_metadata(self, video, info_json, err) -> str:
+        """explain a failed metadata build in terms of what to do next
+
+        YT answers for any well formed eleven character id, including
+        one that never existed: the same stub it returns for a removed
+        video, with the id echoed back and everything identifying it
+        null. So a typo in the file name and a video YT has dropped are
+        indistinguishable from the answer alone, and both land here.
+        Name both, because nothing else in the run points at the typo
+        and it is the likelier of the two.
+        """
+        file_name = os.path.basename(self.current_video["media"])
+        if video.youtube_answered:
+            # YT had the video, so this is some other gap in the
+            # metadata and err already says which
+            return f"{file_name}: {err}"
+
+        gone = (
+            f"{file_name}: youtube returned no metadata for "
+            f"{video.youtube_id} - either that id is not a video, or the "
+            "video is no longer on youtube"
+        )
+        if info_json:
+            return (
+                f"{gone}, and the info.json beside the file did not fill "
+                f"the gap: {err}"
+            )
+
+        return (
+            f"{gone}. Check the id in the file name for a typo, or use "
+            '"Generate metadata" in settings to write an info.json for it '
+            "by hand"
+        )
 
     def _get_info_json(self):
         """read info_json from file"""
