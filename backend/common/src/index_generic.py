@@ -5,10 +5,15 @@ functionality:
 
 import math
 
+import requests
 from appsettings.src.config import AppConfig
 from common.src.es_connect import ElasticWrap
 from download.src.yt_dlp_base import YtWrap
 from user.src.user_config import UserConfig
+
+
+class IndexWriteError(Exception):
+    pass
 
 
 class YouTubeItem:
@@ -62,9 +67,25 @@ class YouTubeItem:
         source = resp.get("_source")
         self.json_data = source
 
-    def upload_to_es(self):
+    def upload_to_es(self, checked: bool = False):
         """add json_data to elastic"""
-        _, _ = ElasticWrap(self.es_path).put(self.json_data, refresh=True)
+        try:
+            _, status_code = ElasticWrap(self.es_path).put(
+                self.json_data, refresh=True
+            )
+        except (ValueError, requests.RequestException) as err:
+            if not checked:
+                raise
+
+            raise IndexWriteError(
+                f"{self.youtube_id}: index write failed: {err}"
+            ) from err
+
+        if checked and status_code not in (200, 201):
+            raise IndexWriteError(
+                f"{self.youtube_id}: index write failed, es answered "
+                f"{status_code}"
+            )
 
     def deactivate(self):
         """deactivate document in es"""

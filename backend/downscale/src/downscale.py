@@ -8,6 +8,7 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
+from common.src.index_generic import IndexWriteError
 from common.src.queue_interact import QueueWriteError
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
@@ -588,7 +589,13 @@ class DownscaleReview:
             )
             return "original file missing"
 
-        new_path = self._replace_original(tmp_path, original_path, video)
+        new_path = self._target_path(tmp_path, original_path)
+        if new_path != original_path:
+            media_url = video.json_data["media_url"]
+            new_ext = os.path.splitext(new_path)[1]
+            video.json_data["media_url"] = (
+                os.path.splitext(media_url)[0] + new_ext
+            )
 
         existing = video.json_data.get("downscale") or {}
         video.json_data["downscale"] = {
@@ -606,36 +613,48 @@ class DownscaleReview:
             "ffmpeg_args": job.get("ffmpeg_args"),
         }
 
-        video.add_streams(media_path=new_path)
-        video.upload_to_es()
+        video.add_streams(media_path=tmp_path)
+        if not video.json_data.get("streams"):
+            self.interact.update(
+                status="failed",
+                message="the encode could not be probed, original kept",
+            )
+            return "the encode could not be probed"
+
+        self._replace_original(tmp_path, original_path, new_path)
+
+        try:
+            video.upload_to_es(checked=True)
+        except IndexWriteError as err:
+            self.interact.update(
+                status="failed",
+                message=f"file replaced, index not updated: {err}",
+            )
+            return "file replaced but the index was not updated"
 
         self.interact.delete_item()
         return None
 
-    def _replace_original(
-        self, tmp_path: str, original_path: str, video: YoutubeVideo
-    ) -> str:
+    @staticmethod
+    def _target_path(tmp_path: str, original_path: str) -> str:
         """
         matches tmp_path's container rather than assuming
         original_path's: a remote worker may encode to .mkv for HDR10
-        static metadata that MP4 muxing does not reliably carry. Returns
-        the path the file ended up at, and rewrites
-        video.json_data["media_url"] when the extension changed.
+        static metadata that MP4 muxing does not reliably carry
         """
         tmp_ext = os.path.splitext(tmp_path)[1]
         original_ext = os.path.splitext(original_path)[1]
         if tmp_ext == original_ext:
-            self._move(tmp_path, original_path)
             return original_path
 
-        new_path = os.path.splitext(original_path)[0] + tmp_ext
-        self._move(tmp_path, new_path)
-        if os.path.exists(original_path):
-            os.remove(original_path)
+        return os.path.splitext(original_path)[0] + tmp_ext
 
-        media_url = video.json_data["media_url"]
-        video.json_data["media_url"] = os.path.splitext(media_url)[0] + tmp_ext
-        return new_path
+    def _replace_original(
+        self, tmp_path: str, original_path: str, new_path: str
+    ) -> None:
+        self._move(tmp_path, new_path)
+        if new_path != original_path and os.path.exists(original_path):
+            os.remove(original_path)
 
     def reject(self) -> str | None:
         """the original file stays untouched"""

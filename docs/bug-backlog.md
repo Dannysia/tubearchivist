@@ -29,6 +29,14 @@ already has the right form - it checks both the status code and
 pattern would close most of this tier.
 
 ### T1.1 `downscale/src/downscale.py:641` - accept() mishandles a failed ES write
+
+**Fixed.** `accept()` probes the encode before moving it and refuses one
+ffprobe returns no streams for, since `MediaStreamExtractor` runs ffprobe
+with `check=False` and returns `[]` rather than raising
+(`video/src/media_streams.py:29`). `upload_to_es(checked=True)` turns
+`put`'s `ValueError`, a `requests` exception from an unreachable ES, or
+an unexpected sub-400 status into `IndexWriteError`, and on that the job
+is kept and marked failed with the reason instead of escaping as a 500.
 Verified. `_replace_original` moves the encode over the original before
 `video.upload_to_es()`, and `upload_to_es` is `_, _ = ElasticWrap(...).put(...)`
 (`common/src/index_generic.py:68`). `put` raises `ValueError` for any
@@ -287,6 +295,13 @@ a folder nothing has consumed. `Channels.tsx:171`, `Download.tsx:181` and
 - `loadExtractionQueue.ts:18` double-encodes `q` and nothing sets it.
 
 ## Tier 5 - other in-scope bugs
+
+- `common/src/index_generic.py` - `upload_to_es()` takes a `checked` flag
+  that raises `IndexWriteError`, but it defaults to off and only
+  `DownscaleReview.accept()` passes it. The other 21 callers still discard
+  the status. Each needs the same audit the queue writes got in T1.3
+  before the default can flip: a raise inside a cleanup path or a
+  per-item loop is its own regression.
 
 - `appsettings/src/backup.py:28` - the new `"history": 10000` entry feeds an
   unpruned index through `IndexPaginate`, which accumulates every hit with
