@@ -42,6 +42,9 @@ to compensate from.
 Fix: check the write before replacing, or make the replace recoverable.
 
 ### T1.2 `downscale/src/queue_interact.py:100` - startup sweep deletes finished encodes
+
+**Fixed.** Paginated, and narrowed to the statuses whose files
+are still needed.
 Verified. `get_all_tmp_filenames()` is an unsorted `match_all` with
 `size: 1000` and no pagination. `ta_startup.py:172` hands the result to
 `clear_dl_cache(keep=...)` (`common/src/helper.py:231`), which deletes every

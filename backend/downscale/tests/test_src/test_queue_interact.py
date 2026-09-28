@@ -138,12 +138,12 @@ def test_requeue_interrupted_uses_a_single_update_by_query():
 
 
 def test_get_all_tmp_filenames_returns_basenames():
-    hits = [
-        {"_source": {"tmp_file_path": "/cache/downscale/a_720p.mp4"}},
-        {"_source": {"tmp_file_path": "/cache/downscale/b_480p.mp4"}},
+    sources = [
+        {"tmp_file_path": "/cache/downscale/a_720p.mp4"},
+        {"tmp_file_path": "/cache/downscale/b_480p.mp4"},
     ]
-    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
-        mock_wrap.return_value.get.return_value = (_es_response(hits), 200)
+    with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
+        mock_paginate.return_value.get_results.return_value = sources
 
         result = DownscaleInteract.get_all_tmp_filenames()
 
@@ -152,13 +152,36 @@ def test_get_all_tmp_filenames_returns_basenames():
 
 def test_get_all_tmp_filenames_skips_docs_without_tmp_path():
     """a doc that never reserved a slot has no tmp_file_path"""
-    hits = [{"_source": {}}]
-    with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
-        mock_wrap.return_value.get.return_value = (_es_response(hits), 200)
+    with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
+        mock_paginate.return_value.get_results.return_value = [{}]
 
         result = DownscaleInteract.get_all_tmp_filenames()
 
     assert result == set()
+
+
+def test_get_all_tmp_filenames_is_paginated():
+    with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
+        mock_paginate.return_value.get_results.return_value = []
+
+        DownscaleInteract.get_all_tmp_filenames()
+
+    args, kwargs = mock_paginate.call_args
+    assert args[0] == "ta_downscale"
+    assert "size" not in args[1]
+    assert kwargs == {"size": 1000}
+
+
+def test_get_all_tmp_filenames_covers_every_status_holding_a_file():
+    with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
+        mock_paginate.return_value.get_results.return_value = []
+
+        DownscaleInteract.get_all_tmp_filenames()
+
+    query = mock_paginate.call_args[0][1]["query"]
+    assert query == {
+        "terms": {"status": ["queued", "running", "pending_review"]}
+    }
 
 
 def test_count_running_excludes_remote_jobs():

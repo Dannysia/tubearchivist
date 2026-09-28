@@ -89,17 +89,18 @@ class DownscaleInteract(BaseQueueInteract):
 
     @staticmethod
     def get_all_tmp_filenames() -> set[str]:
+        # failed is left out on purpose
         data = {
-            "query": {"match_all": {}},
-            "size": 1000,
+            "query": {
+                "terms": {"status": ["queued", "running", "pending_review"]}
+            },
             "_source": ["tmp_file_path"],
         }
-        response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
-        hits = response["hits"]["hits"]
+        hits = IndexPaginate("ta_downscale", data, size=1000).get_results()
         return {
-            os.path.basename(hit["_source"]["tmp_file_path"])
+            os.path.basename(hit["tmp_file_path"])
             for hit in hits
-            if hit["_source"].get("tmp_file_path")
+            if hit.get("tmp_file_path")
         }
 
     @staticmethod
