@@ -9,7 +9,9 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
+import requests
 from appsettings.src.manual import ImportFolderScanner, ManualImport
+from mutagen import MutagenError
 
 VIDEO_ID = "R6no2zOuCTB"
 MEDIA_PATH = f"/cache/import/{VIDEO_ID}.mp4"
@@ -174,6 +176,8 @@ class TestBatchKeepsGoing:
             subprocess.CalledProcessError(1, ["ffprobe", "-i", "bad.mp4"]),
             # the disk, or PIL on an unreadable thumbnail
             OSError("cannot identify image file"),
+            KeyError("id"),
+            MutagenError("can't sync to an MPEG frame"),
         ],
     )
     def test_survives_what_one_unusable_file_raises(self, monkeypatch, err):
@@ -209,6 +213,42 @@ class TestBatchKeepsGoing:
         assert scanner.imported == ["/cache/import/good.mp4"]
         # named, even though CalledProcessError stringifies to a command
         assert "bad.mp4" in scanner.failed[0]
+
+    @pytest.mark.parametrize(
+        "err",
+        [
+            requests.ConnectionError("connection refused"),
+            # what yt-dlp raises on a bot block or a dns failure
+            ConnectionError("lost the internet, abort!"),
+        ],
+    )
+    def test_a_network_error_is_not_recorded_per_file(self, monkeypatch, err):
+        monkeypatch.setattr(
+            "appsettings.src.manual.AppConfig",
+            lambda: type("C", (), {"config": {}})(),
+        )
+        monkeypatch.setattr(
+            "appsettings.src.manual.countdown_sleep",
+            lambda *args, **kwargs: True,
+        )
+        to_import = [
+            {"media": "/cache/import/one.mp4"},
+            {"media": "/cache/import/two.mp4"},
+        ]
+        scanner = ImportFolderScanner()
+        scanner.to_import = to_import
+        scanner.imported = []
+
+        def fake_process(current_video, config):
+            # pylint: disable=unused-argument
+            raise err
+
+        scanner._process_video = fake_process
+
+        with pytest.raises(type(err)):
+            scanner.process_videos()
+
+        assert scanner.failed == []
 
     def test_scan_raises_once_with_every_reason(self, monkeypatch):
         """the run is still a failure, but the report covers all of it"""

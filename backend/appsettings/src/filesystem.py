@@ -8,7 +8,12 @@ import os
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import IndexPaginate
-from common.src.helper import countdown_sleep, ignore_filelist
+from common.src.helper import (
+    MEDIA_INDEX_ERRORS,
+    NETWORK_ERRORS,
+    countdown_sleep,
+    ignore_filelist,
+)
 from common.src.queue_interact import QueueWriteError
 from download.src.queue_interact import PendingInteract
 from video.src.comments import Comments
@@ -115,7 +120,7 @@ class Scanner:
     def _index_one(self, file_path: str, youtube_id: str) -> bool:
         """True when the caller should pace, not whether indexing worked"""
         if self.prefer_local:
-            if self._index_from_embed(file_path, youtube_id):
+            if self._try_embed(file_path, youtube_id):
                 return False
 
         try:
@@ -123,18 +128,27 @@ class Scanner:
             self._cleanup(youtube_id)
             Comments(youtube_id, task=self.task).build_json(upload=True)
             YoutubeVideo(youtube_id).embed_metadata()
-        except ValueError:
-            if self._index_from_embed(file_path, youtube_id):
-                # not paced, though this did reach youtube first
+        except NETWORK_ERRORS:
+            raise
+        except MEDIA_INDEX_ERRORS:
+            if self._try_embed(file_path, youtube_id):
                 return False
 
             if not self.ignore_error:
-                # a fresh bare ValueError renders as "Task failed: "
                 raise
 
             self._notify_error(youtube_id)
 
         return True
+
+    def _try_embed(self, file_path: str, youtube_id: str) -> bool:
+        try:
+            return self._index_from_embed(file_path, youtube_id)
+        except NETWORK_ERRORS:
+            raise
+        except MEDIA_INDEX_ERRORS as err:
+            print(f"[scanner] {youtube_id}: embedded metadata failed: {err}")
+            return False
 
     def _wait_for_next(self, total, youtube_id, idx) -> bool:
         """False when a stop request cut the wait short"""

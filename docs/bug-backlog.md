@@ -108,6 +108,26 @@ fails to delete is harmless.
 re-downloads everything.
 
 ### T1.5 `appsettings/src/filesystem.py:134` and `src/manual.py:263` - error nets narrower than what they wrap
+
+**Fixed.** `index_new_video` now raises its `ValueError` for the `None`
+return instead of dereferencing it, and both call sites catch the shared
+`MEDIA_INDEX_ERRORS` tuple in `common/src/helper.py`, so the two lists
+cannot drift apart again. The embed fallback reads the same unusable
+file, so it is wrapped too - including the `prefer_local` call, which
+was outside any handler.
+
+The tuple's `OSError` also covers two things that are not a bad file:
+`requests.RequestException`, and the builtin `ConnectionError` yt-dlp
+raises on purpose on a DNS failure and on a bot block
+(`download/src/yt_dlp_base.py:136,161`) to abort the task. Both are in
+`NETWORK_ERRORS`, re-raised ahead of the tuple at every call site, so an
+outage or a bot block stops the rescan instead of being counted against
+every remaining file.
+
+Still counted per file: an ES that is up but answering 503 or 429, because
+`ElasticWrap.put` turns that into a `ValueError`, the same type as "youtube
+has no metadata for this id". Telling them apart needs `put` to raise its
+own type.
 Verified. `ignore_error` does not hold, because the `except` clauses miss
 what the upstream helpers actually raise. Three independent triggers:
 - A truncated or 0-byte mp4: `index_new_video` -> `build_json` ->
@@ -369,9 +389,6 @@ a folder nothing has consumed. `Channels.tsx:171`, `Download.tsx:181` and
 - `common/tests/test_src/test_countdown_sleep.py:161-172` - parametrises
   `[None, 0]` then hardcodes `set_interval(monkeypatch, 0)`, so both cases
   are identical and the `None` branch stays untested.
-- `appsettings/tests/test_src/test_import_failures.py` `TestBatchKeepsGoing`
-  asserts exactly the guarantee T1.5 breaks, but parametrises only the three
-  exception types already caught.
 - `test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched`
   pins T3.3 as intended behaviour without noticing the wait cannot end.
 

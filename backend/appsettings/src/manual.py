@@ -15,6 +15,8 @@ from datetime import datetime
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.helper import (
+    MEDIA_INDEX_ERRORS,
+    NETWORK_ERRORS,
     countdown_sleep,
     ignore_filelist,
     is_missing,
@@ -238,11 +240,9 @@ class ImportFolderScanner:
 
             try:
                 self._process_video(current_video, config)
-            except (
-                ValueError,
-                subprocess.CalledProcessError,
-                OSError,
-            ) as err:
+            except NETWORK_ERRORS:
+                raise
+            except MEDIA_INDEX_ERRORS as err:
                 file_name = os.path.basename(current_video["media"])
                 # a CalledProcessError stringifies as the command line
                 # and its exit code, naming no file, so prefix one

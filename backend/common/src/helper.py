@@ -15,6 +15,17 @@ from urllib.parse import urlparse
 
 import requests
 from common.src.es_connect import IndexPaginate
+from mutagen import MutagenError
+
+MEDIA_INDEX_ERRORS = (
+    ValueError,
+    KeyError,
+    OSError,
+    subprocess.CalledProcessError,
+    MutagenError,
+)
+
+NETWORK_ERRORS = (requests.RequestException, ConnectionError)
 
 
 def ignore_filelist(filelist: list[str]) -> list[str]:

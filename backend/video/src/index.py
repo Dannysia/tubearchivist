@@ -595,7 +595,7 @@ def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS):
     else:
         video.build_json()
 
-    if not video.json_data:
+    if not video or not video.json_data:
         raise ValueError("failed to get metadata for " + youtube_id)
 
     video.check_subtitles()
