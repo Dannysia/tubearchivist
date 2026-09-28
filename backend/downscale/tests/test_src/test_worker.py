@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, mock_open, patch
 
+from common.src.queue_interact import QueueWriteError
 from downscale.src import worker
 from downscale.src.queue_interact import DownscaleInteract
 
@@ -779,4 +780,45 @@ def test_reap_deletes_a_stale_lease_with_stop_requested():
     mock_update.assert_not_called()
     mock_delete.assert_called_once()
     assert mock_remove.call_count == 2
+    mock_dispatch.assert_called_once()
+
+
+def test_claim_skips_a_candidate_whose_write_fails():
+    jobs = [{"id": "doc-bad"}, {"id": "doc-good"}]
+    claimed = {"id": "doc-good", "youtube_id": "video2"}
+
+    with patch(
+        "downscale.src.worker.RedisBase"
+    ) as mock_redis_base, patch.object(
+        DownscaleInteract, "get_next_queued", return_value=jobs
+    ), patch.object(
+        worker,
+        "_try_claim_candidate",
+        side_effect=[QueueWriteError("es down"), claimed],
+    ):
+        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+
+        result = worker.claim(WORKER)
+
+    assert result == claimed
+
+
+def test_reap_continues_past_a_job_whose_write_fails():
+    stale = [
+        {"id": "doc-bad", "tmp_file_path": None, "stop_requested": False},
+        {"id": "doc-good", "tmp_file_path": None, "stop_requested": False},
+    ]
+
+    with patch.object(
+        DownscaleInteract, "get_stale_leases", return_value=stale
+    ), patch.object(
+        DownscaleInteract,
+        "update",
+        side_effect=[QueueWriteError("es down"), None],
+    ) as mock_update, patch(
+        "downscale.src.worker.dispatch_pending_downscales"
+    ) as mock_dispatch:
+        worker.reap_stale_leases()
+
+    assert mock_update.call_count == 2
     mock_dispatch.assert_called_once()

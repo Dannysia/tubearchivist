@@ -19,6 +19,7 @@ from common.src.helper import (
     ignore_filelist,
     is_missing,
 )
+from common.src.queue_interact import QueueWriteError
 from download.src.queue_interact import PendingInteract
 from download.src.thumbnails import ThumbManager
 from PIL import Image
@@ -688,7 +689,10 @@ class ManualImport:
                 os.remove(subtitle_file)
 
         video_id = self.current_video["video_id"]
-        PendingInteract(youtube_id=video_id).delete_item(print_error=False)
+        try:
+            PendingInteract(youtube_id=video_id).delete_item(print_error=False)
+        except QueueWriteError as err:
+            print(f"{video_id}: queue entry not cleared: {err}")
 
 
 class ImportFolderFiles:

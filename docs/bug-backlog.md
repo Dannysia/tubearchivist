@@ -56,6 +56,16 @@ The sibling `get_interrupted()` uses `IndexPaginate` correctly.
 Fix: paginate, same as the sibling. Highest priority in this tier.
 
 ### T1.3 `common/src/queue_interact.py:30-53` - queue transitions discard ES's answer
+
+**Fixed.** The four write methods raise `QueueWriteError` unless the
+write applied, and `update` raises its subclass `QueueDocMissing` for a
+document that is gone. The call sites where a failed write is survivable
+catch it: the startup resume, dispatch, claim and lease reaping, the bulk
+review endpoint, the stop and crash paths of a running encode, and the
+pending-queue cleanup after an import or rescan. `run_queue` skips an
+extraction entry that is gone and stops the run on any other failed
+write, since `_get_next` matches `pending` and `extracting` alike and
+would hand the same entry back forever.
 Verified. `update`, `_delete_by_query` and `_update_by_query` all call
 `ElasticWrap(...).post(...)` with no assignment, so a 429, 503 or missing
 document is indistinguishable from success. The downscale state machine

@@ -14,6 +14,7 @@ from appsettings.src.snapshot import ElasticSnapshot
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap
 from common.src.helper import clear_dl_cache
+from common.src.queue_interact import QueueWriteError
 from common.src.ta_redis import RedisArchivist
 from django.core.management.base import BaseCommand, CommandError
 from django_celery_beat.models import (
@@ -148,17 +149,19 @@ class Command(BaseCommand):
                 os.remove(tmp_path)
 
         if interrupted:
-            # one query instead of a per-job ES round-trip, which
-            # matters at hundreds of jobs on startup
-            DownscaleInteract().requeue_interrupted()
-            # dispatch only enqueues to the broker, so it is fine before
-            # the celery worker itself has started
-            dispatch_pending_downscales()
-            self.stdout.write(
-                self.style.SUCCESS(
-                    f"    ✓ resumed {len(interrupted)} interrupted job(s)"
+            try:
+                DownscaleInteract().requeue_interrupted()
+                dispatch_pending_downscales()
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"    ✓ resumed {len(interrupted)} interrupted "
+                        "job(s)"
+                    )
                 )
-            )
+            except QueueWriteError as err:
+                self.stdout.write(
+                    self.style.ERROR(f"    could not resume: {err}")
+                )
         else:
             self.stdout.write(
                 self.style.SUCCESS("    no interrupted jobs found")

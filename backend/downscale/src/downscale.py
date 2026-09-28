@@ -8,6 +8,7 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
+from common.src.queue_interact import QueueWriteError
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
 from redis.exceptions import LockError
@@ -261,7 +262,10 @@ def dispatch_pending_downscales() -> None:
                     "doc_id": job["id"],
                 },
             )
-            DownscaleInteract(job["id"]).update(task_id=message["task_id"])
+            try:
+                DownscaleInteract(job["id"]).update(task_id=message["task_id"])
+            except QueueWriteError as err:
+                print(f"{job['id']}: task_id not recorded: {err}")
     finally:
         _release_lock(lock)
 
@@ -330,11 +334,18 @@ class DownscaleRunner:
             )
         except Exception as err:  # pylint: disable=broad-except
             print(f"{self.youtube_id}: downscale crashed: {err}")
-            self._cleanup_tmp()
+            self._mark_crashed(err)
+
+    def _mark_crashed(self, err: Exception) -> None:
+        self._cleanup_tmp()
+        try:
             DownscaleInteract(self.doc_id).update(
                 status="failed", message=str(err), updated=_now()
             )
-            dispatch_pending_downscales()
+        except QueueWriteError as write_err:
+            print(f"{self.youtube_id}: not marked failed: {write_err}")
+
+        dispatch_pending_downscales()
 
     def _reserve_slot(self, current_height: int, original_path: str) -> bool:
         """False means the caller should bail out without encoding"""
@@ -437,7 +448,11 @@ class DownscaleRunner:
             if self.task.is_stopped():
                 self._terminate(process)
                 self._cleanup_tmp()
-                DownscaleInteract(self.doc_id).delete_item()
+                try:
+                    DownscaleInteract(self.doc_id).delete_item()
+                except QueueWriteError as err:
+                    print(f"{self.youtube_id}: stop not recorded: {err}")
+
                 dispatch_pending_downscales()
                 return
 

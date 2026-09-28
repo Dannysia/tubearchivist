@@ -2,10 +2,15 @@ import json
 from datetime import datetime
 
 from common.src.es_connect import ElasticWrap
+from common.src.queue_interact import QueueDocMissing, QueueWriteError
 from common.src.urlparser import ParsedURLType
 from download.src.extraction_interact import ExtractionInteract
 from download.src.queue import PendingList
 from video.src.constants import VideoTypeEnum
+
+
+class _StopRun(Exception):
+    pass
 
 
 class ExtractionQueue:
@@ -78,52 +83,70 @@ class ExtractionQueue:
         failed = 0
         any_auto_start = False
 
-        while True:
-            entry_id, entry_doc = self._get_next()
-            if self.task and self.task.is_stopped():
-                break
-            if not entry_doc:
-                break
+        try:
+            while True:
+                entry_id, entry_doc = self._get_next()
+                if self.task and self.task.is_stopped():
+                    break
+                if not entry_doc:
+                    break
 
-            ExtractionInteract(entry_id).mark_extracting()
-            parsed_entry: ParsedURLType = {
-                "type": entry_doc["item_type"],
-                "url": entry_doc["youtube_id"],
-                "vid_type": entry_doc.get("vid_type"),
-                "limit": entry_doc.get("limit"),
-            }
+                interact = ExtractionInteract(entry_id)
+                if not self._write_state(interact.mark_extracting):
+                    continue
 
-            handler = PendingList(
-                youtube_ids=[parsed_entry],
-                task=self.task,
-                auto_start=entry_doc["auto_start"],
-                flat=entry_doc["flat"],
-                force=entry_doc["force"],
-            )
-            handler.all_pending = warm.all_pending
-            handler.all_ignored = warm.all_ignored
-            handler.to_skip = list(warm.to_skip)
-            handler.all_videos = warm.all_videos
-            handler.all_channels = warm.all_channels
-            handler.channel_overwrites = warm.channel_overwrites
+                parsed_entry: ParsedURLType = {
+                    "type": entry_doc["item_type"],
+                    "url": entry_doc["youtube_id"],
+                    "vid_type": entry_doc.get("vid_type"),
+                    "limit": entry_doc.get("limit"),
+                }
 
-            handler.parse_url_list(
-                status=entry_doc.get("target_status", "pending")
-            )
-
-            if handler.extraction_failed:
-                failed += 1
-                ExtractionInteract(entry_id).mark_failed(
-                    "extraction failed, see logs"
+                handler = PendingList(
+                    youtube_ids=[parsed_entry],
+                    task=self.task,
+                    auto_start=entry_doc["auto_start"],
+                    flat=entry_doc["flat"],
+                    force=entry_doc["force"],
                 )
-                continue
+                handler.all_pending = warm.all_pending
+                handler.all_ignored = warm.all_ignored
+                handler.to_skip = list(warm.to_skip)
+                handler.all_videos = warm.all_videos
+                handler.all_channels = warm.all_channels
+                handler.channel_overwrites = warm.channel_overwrites
 
-            resolved += 1
-            if entry_doc["auto_start"]:
-                any_auto_start = True
-            ExtractionInteract(entry_id).delete_item()
+                handler.parse_url_list(
+                    status=entry_doc.get("target_status", "pending")
+                )
+
+                if handler.extraction_failed:
+                    failed += 1
+                    self._write_state(
+                        interact.mark_failed, "extraction failed, see logs"
+                    )
+                else:
+                    resolved += 1
+                    if entry_doc["auto_start"]:
+                        any_auto_start = True
+                    self._write_state(interact.delete_item)
+        except _StopRun:
+            pass
 
         return resolved, failed, any_auto_start
+
+    @staticmethod
+    def _write_state(write, *args) -> bool:
+        try:
+            write(*args)
+        except QueueDocMissing as err:
+            print(f"[extraction] skipping, {err}")
+            return False
+        except QueueWriteError as err:
+            print(f"[extraction] stopping the run, {err}")
+            raise _StopRun from err
+
+        return True
 
     @staticmethod
     def _get_next() -> tuple[str | None, dict | None]:

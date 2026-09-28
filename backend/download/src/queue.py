@@ -19,6 +19,7 @@ from common.src.helper import (
     get_duration_str,
     is_shorts,
 )
+from common.src.queue_interact import QueueWriteError
 from common.src.urlparser import ParsedURLType
 from download.serializers import DownloadItemSerializer
 from download.src.queue_interact import PendingInteract
@@ -202,7 +203,13 @@ class PendingList(PendingIndex):
         if self.auto_start and url in set(
             i["youtube_id"] for i in self.all_pending
         ):
-            PendingInteract(youtube_id=url, status="priority").update_status()
+            try:
+                PendingInteract(
+                    youtube_id=url, status="priority"
+                ).update_status()
+            except QueueWriteError as err:
+                print(f"{url}: not moved to priority, {err}")
+
             return None
 
         if not self.force and (

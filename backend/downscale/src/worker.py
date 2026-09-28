@@ -9,6 +9,7 @@ import shutil
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
+from common.src.queue_interact import QueueWriteError
 from common.src.ta_redis import RedisBase
 from downscale.src.downscale import (
     DISPATCH_LOCK_BLOCKING_TIMEOUT,
@@ -54,7 +55,11 @@ def _cleanup_tmp_files(tmp_path: str | None) -> None:
 def _discard(doc_id: str, tmp_path: str | None) -> None:
     """dispatch after: clearing a job may free a concurrency slot"""
     _cleanup_tmp_files(tmp_path)
-    DownscaleInteract(doc_id).delete_item()
+    try:
+        DownscaleInteract(doc_id).delete_item()
+    except QueueWriteError as err:
+        print(f"{doc_id}: discard not recorded: {err}")
+
     dispatch_pending_downscales()
 
 
@@ -70,7 +75,12 @@ def claim(worker: str) -> dict | None:
 
     try:
         for job in DownscaleInteract.get_next_queued(None):
-            claimed = _try_claim_candidate(job, worker)
+            try:
+                claimed = _try_claim_candidate(job, worker)
+            except QueueWriteError as err:
+                print(f"{job['id']}: candidate skipped, {err}")
+                continue
+
             if claimed:
                 return claimed
 
@@ -315,24 +325,25 @@ def reap_stale_leases() -> None:
         doc_id = job["id"]
         tmp_path = job.get("tmp_file_path")
 
-        if job.get("stop_requested"):
+        try:
+            if job.get("stop_requested"):
+                _cleanup_tmp_files(tmp_path)
+                DownscaleInteract(doc_id).delete_item()
+                continue
+
             _cleanup_tmp_files(tmp_path)
-            DownscaleInteract(doc_id).delete_item()
-            continue
 
-        # the tmp file belongs to the expired lease, not to whoever
-        # claims this next
-        _cleanup_tmp_files(tmp_path)
-
-        DownscaleInteract(doc_id).update(
-            status="queued",
-            message=None,
-            task_id="",
-            worker="",
-            last_heartbeat=0,
-            progress=0.0,
-            stop_requested=False,
-            updated=_now(),
-        )
+            DownscaleInteract(doc_id).update(
+                status="queued",
+                message=None,
+                task_id="",
+                worker="",
+                last_heartbeat=0,
+                progress=0.0,
+                stop_requested=False,
+                updated=_now(),
+            )
+        except QueueWriteError as err:
+            print(f"{doc_id}: lease not reaped, {err}")
 
     dispatch_pending_downscales()
