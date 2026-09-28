@@ -197,27 +197,6 @@ def upload_result(doc_id: str, worker: str, stream) -> str | None:
     return None
 
 
-def _match_uploaded_container(tmp_path: str, container: str | None) -> str:
-    """
-    tmp_file_path is fixed at enqueue time with a hardcoded .mp4
-    suffix, before it is known whether a local encode or a remote
-    worker runs the job. A worker may produce a different container, so
-    the doc would otherwise advertise a .mp4 path for other bytes all
-    the way through review.
-    """
-    if not container:
-        return tmp_path
-
-    # the serializer allows only bare alphanumerics, so this swaps the
-    # extension and cannot escape the cache dir
-    new_path = f"{os.path.splitext(tmp_path)[0]}.{container.lower()}"
-    if new_path == tmp_path or not os.path.exists(tmp_path):
-        return tmp_path
-
-    os.replace(tmp_path, new_path)
-    return new_path
-
-
 def finish(
     doc_id: str,
     worker: str,
@@ -225,7 +204,6 @@ def finish(
     quality: int,
     preset: str | None,
     ffmpeg_args: str,
-    container: str | None = None,
 ) -> str | None:
     """
     returns an error string only for the ownership case - an invalid
@@ -242,8 +220,6 @@ def finish(
         # is valid but unwanted, so discard rather than offer it up
         _discard(doc_id, tmp_path)
         return None
-
-    tmp_path = _match_uploaded_container(tmp_path, container)
 
     new_height = _get_height(tmp_path)
     if not new_height:

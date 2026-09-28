@@ -365,15 +365,12 @@ below), for the worker's HandBrake switch:**
   the belief that Python's line iteration only breaks on `\n`; text-mode
   universal-newlines translation already handles `\r`, so that buffering
   was removed rather than kept on a false premise.
-- `accept()`'s container-matching (`_replace_original()`, backend-side):
-  covered by a real pytest test
-  (`test_accept_matches_the_candidates_container_when_it_differs`) -
-  same-extension case is a documented no-op regression check, the MKV
-  case verifies the rename target, `media_url` update, and old-file
-  cleanup. Paired with `test_finish_renames_to_the_container_the_worker_reported`,
-  which covers the upstream half that makes the MKV case reachable at
-  all - without it that test would have passed against a state the real
-  pipeline never produced.
+- `accept()` (backend-side): the server accepts MP4 only, so there is no
+  container matching to cover. `test_downscale_accept.py` covers what it
+  does do - probing the encode before the move, refusing one ffprobe
+  cannot read, and keeping the job when the index write fails.
+  `docs/remote-downscale/ta-server.md` has why MP4 is the only container
+  the server can take.
 - Not yet covered: `handle_job()`'s end-to-end wiring on the worker
   itself (the full claim → probe → encode → upload → finish path) -
   verified by code reading and the piece-by-piece checks above, not

@@ -122,12 +122,9 @@ the metadata survived — see
 [windows-host-setup.md](windows-host-setup.md) §6, which is where that
 question actually gets settled.
 
-The `container` field on finish still reports what was produced (`mp4`),
-and `DownscaleReview.accept()` still matches the candidate's real
-extension — see [ta-server.md](ta-server.md). Both now agree with TA's
-enqueue-time assumption rather than fighting it, so they're a guard
-against future drift rather than load-bearing machinery. Local encodes
-are unaffected: still `.mp4` via raw ffmpeg, unchanged.
+MKV never leaves the worker. TA is MP4-only, and the server has no
+handling for any other container — see [ta-server.md](ta-server.md)'s
+"Why MP4 only". Local encodes are `.mp4` via raw ffmpeg, unchanged.
 
 ## Configuration
 
@@ -231,7 +228,7 @@ loop:
       → non-zero? POST fail {ffmpeg stderr}, clean temp, continue
       → probe both, log whether HDR10 static metadata survived
     PUT result (stream upload)
-    POST finish {encoder, quality, preset, ffmpeg_args, container}
+    POST finish {encoder, quality, preset, ffmpeg_args}
   stop heartbeat thread
   → any heartbeat during this window returns {"stop": true} or 409?
     abort the upload/finish call in flight, clean temp, continue

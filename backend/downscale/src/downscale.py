@@ -589,14 +589,6 @@ class DownscaleReview:
             )
             return "original file missing"
 
-        new_path = self._target_path(tmp_path, original_path)
-        if new_path != original_path:
-            media_url = video.json_data["media_url"]
-            new_ext = os.path.splitext(new_path)[1]
-            video.json_data["media_url"] = (
-                os.path.splitext(media_url)[0] + new_ext
-            )
-
         existing = video.json_data.get("downscale") or {}
         video.json_data["downscale"] = {
             "original_height": existing.get(
@@ -621,7 +613,7 @@ class DownscaleReview:
             )
             return "the encode could not be probed"
 
-        self._replace_original(tmp_path, original_path, new_path)
+        self._move(tmp_path, original_path)
 
         try:
             video.upload_to_es(checked=True)
@@ -634,27 +626,6 @@ class DownscaleReview:
 
         self.interact.delete_item()
         return None
-
-    @staticmethod
-    def _target_path(tmp_path: str, original_path: str) -> str:
-        """
-        matches tmp_path's container rather than assuming
-        original_path's: a remote worker may encode to .mkv for HDR10
-        static metadata that MP4 muxing does not reliably carry
-        """
-        tmp_ext = os.path.splitext(tmp_path)[1]
-        original_ext = os.path.splitext(original_path)[1]
-        if tmp_ext == original_ext:
-            return original_path
-
-        return os.path.splitext(original_path)[0] + tmp_ext
-
-    def _replace_original(
-        self, tmp_path: str, original_path: str, new_path: str
-    ) -> None:
-        self._move(tmp_path, new_path)
-        if new_path != original_path and os.path.exists(original_path):
-            os.remove(original_path)
 
     def reject(self) -> str | None:
         """the original file stays untouched"""

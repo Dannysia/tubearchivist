@@ -658,15 +658,10 @@ def send_finish(
     quality,
     preset,
     encode_args,
-    container,
 ) -> None:
     """
     the server's ffmpeg_args field holds whatever encode command
     actually ran - a HandBrakeCLI one here.
-
-    container is the bare extension actually produced. TA fixes a job's
-    tmp_file_path to .mp4 at enqueue time, so without this the server
-    keeps calling the uploaded file .mp4 whatever is really in it.
     """
     url = urljoin(base_url, f"/api/downscale/worker/jobs/{job_id}/finish/")
 
@@ -679,7 +674,6 @@ def send_finish(
                 "quality": quality,
                 "preset": preset,
                 "ffmpeg_args": encode_args,
-                "container": container,
             },
             timeout=(10, 30),
         )
@@ -845,7 +839,6 @@ def deliver_result(
         config["encode"]["quality"],
         config["encode"].get("preset"),
         encode_args,
-        OUTPUT_CONTAINER,
     )
 
 

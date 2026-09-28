@@ -57,37 +57,6 @@ def test_accept_copies_ffmpeg_args_onto_the_video():
     assert video.json_data["downscale"]["encoder"] == "h264"
 
 
-def test_accept_matches_the_candidates_container_when_it_differs():
-    """
-    a worker may encode to .mkv - HDR10 static metadata does not mux
-    reliably into MP4 - while the source is .mp4, so the accepted file
-    keeps the candidate's container and media_url follows it
-    """
-    job = {**PENDING_JOB, "tmp_file_path": "/cache/downscale/video1_480p.mkv"}
-    video = _mock_video({"media_url": "video1.mp4"})
-
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(job, 200)
-    ), patch.object(DownscaleInteract, "delete_item"), patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.os.remove"
-    ) as mock_remove, patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move"
-    ) as mock_move:
-        error = DownscaleReview(DOC_ID).accept()
-
-    assert error is None
-    assert video.json_data["media_url"] == "video1.mkv"
-    mock_move.assert_called_once()
-    moved_src, moved_dst = mock_move.call_args.args
-    assert moved_src == job["tmp_file_path"]
-    assert moved_dst.endswith("video1.mkv")
-    mock_remove.assert_called_once()
-
-
 def test_accept_preserves_missing_ffmpeg_args_as_none():
     """older job docs carry no ffmpeg_args field at all"""
     job = {**PENDING_JOB}

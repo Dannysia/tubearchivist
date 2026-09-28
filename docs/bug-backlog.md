@@ -214,6 +214,7 @@ returns `{"match_all": {}}` with no filters (line 485), so
 Decide: wire it up, or delete the read side and stop writing.
 
 ### T3.2 `downscale` container escape hatch is unreachable and destructive
+**Fixed** (container handling removed - MKV never leaves the worker).
 Reported. Serializer field, 13 lines of help text, `_match_uploaded_container`
 and `_replace_original`'s extension branch, all tested - but the only worker
 always sends `"mp4"`. A worker sending `"mkv"` would hit `_get_height` ->
@@ -365,8 +366,6 @@ a folder nothing has consumed. `Channels.tsx:171`, `Download.tsx:181` and
 - `appsettings/tests/test_src/test_import_failures.py` `TestBatchKeepsGoing`
   asserts exactly the guarantee T1.5 breaks, but parametrises only the three
   exception types already caught.
-- `downscale` `test_finish_renames_to_the_container_the_worker_reported`
-  passes only because `_get_height` is mocked (see T3.2).
 - `test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched`
   pins T3.3 as intended behaviour without noticing the wait cannot end.
 

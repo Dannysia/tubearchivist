@@ -156,8 +156,7 @@ Body:
   "encoder": "nvenc_av1",
   "quality": 24,
   "preset": "slow",
-  "ffmpeg_args": "HandBrakeCLI -i … -e nvenc_av1 -q 24 …",
-  "container": "mp4"
+  "ffmpeg_args": "HandBrakeCLI -i … -e nvenc_av1 -q 24 …"
 }
 ```
 
@@ -183,26 +182,12 @@ store the reported encoder/quality/preset/ffmpeg_args, set
 `dispatch_pending_downscales()`. From here the job is indistinguishable
 from a locally encoded one.
 
-**`container`** is optional and carries the bare extension the worker
-actually produced. A job's `tmp_file_path` is fixed at enqueue time by
-`build_queued_doc()` with a hardcoded `.mp4` suffix — decided before TA
-knows whether a local celery encode or a remote worker will run it — and
-nothing between claim and finish revisits it: `upload_result()` streams
-the body onto that same fixed path. A worker producing anything else has
-to say so here, and `finish()` renames the uploaded file to match and
-persists the corrected `tmp_file_path` before the job reaches
-`pending_review`. The field is validated as 1–5 bare alphanumerics, so
-it can only ever swap an extension, never redirect the path out of the
-downscale cache directory.
-
-**The shipped worker sends `mp4`, so this is currently a no-op.** It
-exists because the worker briefly delivered `.mkv`, which does not work
-— see [worker.md](worker.md)'s "Output container" for why TA cannot
-store MKV, and why the worker now remuxes to MP4 before uploading. The
-field is kept as a guard: if a worker ever again produces something
-other than what enqueue assumed, the mismatch is recorded rather than
-silently written to a misnamed file. It is not load-bearing today, and
-should not be mistaken for making non-MP4 output viable on its own.
+A job's `tmp_file_path` is fixed at enqueue time by `build_queued_doc()`
+with a hardcoded `.mp4` suffix, and nothing between claim and finish
+revisits it: `upload_result()` streams the body onto that same fixed
+path. Uploading anything that is not MP4 therefore produces a file with
+`.mp4` in its name and different bytes inside. The worker remuxes to MP4
+before uploading precisely so that cannot happen.
 
 ### `POST /api/downscale/worker/jobs/<id>/fail/`
 
@@ -297,24 +282,11 @@ Pre-existing bug fixed alongside: `dispatch_pending_downscales()` does
 disabled (dispatch nothing; the natural remote-only mode). The
 serializer in `appsettings/serializers.py` gets `min_value=0`.
 
-### `accept()` matches the candidate's actual container
+### Why MP4 only
 
-`DownscaleReview.accept()`'s move-and-replace step (`downscale.py`)
-always renamed the candidate onto the original's existing `.mp4` path
-regardless of the candidate's real extension — which would silently
-produce a file with `.mp4` in its name and different bytes inside.
-`_replace_original()` now compares `tmp_path`'s extension against the
-original's first. Same extension (the case in practice) moves onto the
-original's path exactly as before. Different extension moves onto a new
-path carrying the *candidate's* extension, deletes the old original, and
-updates `video.json_data["media_url"]`.
-
-**This is a guard, not a working non-MP4 path — do not read it as one.**
-Both halves of it (this and `finish()`'s `container` handling above) were
-built when the worker delivered `.mkv`, on the assumption that updating
-`media_url` was sufficient. That assumption was wrong. TubeArchivist is
-MP4-only in places that have nothing to do with downscaling, and at
-least three of them will destroy data given a non-`.mp4` `media_url`:
+TubeArchivist is MP4-only in places that have nothing to do with
+downscaling, and at least three of them will destroy data given a
+non-`.mp4` `media_url`:
 
 - `appsettings/src/filesystem.py` enumerates on-disk media as `*.mp4`
   only, so a non-MP4 video is indexed but invisible to the scanner —
@@ -328,16 +300,16 @@ least three of them will destroy data given a non-`.mp4` `media_url`:
   `".mp4"`, and `video/src/meta_embed.py` embeds tags through mutagen's
   MP4-specific API.
 
-So the earlier claim here — that nothing else needed to change because
-everything downstream reads `media_url` fresh from ES — was false. It is
-true that those call sites read `media_url` rather than rebuilding it;
-it is not true that they tolerate what they find in it.
+Those call sites do read `media_url` rather than rebuilding it, but they
+do not tolerate what they would find in it.
 
-The worker now remuxes to `.mp4` before uploading (see
-[worker.md](worker.md#output-container-encode-mkv-deliver-mp4)), so
-extensions match and this takes the same-extension branch every time.
-Supporting a different container for real means fixing the three call
-sites above first, not relying on this.
+So the server carries no container handling at all: no `container` field
+on finish, and `accept()` moves the candidate onto the original's path
+unconditionally. The worker remuxes to `.mp4` before uploading (see
+[worker.md](worker.md#output-container-encode-mkv-deliver-mp4)), which is
+where the invariant is kept. Supporting another container means fixing
+the three call sites above first — a much larger change than adding a
+field back here.
 
 ## Full ffmpeg argv (also for local encodes)
 
