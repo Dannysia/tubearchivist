@@ -8,12 +8,13 @@ import json
 import os
 from datetime import datetime
 
+import requests
 from channel.src.constants import OVERWRITE_KEYS
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import countdown_sleep
-from common.src.index_generic import YouTubeItem
+from common.src.index_generic import IndexWriteError, YouTubeItem
 from download.serializers import DownloadItemSerializer
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import YtWrap
@@ -413,6 +414,8 @@ class ChannelVideoTypeDelete:
         # deleted without reaching the ignore list - a progress line
         # would not survive, one redis key the next pass overwrites
         self.not_ignored: list[str] = []
+        self.failed: list[str] = []
+        self.ignored = 0
 
     def delete(self) -> int:
         # local import, video.src.index imports this module
@@ -423,7 +426,6 @@ class ChannelVideoTypeDelete:
         print(f"{self.channel_id}: delete {total} {self.vid_type}")
 
         deleted = 0
-        to_ignore: list[dict] = []
         for idx, youtube_id in enumerate(youtube_ids, start=1):
             if self.task:
                 if self.task.is_stopped():
@@ -433,15 +435,8 @@ class ChannelVideoTypeDelete:
                 self._notify(idx, total)
 
             video = YoutubeVideo(youtube_id)
-            if self.ignore:
-                # read it before the delete takes the document away
-                video.get_from_es()
-                if video.json_data:
-                    doc = self._build_ignore_doc(video.json_data)
-                    if doc:
-                        to_ignore.append(doc)
-                    else:
-                        self.not_ignored.append(youtube_id)
+            if self.ignore and not self._ignore_first(video, youtube_id):
+                continue
 
             try:
                 video.delete_media_file()
@@ -449,11 +444,34 @@ class ChannelVideoTypeDelete:
             except FileNotFoundError:
                 # already gone from the index between the query and here
                 print(f"{youtube_id}: not indexed, skipping")
+            except Exception as err:  # pylint: disable=broad-except
+                print(f"{youtube_id}: delete failed: {err}")
+                self.failed.append(youtube_id)
 
-        # after the loop, so a stopped run still ignores what it deleted
-        self._write_ignore(to_ignore)
+        if self.ignore:
+            print(f"{self.channel_id}: ignored {self.ignored} {self.vid_type}")
 
         return deleted
+
+    def _ignore_first(self, video, youtube_id: str) -> bool:
+        video.get_from_es()
+        if not video.json_data:
+            return True
+
+        doc = self._build_ignore_doc(video.json_data)
+        if not doc:
+            self.not_ignored.append(youtube_id)
+            return True
+
+        try:
+            self._write_ignore([doc])
+        except (IndexWriteError, requests.RequestException) as err:
+            print(f"{youtube_id}: kept, ignore entry failed: {err}")
+            self.failed.append(youtube_id)
+            return False
+
+        self.ignored += 1
+        return True
 
     @staticmethod
     def _build_ignore_doc(json_data: dict) -> dict | None:
@@ -506,12 +524,24 @@ class ChannelVideoTypeDelete:
 
         bulk_list.append("\n")
         query_str = "\n".join(bulk_list)
-        _, status_code = ElasticWrap("_bulk").post(query_str, ndjson=True)
+        response, status_code = ElasticWrap("_bulk").post(
+            query_str, ndjson=True
+        )
         if status_code not in [200, 201]:
-            print(f"{self.channel_id}: failed writing ignore entries")
-            return
+            raise IndexWriteError(
+                f"ignore entries failed, es answered {status_code}"
+            )
 
-        print(f"{self.channel_id}: ignored {len(docs)} {self.vid_type}")
+        # a 200 from _bulk still reports per document failures in the body
+        if response.get("errors"):
+            rejected = [
+                i["index"]["error"]
+                for i in response.get("items", [])
+                if i.get("index", {}).get("error")
+            ]
+            raise IndexWriteError(
+                f"es rejected ignore entries: {rejected or response}"
+            )
 
     def get_video_ids(self) -> list[str]:
         data = {

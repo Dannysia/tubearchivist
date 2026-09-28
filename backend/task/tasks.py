@@ -399,7 +399,7 @@ def delete_channel_videos(
         channel_id, vid_type, task=self, ignore=ignore
     )
     deleted = handler.delete()
-    if not deleted:
+    if not deleted and not handler.failed:
         return None
 
     suffix = " and ignored them" if ignore else ""
@@ -411,6 +411,11 @@ def delete_channel_videos(
         message += (
             f" {len(handler.not_ignored)} could not be ignored, "
             "incomplete metadata."
+        )
+
+    if handler.failed:
+        message += (
+            f" {len(handler.failed)} could not be deleted, see the logs."
         )
 
     return message

@@ -13,6 +13,7 @@ import pytest
 from channel.serializers import ChannelVideoDeleteQuerySerializer
 from channel.src import index as channel_index
 from channel.src.index import ChannelVideoTypeDelete
+from common.src.index_generic import IndexWriteError
 
 
 class TestDeleteQuerySerializer:
@@ -354,3 +355,175 @@ class TestWriteIgnore:
         )
         ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([])
         assert called == []
+
+
+class TestDeleteOrdering:
+    @staticmethod
+    def _patch(monkeypatch, ids, order, write=lambda self, docs: None):
+        monkeypatch.setattr(
+            ChannelVideoTypeDelete, "get_video_ids", lambda self: ids
+        )
+        monkeypatch.setattr(ChannelVideoTypeDelete, "_write_ignore", write)
+        import video.src.index as video_index
+
+        def deleter(youtube_id):
+            video = SimpleNamespace(json_data=None)
+            video.get_from_es = lambda: setattr(
+                video, "json_data", {**VIDEO_DOC, "youtube_id": youtube_id}
+            )
+            video.delete_media_file = lambda: order.append(
+                ("delete", youtube_id)
+            )
+            return video
+
+        monkeypatch.setattr(video_index, "YoutubeVideo", deleter)
+
+    def test_the_row_is_written_before_that_video_is_deleted(
+        self, monkeypatch
+    ):
+        order = []
+
+        def write(self, docs):
+            order.extend(("write", d["youtube_id"]) for d in docs)
+
+        self._patch(monkeypatch, ["a", "b"], order, write)
+
+        ChannelVideoTypeDelete("UC1", "shorts", ignore=True).delete()
+
+        assert order == [
+            ("write", "a"),
+            ("delete", "a"),
+            ("write", "b"),
+            ("delete", "b"),
+        ]
+
+    def test_a_video_whose_row_fails_is_kept(self, monkeypatch):
+        order = []
+
+        def write(self, docs):
+            if docs[0]["youtube_id"] == "b":
+                raise IndexWriteError("es answered 503")
+
+            order.extend(("write", d["youtube_id"]) for d in docs)
+
+        self._patch(monkeypatch, ["a", "b", "c"], order, write)
+        handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
+
+        assert handler.delete() == 2
+        assert ("delete", "b") not in order
+        assert handler.failed == ["b"]
+        assert handler.ignored == 2
+
+    def test_a_failed_delete_does_not_abandon_the_rest(self, monkeypatch):
+        order = []
+        self._patch(monkeypatch, ["a", "b", "c"], order)
+        import video.src.index as video_index
+
+        def deleter(youtube_id):
+            video = SimpleNamespace(json_data=VIDEO_DOC)
+            video.get_from_es = lambda: None
+
+            def delete_media_file():
+                if youtube_id == "b":
+                    raise PermissionError("read-only file system")
+                order.append(youtube_id)
+
+            video.delete_media_file = delete_media_file
+            return video
+
+        monkeypatch.setattr(video_index, "YoutubeVideo", deleter)
+        handler = ChannelVideoTypeDelete("UC1", "shorts")
+
+        assert handler.delete() == 2
+        assert order == ["a", "c"]
+        assert handler.failed == ["b"]
+
+    def test_a_dangling_playlist_reference_is_survivable(self, monkeypatch):
+        order = []
+        self._patch(monkeypatch, ["a", "b"], order)
+        import video.src.index as video_index
+
+        def deleter(youtube_id):
+            video = SimpleNamespace(json_data=VIDEO_DOC)
+            video.get_from_es = lambda: None
+
+            def delete_media_file():
+                if youtube_id == "a":
+                    raise TypeError("'NoneType' object is not subscriptable")
+                order.append(youtube_id)
+
+            video.delete_media_file = delete_media_file
+            return video
+
+        monkeypatch.setattr(video_index, "YoutubeVideo", deleter)
+        handler = ChannelVideoTypeDelete("UC1", "shorts")
+
+        assert handler.delete() == 1
+        assert order == ["b"]
+        assert handler.failed == ["a"]
+
+
+class TestWriteIgnoreChecksTheAnswer:
+    @staticmethod
+    def _wrap(monkeypatch, answer):
+        class FakeWrap:
+            def __init__(self, path):
+                pass
+
+            def post(self, data, ndjson=False):
+                return answer
+
+        monkeypatch.setattr(channel_index, "ElasticWrap", FakeWrap)
+
+    def test_a_rejected_status_raises(self, monkeypatch):
+        self._wrap(monkeypatch, ({"error": "unavailable_shards"}, 503))
+        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
+
+        with pytest.raises(IndexWriteError) as err:
+            ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
+
+        assert "503" in str(err.value)
+
+    def test_per_item_errors_inside_a_200_raise(self, monkeypatch):
+        self._wrap(
+            monkeypatch,
+            (
+                {
+                    "errors": True,
+                    "items": [
+                        {
+                            "index": {
+                                "_id": "abc",
+                                "error": {"type": "mapper_parsing_exception"},
+                            }
+                        }
+                    ],
+                },
+                200,
+            ),
+        )
+        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
+
+        with pytest.raises(IndexWriteError) as err:
+            ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
+
+        assert "mapper_parsing_exception" in str(err.value)
+
+    def test_an_unrecognised_error_shape_still_raises(self, monkeypatch):
+        self._wrap(monkeypatch, ({"errors": True, "items": []}, 200))
+        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
+
+        with pytest.raises(IndexWriteError):
+            ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
+
+    def test_a_clean_bulk_answer_passes(self, monkeypatch):
+        self._wrap(
+            monkeypatch,
+            (
+                {"errors": False, "items": [{"index": {"result": "created"}}]},
+                200,
+            ),
+        )
+        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
+
+        ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])

@@ -87,6 +87,12 @@ nothing connecting the stall to the failed write. The same author's
 rather than house style.
 
 ### T1.4 `channel/src/index.py:455-463` and `:527-532` - channel delete loses its ignore rows
+
+**Fixed.** The ignore row is written per video ahead of that video's
+delete, a row that will not write keeps the video, and `_write_ignore`
+raises `IndexWriteError` on a rejected status or on per-item errors
+inside a 200. A delete that fails for any other reason is recorded in
+`handler.failed` and reported by the task instead of ending the run.
 Verified. Two distinct bugs on one path.
 (a) Deletions happen per video inside the loop and are irreversible, but
 `_write_ignore(to_ignore)` runs once after it, and only `FileNotFoundError`
