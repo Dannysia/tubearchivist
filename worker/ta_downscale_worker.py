@@ -2,30 +2,15 @@
 """
 TubeArchivist remote downscale worker.
 
-Standalone sister app for a machine with a fast hardware encoder (e.g. an
-RTX 5090 running NVENC on Windows). Polls TA's worker API for the oldest
-queued downscale job, downloads the source, encodes it locally, uploads
-the result, and reports completion. TA is the single source of truth for
-the queue; this script keeps no state between loop iterations.
+Standalone sister app for a machine with a fast hardware encoder: polls
+TA's worker API for the oldest queued downscale job, downloads the
+source, encodes it, uploads the result, reports completion. TA holds all
+queue state; this script keeps none between iterations.
 
-Encoding is delegated to HandBrakeCLI rather than driving ffmpeg
-directly - HandBrake has solved HDR10 static metadata preservation
-through an NVENC re-encode in production for years (automatic mastering-
-display/content-light-level passthrough), which is meaningfully more
-battle-tested than this script hand-rolling ffmpeg color-metadata flags
-itself.
-
-Each job therefore runs three tools: HandBrakeCLI encodes to MKV,
-ffmpeg stream-copies that into the MP4 TA actually stores, and ffprobe
-checks what HDR metadata survived. The MKV-then-MP4 detour exists
-because HandBrake's NVENC metadata handling is documented for MKV while
-TubeArchivist is MP4-only outside this feature - see ENCODE_CONTAINER
-below, docs/downscale-hdr/README.md for the reasoning, and
-docs/remote-downscale/windows-host-setup.md for how to verify it on
-real hardware.
-
-Third-party Python dependency: requests. External binaries this script
-shells out to: HandBrakeCLI (encode), ffmpeg (remux), ffprobe (probe).
+Encoding goes through HandBrakeCLI rather than ffmpeg directly because
+HandBrake preserves HDR10 static metadata through an NVENC re-encode;
+ffmpeg then stream-copies that into the MP4 TA stores, and ffprobe
+checks what survived. Third-party Python dependency: requests.
 """
 
 import argparse
@@ -42,54 +27,34 @@ from urllib.parse import urljoin
 
 import requests
 
-CHUNK_SIZE = 4 * 1024 * 1024  # 4 MiB, source-download streaming reads
+CHUNK_SIZE = 4 * 1024 * 1024  # 4 MiB
 
-# "a couple of lease periods" (worker.md) - the server's own stale-lease
-# threshold is 60s (STALE_LEASE_SECONDS in downscale/src/worker.py); a
-# network call that keeps failing past this window is abandoned rather
-# than retried forever, since the server will have reaped the lease
-# anyway by the time this elapses.
+# two of the server's 60s stale-lease periods: a call still failing past
+# this window has lost the lease anyway
 NETWORK_RETRY_ABANDON_SECONDS = 120
 
 # a stream copy runs at disk speed, so this is a "something is wedged"
-# backstop rather than a real expectation - a 20 GB remux over a slow
-# disk still lands well inside it
+# backstop: a 20 GB remux over a slow disk still lands well inside it
 REMUX_TIMEOUT = 1800
 
-# HandBrake encodes to MKV, then the result is remuxed to MP4 before
-# upload. Both halves of that are deliberate:
-#
-# - MKV for the encode, because HandBrake writes HDR10 static metadata
-#   only at the container level when using NVENC (not into the
-#   bitstream), and MKV is the container that behavior is documented
-#   for - see docs/downscale-hdr/README.md.
-# - MP4 for what TA actually stores, because TA is MP4-only well beyond
-#   this feature: the filesystem scanner only sees *.mp4 (and deletes
-#   indexed videos it can't see), reindex rebuilds media_url with a
-#   hardcoded .mp4, subtitle paths are derived by string-replacing
-#   ".mp4", and metadata embedding goes through mutagen's MP4-specific
-#   API. Handing TA an .mkv means silent, permanent media loss.
-#
-# The remux is a stream copy, not a re-encode - no quality cost, seconds
-# of work. Whether it carries HandBrake's container-level HDR10 metadata
-# across is the one thing that can't be settled without a real NVENC
-# encode, so handle_job probes before and after and logs the answer.
+# HandBrake encodes to MKV because it writes HDR10 static metadata only
+# at the container level under NVENC, not into the bitstream, and MKV is
+# the container that behaviour is documented for. The result is remuxed
+# to MP4 because TA is MP4-only well beyond this feature - the
+# filesystem scanner only sees *.mp4, and deletes indexed videos it
+# can't see - so an .mkv means silent, permanent media loss. The remux
+# is a stream copy, so it costs no quality.
 ENCODE_CONTAINER = "mkv"
 OUTPUT_CONTAINER = "mp4"
 
 
 class WorkerAbandon(Exception):
     """
-    raised to unwind out of the current job and move on to the next
-    claim. Covers lease loss (409 conflict - "409 means abandon, never
-    retry" in worker.md), an explicit stop request (ack=True: the worker
-    owes the server a DELETE to acknowledge it), and a network outage
-    that outlasts the bounded retry window.
+    unwind out of the current job and claim the next one.
 
-    fail_message is set when the job can't succeed on a retry either -
-    TA rejected the request itself rather than failing to receive it -
-    and carries the reason to report so the job ends up failed instead
-    of silently reaped and requeued.
+    ack=True means the server is owed a DELETE acknowledging a stop
+    request. fail_message means the job should end failed with that
+    reason rather than be silently reaped and requeued.
     """
 
     def __init__(
@@ -106,29 +71,17 @@ class WorkerAbandon(Exception):
 
 class _UploadAborted(Exception):
     """
-    raised by _AbortableFile when the concurrent heartbeat has flagged a
-    stop/conflict mid-upload. Caught locally inside upload_result();
-    handle_job() checks pulse.aborted right after to unwind with the
-    correct reason/ack, so this class carries no information of its own.
+    carries no information of its own: pulse.aborted holds the reason
+    the upload was cut short.
     """
 
 
 def log(message: str) -> None:
-    """
-    console output is the only observability on the worker side (no
-    server-side visibility into a remote box) - one line per state
-    change, per worker.md
-    """
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] {message}", flush=True)
 
 
-# --------------------------------------------------------------------------
-# config
-
-
 def load_config(path: str) -> dict:
-    """load and validate worker.toml, filling in documented defaults"""
     with open(path, "rb") as config_file:
         config = tomllib.load(config_file)
 
@@ -156,12 +109,9 @@ def load_config(path: str) -> dict:
     encode.setdefault("quality", 30)
     encode.setdefault("extra_args", [])
 
-    # HandBrake happily takes a fractional -q (22.5 is idiomatic for
-    # x264/x265), but TA stores quality as an ES integer and its finish
-    # endpoint rejects anything else. Caught here rather than left to
-    # surface as a 400 after a job has already been downloaded and
-    # encoded - which is both a long wait for a config typo and a job
-    # that gets requeued and re-encoded on the same bad value.
+    # HandBrake takes a fractional -q, but TA stores quality as an
+    # integer and its finish endpoint rejects anything else - caught
+    # here rather than as a 400 after a whole job has been encoded.
     if isinstance(encode["quality"], bool) or not isinstance(
         encode["quality"], int
     ):
@@ -174,14 +124,9 @@ def load_config(path: str) -> dict:
 
 
 def build_session(config: dict) -> requests.Session:
-    """DRF token auth, same as any other TA API client"""
     session = requests.Session()
     session.headers["Authorization"] = f"Token {config['server']['token']}"
     return session
-
-
-# --------------------------------------------------------------------------
-# WSL / Windows path handling
 
 
 def _is_wsl() -> bool:
@@ -199,11 +144,8 @@ _IS_WSL = _is_wsl()
 
 def _win_path_arg(path: str) -> str:
     """
-    convert a POSIX path to the Windows-style path ffprobe.exe/
-    HandBrakeCLI.exe expect, when this script runs under WSL invoking
-    Windows binaries directly - see worker.md "Windows/WSL specifics". A
-    no-op under native Windows Python, where paths are already
-    Windows-style.
+    the .exe binaries need a Windows-style path when called from WSL; a
+    no-op under native Windows Python, where paths already are one.
     """
     if not _IS_WSL:
         return path
@@ -215,17 +157,12 @@ def _win_path_arg(path: str) -> str:
 
 def _sibling_binary(ffmpeg_path: str, name: str) -> str:
     """
-    derive ffprobe's path from the configured ffmpeg_path by swapping the
-    binary name, keeping the same directory/extension - gyan.dev and
-    BtbN Windows builds ship both side by side. Override via
-    encode.ffprobe_path in worker.toml if that assumption doesn't hold.
+    assumes ffmpeg and ffprobe sit side by side, as the common Windows
+    builds ship them; override with encode.ffprobe_path otherwise.
 
-    ffmpeg_path may be a Windows-style path ("C:\\ffmpeg\\bin\\ffmpeg.exe")
-    even when this script runs under WSL's POSIX Python, where
-    os.path.split only recognizes "/" - splitting on that alone would
-    treat the whole backslash-separated string as one filename and
-    replace "ffmpeg" everywhere in it, not just the basename. Split on
-    whichever separator actually appears last instead.
+    Splits on the last "/" or "\\" because ffmpeg_path may be a Windows
+    path under WSL's POSIX Python, where os.path.split recognizes only
+    "/" and would replace "ffmpeg" throughout one long filename.
     """
     split_at = max(ffmpeg_path.rfind("/"), ffmpeg_path.rfind("\\")) + 1
     directory, filename = ffmpeg_path[:split_at], ffmpeg_path[split_at:]
@@ -233,24 +170,13 @@ def _sibling_binary(ffmpeg_path: str, name: str) -> str:
 
 
 def _ffprobe_path(config: dict) -> str:
-    """
-    ffprobe lives next to ffmpeg in the standard Windows builds, so its
-    path is derived from ffmpeg_path unless overridden. Both binaries
-    are genuinely used: ffmpeg for the MKV->MP4 remux, ffprobe for HDR
-    metadata probing. Neither does any encoding - that's HandBrakeCLI.
-    """
     return config["encode"].get("ffprobe_path") or _sibling_binary(
         config["encode"]["ffmpeg_path"], "ffprobe"
     )
 
 
-# --------------------------------------------------------------------------
-# source probing (ffprobe)
-
-
-# side_data_type strings ffprobe reports for HDR10 static metadata -
-# stable, human-readable labels (not a numeric enum) across ffprobe
-# versions
+# ffprobe reports these as stable human-readable labels, not a numeric
+# enum
 HDR_STATIC_METADATA_SIDE_DATA_TYPES = {
     "Mastering display metadata",
     "Content light level metadata",
@@ -259,27 +185,14 @@ HDR_STATIC_METADATA_SIDE_DATA_TYPES = {
 
 def probe_hdr_static_metadata(config: dict, path: str) -> set[str]:
     """
-    the HDR10 static metadata types (mastering display colour volume,
-    content light level) present on a file's first video stream, as a
-    set - empty when there are none, or when the probe itself failed
-    (an unreadable value isn't evidence of absence, but it isn't
-    evidence of presence either, and this only drives logging).
+    the types on the first video stream; empty means none present *or*
+    the probe failed, which only drives logging either way.
 
-    Checks stream *and* frame side data, because the two carry the
-    metadata in different places and ffprobe reports them separately:
-
-    - written into container elements (what HandBrake does for NVENC),
-      ffprobe surfaces it as stream-level side data
-    - written into the bitstream as SEI (what software encoders like
-      x265 and SVT-AV1 do), it appears only as frame-level side data
-
-    Checking -show_streams alone - which this did originally - silently
-    misses every SEI-carried source, i.e. most HDR that wasn't produced
-    by a hardware encoder. Verified both ways against real files; see
-    docs/downscale-hdr/README.md.
-
-    -read_intervals %+#1 limits frame parsing to the first frame, so
-    this stays cheap on a multi-GB input.
+    Stream and frame side data both: container-level metadata (what
+    HandBrake writes under NVENC) is reported per stream, while SEI in
+    the bitstream (x265, SVT-AV1) is reported only per frame.
+    -read_intervals %+#1 parses one frame, so this stays cheap on a
+    multi-GB input.
     """
     cmd = [
         _ffprobe_path(config),
@@ -315,28 +228,15 @@ def probe_hdr_static_metadata(config: dict, path: str) -> set[str]:
     return found
 
 
-# --------------------------------------------------------------------------
-# remux (ffmpeg)
-
-
 def build_remux_cmd(
     config: dict, encoded_path: str, out_path: str
 ) -> list[str]:
     """
-    build the ffmpeg argv that rewraps HandBrake's MKV as MP4.
-
-    -c copy makes this a stream copy: the encoded bitstream is written
-    through untouched, so there is no second generation of quality loss
-    and no GPU work - only the container changes.
-
-    -map 0:v:0 -map 0:a? takes the video stream and any audio, and
-    deliberately leaves subtitle streams behind: MKV accepts subtitle
-    codecs MP4 has no place for, which would fail the copy outright. TA
-    keeps subtitles as sidecar .vtt files rather than muxed-in streams,
-    so there is nothing to lose here.
-
-    +faststart moves the moov atom to the front, which is what lets TA's
-    player start playback before the whole file has been fetched.
+    -c copy is a stream copy: only the container changes, so there is no
+    second generation of loss. -map 0:v:0 -map 0:a? drops subtitles,
+    which MKV accepts in codecs MP4 has no place for; TA keeps them as
+    sidecar .vtt anyway. +faststart puts the moov atom first so playback
+    can start before the whole file has been fetched.
     """
     return [
         config["encode"]["ffmpeg_path"],
@@ -360,11 +260,7 @@ def build_remux_cmd(
 def run_remux(
     config: dict, encoded_path: str, out_path: str
 ) -> tuple[bool, str]:
-    """
-    run the remux, returning (ok, error_output). A stream copy is fast
-    but not instant on a multi-GB file, so callers keep a heartbeat
-    running across it - long enough to lose a lease otherwise.
-    """
+    """returns (ok, error_output)"""
     cmd = build_remux_cmd(config, encoded_path, out_path)
     log(f"remuxing: {shlex.join(cmd)}")
     try:
@@ -387,16 +283,9 @@ def log_hdr_metadata_outcome(
     config: dict, youtube_id: str, encoded_path: str, out_path: str
 ) -> None:
     """
-    report whether the remux carried HDR10 static metadata across.
-
-    This is the one part of the pipeline that couldn't be settled by
-    reading documentation: HandBrake writes the metadata into the MKV
-    container for NVENC, and whether ffmpeg reproduces it as MP4
-    mdcv/clli boxes on a stream copy is a question about a specific
-    ffmpeg build and a specific encoder. Rather than assume either way,
-    probe both files and say what actually happened - so the answer
-    shows up in the worker's own log on the first real HDR job instead
-    of being discovered later as washed-out playback.
+    whether a stream copy reproduces HandBrake's container-level HDR10
+    metadata as MP4 mdcv/clli boxes depends on the ffmpeg build and the
+    encoder, so probe both files rather than assume.
     """
     encoded_hdr = probe_hdr_static_metadata(config, encoded_path)
     if not encoded_hdr:
@@ -417,28 +306,18 @@ def log_hdr_metadata_outcome(
     )
 
 
-# --------------------------------------------------------------------------
-# HandBrakeCLI
-
-
 def build_handbrake_cmd(
     config: dict, src_path: str, out_path: str, target_height: int
 ) -> list[str]:
     """
-    build the HandBrakeCLI argv. --non-anamorphic + only --height set is
-    HandBrake's equivalent of ffmpeg's scale=-2:H - auto-computed width
-    preserving aspect ratio, square pixels.
+    --non-anamorphic with only --height set is HandBrake's scale=-2:H:
+    it forces 1:1 pixels, which is what makes an unset --width
+    auto-compute proportionally instead of keeping the source's.
 
-    NOT --keep-display-aspect: that flag only takes effect under
-    --custom-anamorphic (see `HandBrakeCLI -h`) and is a silent no-op
-    otherwise. Confirmed on real hardware 2026-08-14: --height 720
-    --keep-display-aspect alone left storage width at the source's
-    (3840 on a 4K source) and faked the display size via a 1:3 pixel
-    aspect ratio instead of actually downscaling - every job encoded
-    before this fix produced anamorphic output at ~3x the intended
-    pixel count, not a real resize. --non-anamorphic forces 1:1 pixels,
-    which is what makes an unset --width actually auto-compute a
-    proportional value instead of defaulting to the source's.
+    NOT --keep-display-aspect: that only takes effect under
+    --custom-anamorphic, and alone it left storage width at the
+    source's 3840 and faked the display size with a 1:3 pixel aspect
+    ratio instead of downscaling.
     """
     encode = config["encode"]
     cmd = [
@@ -465,10 +344,7 @@ def build_handbrake_cmd(
 
 # HandBrakeCLI's console progress line, e.g.:
 #   "Encoding: task 1 of 1, 45.23 % (123.45 fps, avg 120.00 fps, ETA ...)"
-# Not verified against a live run in this environment - if the actual
-# installed version's wording differs, progress just stays at 0 (see
-# _read_handbrake_output's docstring), it doesn't break the encode
-# itself. Worth confirming against real output early on.
+# different wording just leaves progress at 0
 _HANDBRAKE_PROGRESS_RE = re.compile(r"task \d+ of \d+, (\d+(?:\.\d+)?)\s*%")
 
 
@@ -476,17 +352,13 @@ def _read_handbrake_output(
     proc: subprocess.Popen, progress_state: dict, tail: list[str]
 ) -> None:
     """
-    background reader for HandBrakeCLI's combined stdout+stderr (merged
-    via stderr=STDOUT in spawn_handbrake - HandBrakeCLI's exact split of
-    progress vs. logging between the two streams isn't reliably
-    documented enough to assume one over the other). Progress is capped
-    at 0.99 - 1.0 is reserved for the upload/finish phase.
+    stdout and stderr are merged because HandBrakeCLI's split of
+    progress vs. logging between them isn't documented. Progress caps
+    at 0.99; 1.0 is reserved for the upload/finish phase.
 
-    Plain line iteration is enough even though CLI progress bars update
-    in place with \\r rather than a newline per update: the pipe is
-    opened in text mode, and universal-newlines translation turns a bare
-    \\r into \\n before the iterator sees it, so each in-place repaint
-    still arrives as its own line rather than one buffered blob at exit.
+    Line iteration is enough despite progress repainting in place with
+    \\r: the pipe is in text mode, and universal-newline translation
+    turns a bare \\r into \\n before the iterator sees it.
     """
     for line in proc.stdout:
         line = line.strip()
@@ -505,10 +377,8 @@ def _read_handbrake_output(
 
 def spawn_handbrake(cmd: list[str], progress_state: dict):
     """
-    start HandBrakeCLI and its output reader thread. progress_state is
-    the same dict a LeaseHeartbeat already running for this job reads
-    from (see handle_job) - the reader thread writes encode progress
-    into it directly rather than owning a separate one.
+    the reader thread writes encode progress into progress_state, which
+    the job's LeaseHeartbeat reads from concurrently.
     """
     proc = subprocess.Popen(  # pylint: disable=consider-using-with
         cmd,
@@ -525,17 +395,12 @@ def spawn_handbrake(cmd: list[str], progress_state: dict):
     return proc, output_tail
 
 
-# --------------------------------------------------------------------------
-# TA API calls
-
-
 def _permanent_http_status(exc: Exception) -> int | None:
     """
-    the status code if exc is an HTTP error the server will keep
-    returning for the same request, else None. 408 and 429 are the two
-    4xx that explicitly mean "try again", so they stay retryable, as
-    does every 5xx. 409 never reaches here - each caller checks for it
-    before raise_for_status and raises WorkerAbandon itself.
+    the status code when the server will keep returning the same
+    rejection, else None. 408 and 429 mean "try again", so they stay
+    retryable along with every 5xx. 409 never arrives here - it is
+    checked for before raise_for_status.
     """
     response = getattr(exc, "response", None)
     if response is None:
@@ -550,10 +415,8 @@ def _permanent_http_status(exc: Exception) -> int | None:
 
 def _http_error_detail(exc: Exception, status: int) -> str:
     """
-    status plus whatever the server said about it - DRF puts the actual
-    validation error in the body ({"quality": ["A valid integer is
-    required."]}), which is the only thing that makes a rejection
-    diagnosable from the TA side afterwards
+    DRF puts the actual validation error in the response body, which is
+    the only thing that makes a rejection diagnosable afterwards
     """
     response = getattr(exc, "response", None)
     body = ""
@@ -568,17 +431,10 @@ def _http_error_detail(exc: Exception, status: int) -> str:
 
 def _call_with_backoff(fn, description: str):
     """
-    retry fn() with exponential backoff for up to
-    NETWORK_RETRY_ABANDON_SECONDS on a network blip
-    (requests.RequestException) before giving up with WorkerAbandon -
-    "network blips != job failure" in worker.md. fn() raising anything
-    else (WorkerAbandon for a 409, in particular) is not a network blip
-    and passes straight through unretried.
-
-    A 4xx other than 409 is the server rejecting the request itself, not
-    a blip: retrying an identical payload can only produce an identical
-    rejection, so it abandons immediately rather than burning the full
-    retry window first.
+    only requests.RequestException is retried; anything else, a 409's
+    WorkerAbandon in particular, passes straight through. A 4xx other
+    than 409 is a rejection of the request itself, so it abandons at
+    once rather than burning the retry window on an identical payload.
     """
     delay = 1.0
     deadline = time.monotonic() + NETWORK_RETRY_ABANDON_SECONDS
@@ -603,9 +459,8 @@ def _call_with_backoff(fn, description: str):
 
 def claim(session, base_url, worker_name, encoders) -> dict | None:
     """
-    claim the oldest claimable job, or None if there's nothing to claim
-    or the request itself failed - either way just means "try again next
-    poll", no lease is held yet so there's nothing to abandon
+    None means nothing to claim *or* the request failed: no lease is
+    held either way, so there is nothing to abandon
     """
     url = urljoin(base_url, "/api/downscale/worker/claim/")
     body = {"worker": worker_name, "encoders": encoders}
@@ -617,29 +472,17 @@ def claim(session, base_url, worker_name, encoders) -> dict | None:
         return resp.json()
     except requests.RequestException as exc:
         # HTTPError and JSONDecodeError are both RequestException
-        # subclasses, so an error status or a garbled body is caught
-        # here too - claim runs outside main()'s per-job try/except, so
-        # anything escaping it takes the whole worker process down
-        # rather than costing one poll (worker.md, "a single job's
-        # failure never crashes the worker loop")
+        # subclasses, so a bad status or a garbled body lands here too.
+        # Nothing may escape: this runs outside the per-job handler.
         log(f"claim failed: {exc}")
         return None
 
 
 def download_source(session, base_url, job, dest_path) -> None:
     """
-    GET the source file. source_url is TA's plain nginx-served static
-    path (/youtube/...), not a job-scoped API endpoint - Django's
-    FileResponse over the ASGI/uvicorn worker pool was found to retain
-    the full file size in that worker process's memory for as long as
-    it ran, with no such growth when nginx serves the same bytes
-    directly. No ownership check happens here as a result (the old
-    job-scoped endpoint's 409-on-conflict is gone with it), but that
-    was never a real access boundary - the same file is already
-    reachable by any authenticated user through the normal download
-    path regardless of job state. Auth is still required (nginx's
-    auth_request), carried by the session's Authorization header same
-    as every other call.
+    source_url is a plain nginx-served static path, not a job-scoped
+    API endpoint, so nothing here checks job ownership and no 409 can
+    come back. Auth is still required, via the session header.
     """
     url = urljoin(base_url, job["source_url"])
 
@@ -674,14 +517,11 @@ def _post_heartbeat(
 
 class LeaseHeartbeat:
     """
-    background thread that renews a claimed job's lease at a fixed
-    cadence while the main thread is busy encoding or uploading.
-    Encoding and upload/finish can each run far longer than
-    heartbeat_interval, so without this the server's stale-lease reaper
-    could reclaim a job that is still very much in progress - see
-    worker.md "Rules that make this robust". The main thread polls
-    .aborted rather than being interrupted, since it may be blocked in a
-    subprocess wait or a streaming upload read.
+    renews a claimed job's lease while the main thread encodes or
+    uploads, either of which outlasts heartbeat_interval and would let
+    the server's reaper reclaim a job still in progress. The main
+    thread polls .aborted rather than being interrupted, since it may
+    be blocked in a subprocess wait or a streaming upload read.
     """
 
     def __init__(
@@ -702,7 +542,6 @@ class LeaseHeartbeat:
         self._thread.start()
 
     def stop(self) -> None:
-        """ask the thread to exit once the job is done with it"""
         self._stop_event.set()
         self._thread.join(timeout=self._interval + 5)
 
@@ -722,13 +561,10 @@ class LeaseHeartbeat:
                     self._progress_fn(),
                 )
             except requests.RequestException as exc:
-                # same rule as _call_with_backoff, which this path
-                # doesn't share: a refused request won't start being
-                # accepted, so don't spend the whole retry window on it.
-                # No fail_message - this kills a partial encode with no
-                # result to report, and a heartbeat being refused points
-                # at a worker-wide problem (auth, config) rather than
-                # anything wrong with this particular job, so letting it
+                # a refused request won't start being accepted, so
+                # don't spend the whole retry window on it. No
+                # fail_message: a refused heartbeat points at a
+                # worker-wide problem, not at this job, so letting it
                 # requeue is right.
                 status = _permanent_http_status(exc)
                 if status:
@@ -757,13 +593,10 @@ class LeaseHeartbeat:
 
 class _AbortableFile:
     """
-    file-like wrapper read by requests during PUT result/ - sets
-    Content-Length via __len__ (a plain, non-chunked upload; a WSGI
-    server can't be assumed to support chunked request bodies) while
-    still checking the concurrent heartbeat on every read() call, so a
-    cancel or lease loss detected mid-upload aborts the transfer in
-    flight rather than only being noticed after the whole file lands -
-    see worker.md's rationale for heartbeating through this phase.
+    __len__ sets Content-Length, keeping this a non-chunked upload: a
+    WSGI server can't be assumed to accept a chunked request body.
+    read() checks the concurrent heartbeat, so a cancel or lease loss
+    aborts the transfer in flight instead of after the file lands.
     """
 
     def __init__(self, path: str, pulse: LeaseHeartbeat):
@@ -787,11 +620,8 @@ def upload_result(
     session, base_url, worker_name, job_id, path, pulse: LeaseHeartbeat
 ) -> None:
     """
-    PUT the encoded result. Ownership is re-checked server-side
-    immediately before the rename regardless of what this function
-    detects, so an imperfect local abort is a responsiveness concern for
-    cancel, not a correctness one - see ta-server.md's PUT result/
-    section.
+    the server re-checks ownership immediately before its rename, so an
+    imperfect local abort costs cancel responsiveness, not correctness.
     """
     url = urljoin(base_url, f"/api/downscale/worker/jobs/{job_id}/result/")
 
@@ -816,7 +646,7 @@ def upload_result(
     try:
         _call_with_backoff(_attempt, f"upload result for job {job_id}")
     except _UploadAborted:
-        pass  # pulse already recorded why; handle_job checks pulse.aborted
+        pass  # the caller checks pulse.aborted, which holds the reason
 
 
 def send_finish(
@@ -831,17 +661,12 @@ def send_finish(
     container,
 ) -> None:
     """
-    POST finish, reporting what was actually run. The server's field is
-    still named ffmpeg_args (API contract, unchanged) even though this
-    worker's argv is a HandBrakeCLI command now, not ffmpeg's - it's
-    documented as a provenance record of the actual encode command, not
-    specifically an ffmpeg one (ta-server.md).
+    the server's ffmpeg_args field holds whatever encode command
+    actually ran - a HandBrakeCLI one here.
 
-    container is the bare extension of what was actually produced (mkv
-    here). TA fixes a job's tmp_file_path to .mp4 when it's enqueued,
-    long before it knows a remote worker will take it, so without this
-    the server would keep calling the uploaded file .mp4 no matter what
-    is really in it - see worker.md's "Output container".
+    container is the bare extension actually produced. TA fixes a job's
+    tmp_file_path to .mp4 at enqueue time, so without this the server
+    keeps calling the uploaded file .mp4 whatever is really in it.
     """
     url = urljoin(base_url, f"/api/downscale/worker/jobs/{job_id}/finish/")
 
@@ -867,9 +692,8 @@ def send_finish(
 
 def report_fail(session, base_url, worker_name, job_id, message) -> None:
     """
-    POST fail, best-effort - if this itself can't get through, there's
-    nothing more useful to do than log and move on; the job is left
-    running server-side until the reaper eventually requeues it
+    best-effort: if this can't get through, the job is left running
+    server-side until the reaper requeues it
     """
     url = urljoin(base_url, f"/api/downscale/worker/jobs/{job_id}/fail/")
 
@@ -893,23 +717,12 @@ def report_permanent_failure(
     session, base_url, worker_name, job_id, message
 ) -> None:
     """
-    mark a job failed after TA rejected one of its requests outright.
+    a request TA rejected will be rejected identically next time, so
+    without this the reaper requeues the job and the same video
+    re-encodes into the same rejection forever, at full GPU load.
 
-    Without this the worker just stops touching the job, its lease goes
-    stale, and the reaper requeues it - so the next claim re-downloads
-    and re-encodes the same video into the same rejection, forever, at
-    full GPU load. A request TA refuses (a bad quality type, a payload
-    it won't validate) will be refused identically next time, so the
-    honest end state is failed-with-a-reason, which also surfaces the
-    server's own error text in the queue UI.
-
-    Guarded rather than trusting: report_fail is best-effort and
-    swallows its own WorkerAbandon already (logging that it gave up),
-    but this runs from inside the main loop's exception handler, where
-    anything that did escape would take the worker process down - the
-    fail call gets rejected too when the original rejection was an auth
-    error. Falling through to the reaper is the pre-existing behavior,
-    so failing here is no worse than not trying.
+    The broad except is because this runs from inside the main loop's
+    own exception handler, where an escape would kill the worker.
     """
     log(f"marking job {job_id} failed: {message}")
     try:
@@ -923,9 +736,8 @@ def report_permanent_failure(
 
 def try_delete(session, base_url, worker_name, job_id) -> None:
     """
-    best-effort acknowledgement of a stop request. No retry: if this
-    doesn't land, the reaper's stop_requested branch cleans up once the
-    lease goes stale - see worker.md's cancel handling.
+    best-effort: no retry, the server's reaper cleans up a cancelled
+    job once its lease goes stale.
     """
     url = urljoin(base_url, f"/api/downscale/worker/jobs/{job_id}/")
     try:
@@ -936,24 +748,13 @@ def try_delete(session, base_url, worker_name, job_id) -> None:
         log(f"could not delete/ack job {job_id}: {exc}")
 
 
-# --------------------------------------------------------------------------
-# temp files
-
-
 def sweep_temp_dir(temp_dir: str) -> None:
     """
-    crash-safe by construction: all state lives on the server, so on
-    startup any leftover file from a previous crash is just discarded.
-
-    temp_dir is expected to already be this worker's own subdirectory
-    (see main() - it's temp_dir/<worker name>, not the raw config
-    value), so this never touches another concurrently-running worker's
-    files even when multiple workers share the same configured parent
-    temp_dir. Per-file try/except is still worth it even so: a fresh
-    restart of this same worker can race its own just-exited process for
-    a file handle on Windows (see windows-host-setup.md §8) - log and
-    move on rather than crash startup over a file that'll just get
-    cleaned up next time.
+    all state lives on the server, so any leftover from a previous run
+    is discardable. temp_dir must already be this worker's own
+    subdirectory, so this never touches a concurrent worker's files. A
+    restart can still race its own just-exited process for a file
+    handle on Windows, hence the per-file try/except.
     """
     os.makedirs(temp_dir, exist_ok=True)
     removed = 0
@@ -973,13 +774,8 @@ def _job_paths(
     temp_dir: str, youtube_id: str, target_height: int
 ) -> tuple[str, str, str]:
     """
-    the (source, encoded, output) temp paths for a job - single source
-    of truth, so handle_job and cleanup_job_temp can't disagree about
-    what a job leaves lying around. Getting that wrong doesn't fail
-    loudly, it just silently strands multi-GB files on every job.
-
-    Three files, not two: HandBrake's MKV and the remuxed MP4 coexist
-    on disk until cleanup, so temp_dir needs room for source + encode +
+    three files, not two: the MKV encode and the remuxed MP4 coexist on
+    disk until cleanup, so temp_dir needs room for source + encode +
     remux at once.
     """
     src_path = os.path.join(temp_dir, f"{youtube_id}.src")
@@ -989,11 +785,8 @@ def _job_paths(
 
 def cleanup_job_temp(temp_dir: str, youtube_id: str, target_height: int):
     """
-    Best-effort: a file HandBrake/ffmpeg still holds open raises
-    PermissionError on Windows (see windows-host-setup.md §8). This runs
-    from the main loop's `finally`, so letting that propagate would kill
-    the whole worker over one leftover temp file - log and move on;
-    sweep_temp_dir() picks up anything left behind on the next startup.
+    best-effort: on Windows a file HandBrake or ffmpeg still holds open
+    raises PermissionError, and the next startup sweep picks it up.
     """
     for path in _job_paths(temp_dir, youtube_id, target_height):
         try:
@@ -1001,10 +794,6 @@ def cleanup_job_temp(temp_dir: str, youtube_id: str, target_height: int):
                 os.remove(path)
         except OSError as exc:
             log(f"cleanup failed for {path}, leaving for next sweep: {exc}")
-
-
-# --------------------------------------------------------------------------
-# one job
 
 
 def deliver_result(
@@ -1019,14 +808,8 @@ def deliver_result(
     progress_state: dict,
 ) -> None:
     """
-    everything after a successful encode: remux to MP4, upload, finish.
-
-    Shares the single heartbeat pulse handle_job started right after
-    claim, rather than starting a fresh one here - see handle_job's
-    docstring for why that pulse now spans the whole job instead of
-    just this tail end. progress_state is bumped to 1.0 (encoding
-    itself only ever reports up to 0.99) since nothing after the encode
-    has progress ticks of its own.
+    progress_state is bumped to 1.0 - the encode caps itself at 0.99 -
+    since nothing after it has progress ticks of its own.
     """
     worker_name = config["worker"]["name"]
     job_id = job["id"]
@@ -1068,21 +851,13 @@ def deliver_result(
 
 def handle_job(job: dict, session, base_url: str, config: dict) -> None:
     """
-    run one claimed job through encode -> upload -> finish. Returns
-    normally on success; raises WorkerAbandon on any cancel/conflict/
-    network-exhaustion path. A local encode failure is reported via
-    fail() and also returns normally - it's a completed job outcome, not
-    an abandon.
+    a local encode failure is reported and returns normally - it is a
+    completed job outcome, not an abandon.
 
-    A single heartbeat pulse spans the whole job, started right here
-    rather than only once encoding begins. download_source() and
-    probe_hdr_static_metadata() together can take longer than the
-    server's 60s stale-lease window on a large source or a slow link -
-    with no heartbeat running yet during that stretch, the lease was
-    getting reaped before this worker ever sent its first one, so the
-    first heartbeat (once encoding did start) came back a 409 and
-    abandoned a job that had barely begun. See STALE_LEASE_SECONDS in
-    downscale/src/worker.py.
+    The heartbeat starts before the download, not at the encode:
+    download plus probe can outlast the server's 60s stale-lease window
+    on a large source, and the lease was getting reaped before the
+    first heartbeat ever went out.
     """
     worker_name = config["worker"]["name"]
     heartbeat_interval = config["worker"]["heartbeat_interval"]
@@ -1153,10 +928,6 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
         pulse.stop()
 
 
-# --------------------------------------------------------------------------
-# main loop
-
-
 def main() -> None:
     default_config = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "worker.toml"
@@ -1172,11 +943,8 @@ def main() -> None:
     args = parser.parse_args()
 
     config = load_config(args.config)
-    # Own subdirectory per worker name, so two workers sharing the same
-    # configured temp_dir never sweep or overwrite each other's files -
-    # discovered 2026-08-14 running two workers concurrently: a restart
-    # of one crashed trying to sweep a file the other had open
-    # mid-encode (see sweep_temp_dir's docstring).
+    # own subdirectory per worker, so two workers sharing a configured
+    # temp_dir never sweep or overwrite each other's files
     config["worker"]["temp_dir"] = os.path.join(
         config["worker"]["temp_dir"], config["worker"]["name"]
     )
@@ -1213,9 +981,8 @@ def main() -> None:
                     exc.fail_message,
                 )
         except Exception as exc:  # pylint: disable=broad-except
-            # a single job's failure must never kill the worker loop -
-            # crash-safe by construction (worker.md): the server reaps
-            # the stale lease and requeues the job either way
+            # a single job's failure must never kill the worker loop:
+            # the server reaps the stale lease and requeues the job
             log(f"unexpected error on {youtube_id}, abandoning: {exc}")
         finally:
             cleanup_job_temp(temp_dir, youtube_id, job["target_height"])

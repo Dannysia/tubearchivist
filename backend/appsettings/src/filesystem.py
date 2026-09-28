@@ -112,33 +112,23 @@ class Scanner:
                 break
 
     def _index_one(self, file_path: str, youtube_id: str) -> bool:
-        """index one video, True when the caller should pace afterwards
-
-        False for the prefer_local path, which reads the file on disk
-        and never reaches youtube. Also False when a remote index fails
-        and the embedded metadata rescues it - that one did reach
-        youtube first, so it arguably should pace, but mainline skipped
-        the wait there too and changing it is its own decision.
-        """
+        """True when the caller should pace, not whether indexing worked"""
         if self.prefer_local:
-            # try index from embed
             if self._index_from_embed(file_path, youtube_id):
                 return False
 
         try:
-            # try index from remote
             index_new_video(youtube_id)
             self._cleanup(youtube_id)
             Comments(youtube_id, task=self.task).build_json(upload=True)
             YoutubeVideo(youtube_id).embed_metadata()
         except ValueError:
-            # fallback from index from embed
             if self._index_from_embed(file_path, youtube_id):
+                # not paced, though this did reach youtube first
                 return False
 
             if not self.ignore_error:
-                # re-raise: a fresh bare ValueError renders as
-                # "Task failed: " in the ui, saying nothing at all
+                # a fresh bare ValueError renders as "Task failed: "
                 raise
 
             self._notify_error(youtube_id)
@@ -146,11 +136,7 @@ class Scanner:
         return True
 
     def _wait_for_next(self, total, youtube_id, idx) -> bool:
-        """pace the next youtube request, naming it when there is one
-
-        Only reached when _index_one asks for it; see its docstring for
-        which paths skip the wait and why.
-        """
+        """False when a stop request cut the wait short"""
         if not self.task or idx + 1 == total:
             return countdown_sleep(self.config, self.task)
 

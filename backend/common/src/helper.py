@@ -41,18 +41,15 @@ def randomizor(length: int) -> str:
     return "".join(random.choice(pool) for i in range(length))
 
 
-# at 1 the randomised window is randrange(int(0.5), int(1.5)) -
-# randrange(0, 1) - which is always 0, so a user who set 1 to be gentle
-# got no pacing at all and no warning. 2, 3 and 4 do pace, just too
-# little to be worth the setting: 4 spreads requests over 2-5s. 5 is
-# where the range is wide enough to be doing something.
-# the serializer rejects anything lower; this catches configs stored
-# before it did.
+# below 5 the randomised window is too narrow to pace at all: at 1 it
+# is randrange(int(0.5), int(1.5)), i.e. randrange(0, 1), always 0, and
+# 4 only spreads requests over 2-5s. The serializer rejects anything
+# lower, this catches configs stored before it did.
 MIN_SLEEP_INTERVAL = 5
 
 
 def rand_sleep_secs(config) -> int:
-    """randomized sleep duration based on config, 0 when disabled"""
+    """0 when pacing is disabled"""
     sleep_config = config["downloads"].get("sleep_interval")
     if not sleep_config:
         return 0
@@ -63,7 +60,6 @@ def rand_sleep_secs(config) -> int:
 
 
 def rand_sleep(config) -> None:
-    """randomized sleep based on config"""
     secs = rand_sleep_secs(config)
     if secs:
         sleep(secs)
@@ -78,21 +74,12 @@ def countdown_sleep(config, task, notify=None, label: str = "") -> bool:
     """
     sleep the configured interval, staying responsive to a stop request
 
-    These loops spend most of a long run asleep. Without a countdown
-    whichever message was written last stays on screen for the whole
-    interval and the loop reads as stalled.
-
-    notify takes the countdown line alone. Where the sleep runs before
+    notify takes the countdown line alone: where the sleep runs before
     the item's own message the label names what the wait is for
-    ("download"), and where it runs after the item is done the label
-    names what comes next ("next URL"). Call sites decide whether that
-    line replaces their status line or is appended below it.
-
-    Pass no notify for the waits that have nothing to narrate - the one
-    after the last item of a queue, where naming a next item would be a
-    lie. Those still have to be interruptible: this is the wait a stop
-    request most likely lands in, so polling is the whole point and the
-    countdown line is the optional part.
+    ("download"), and where it runs after the item is done it names what
+    comes next ("next URL"). Pass no notify for a wait with nothing to
+    narrate - the one after the last item of a queue - which still has
+    to be interruptible.
 
     Returns False when a stop request cut the wait short. Callers must
     act on that and leave the loop, propagating it all the way up: the
@@ -107,8 +94,7 @@ def countdown_sleep(config, task, notify=None, label: str = "") -> bool:
     while True:
         # before the length check, not inside it: with pacing disabled
         # there is no wait to step through, and this is the only place
-        # most of these loops ever look for a stop. Skipping the poll
-        # made Stop inert for exactly the users who turned pacing off.
+        # most of these loops ever look for a stop
         if task.is_stopped():
             return False
 
@@ -223,7 +209,6 @@ def deep_merge(target: dict, source: dict) -> None:
 def clear_dl_cache(
     cache_dir: str, subfolder: str = "download", keep: set[str] | None = None
 ) -> int:
-    """clear leftover files from cache subfolder, except any name in keep"""
     print(f"clear {subfolder} cache")
     sub_cache_dir = os.path.join(cache_dir, subfolder)
     leftover_files = ignore_filelist(os.listdir(sub_cache_dir))
@@ -285,10 +270,7 @@ def get_duration_sec(file_path: str) -> int:
 
 
 def get_duration_str(seconds: int | float | None) -> str:
-    """Return a human-readable duration string from seconds.
-
-    None means unknown duration, zero is a real duration of zero.
-    """
+    """None means unknown duration, zero is a real duration of zero"""
     if seconds is None:
         return "NA"
 

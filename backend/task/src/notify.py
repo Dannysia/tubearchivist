@@ -17,12 +17,9 @@ class Notifications:
 
     def send(self, task_id: str, task_title: str) -> tuple[bool, str] | None:
         """
-        send notifications
-
-        Returns (sent, detail) describing a dispatch that was actually
-        attempted, or None when there was nothing to send. The caller
-        logs the result, so this swallows apprise failures rather than
-        letting them surface as the task itself having failed.
+        returns (sent, detail) for a dispatch actually attempted, or
+        None when there was nothing to send. Apprise failures are
+        swallowed rather than failing the task itself.
         """
         # pylint: disable=broad-exception-caught
         apobj = apprise.Apprise()
@@ -182,10 +179,9 @@ def get_all_notifications() -> dict[str, list[str]]:
             {
                 task_id: {
                     "urls": urls,
-                    # falls back to the raw name rather than raising:
-                    # this reads stored config, so it outlives the task
-                    # it names, and an entry nothing can identify is
-                    # also an entry nothing can delete
+                    # stored config outlives the task it names, so
+                    # fall back to the raw name: an entry nothing can
+                    # identify is also an entry nothing can delete
                     "title": get_task_config(task_id).get("title", task_id),
                 }
             }

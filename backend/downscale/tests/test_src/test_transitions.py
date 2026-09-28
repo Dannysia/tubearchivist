@@ -1,10 +1,3 @@
-"""the original -> new height count breakdown
-
-Shared by the global stats page and the channel about panel, so the two
-report the same pairs in the same order rather than each building their
-own agg.
-"""
-
 from downscale.src.constants import (
     TRANSITION_LIMIT,
     empty_transitions,
@@ -14,18 +7,11 @@ from downscale.src.constants import (
 
 
 def a_response(buckets=None, other=0):
-    """a multi_terms response as ES returns one"""
     return {"buckets": buckets or [], "sum_other_doc_count": other}
 
 
 class TestTransitionAgg:
-    """transition_agg"""
-
     def test_counts_the_pair_not_each_height(self):
-        """
-        a nested terms agg would need flattening back into pairs on the
-        way out - the pair is the thing being counted
-        """
         terms = transition_agg()["multi_terms"]["terms"]
 
         assert terms == [
@@ -46,8 +32,6 @@ class TestTransitionAgg:
 
 
 class TestParseTransitions:
-    """parse_transitions"""
-
     def test_splits_the_multi_terms_key_into_both_heights(self):
         """multi_terms keys arrive as a [original, new] list"""
         parsed = parse_transitions(
@@ -74,11 +58,7 @@ class TestParseTransitions:
         assert counts == [12, 5, 2]
 
     def test_reports_what_fell_outside_the_top_n(self):
-        """
-        taken from sum_other_doc_count rather than subtracting from a
-        separately queried total, so it stays exact under concurrent
-        writes
-        """
+        """sum_other_doc_count stays exact under concurrent writes"""
         parsed = parse_transitions(
             a_response([{"key": [2160, 1080], "doc_count": 12}], other=7)
         )
@@ -88,7 +68,7 @@ class TestParseTransitions:
     def test_handles_a_string_key(self):
         """
         ES can return a multi_terms key as a formatted string depending
-        on the field type, so don't hand the frontend a str height
+        on the field type
         """
         parsed = parse_transitions(
             a_response([{"key": ["2160", "1080"], "doc_count": 1}])
@@ -110,8 +90,6 @@ class TestParseTransitions:
 
 
 class TestEmptyTransitions:
-    """empty_transitions"""
-
     def test_matches_what_parsing_an_empty_agg_gives(self):
         """a channel with no videos must serialize the same shape"""
         assert empty_transitions() == parse_transitions(a_response())

@@ -1,8 +1,6 @@
 """
-tests for _finish_success() persisting the exact ffmpeg argv that
-produced the candidate file - the only unambiguous provenance record
-once encodes can come from heterogeneous encoders/hosts (see
-docs/remote-downscale)
+the ffmpeg argv is the only unambiguous provenance record once encodes
+can come from different encoders on different hosts
 """
 
 from unittest.mock import patch
@@ -24,7 +22,6 @@ def _make_runner():
 
 
 def test_finish_success_persists_shlex_joined_argv():
-    """the exact argv used for this encode is stored as ffmpeg_args"""
     runner = _make_runner()
 
     with patch("downscale.src.downscale._get_height", return_value=480), patch(
@@ -43,7 +40,6 @@ def test_finish_success_persists_shlex_joined_argv():
 
 
 def test_finish_success_with_no_cmd_stores_empty_string():
-    """defensive fallback if _finish_success is ever reached without cmd set"""
     runner = _make_runner()
     runner.cmd = None
 

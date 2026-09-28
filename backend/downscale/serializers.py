@@ -1,5 +1,3 @@
-"""downscale serializers"""
-
 # pylint: disable=abstract-method
 
 from common.serializers import PaginationSerializer
@@ -19,8 +17,7 @@ class DownscaleTransitionSerializer(serializers.Serializer):
     """serialize the downscale count breakdown"""
 
     transitions = DownscaleTransitionItemSerializer(many=True)
-    # downscaled videos outside the top N pairs, so the panel can say
-    # so rather than silently under-reporting the total
+    # downscaled videos outside the top N pairs
     other_count = serializers.IntegerField()
 
 
@@ -304,9 +301,8 @@ class DownscaleSavedBandsSerializer(serializers.Serializer):
     # downscaled videos whose encode came out larger
     grew = serializers.IntegerField()
     # downscaled videos no band could place, e.g. an original_size of 0
-    # where media_size was never indexed. Named the way the resolution
-    # breakdown names its own no-data bucket, and reported rather than
-    # dropped so the rows reconcile with the downscaled total
+    # where media_size was never indexed; reported rather than dropped
+    # so the rows reconcile with the downscaled total
     unknown = serializers.IntegerField()
 
 

@@ -1,12 +1,3 @@
-"""
-tests for _get_worker_name() - the worker-identity resolution shared by
-every worker-facing job-scoped endpoint. Everything else in
-worker_views.py is thin request/response glue over downscale.src.worker
-(tested directly in test_src/test_worker.py), matching this project's
-convention of exercising src/-layer logic rather than the Django view/
-HTTP layer itself (see test_views.py)
-"""
-
 from unittest.mock import MagicMock
 
 from downscale.worker_views import _get_worker_name

@@ -1,8 +1,4 @@
-"""test what happens at the point youtube calls a request a bot
-
-the rotate is a side effect on the way past. the abort that was already
-happening has to survive it, whatever the rotate does.
-"""
+"""the rotate is a side effect, and the abort has to survive it"""
 
 from types import SimpleNamespace
 
@@ -28,8 +24,6 @@ def no_sleep(monkeypatch):
 
 
 class TestOnBotBlock:
-    """the shared branch both download and extract now route through"""
-
     def test_rotates_then_aborts(self, monkeypatch, no_sleep):
         seen = []
         monkeypatch.setattr(
@@ -45,12 +39,8 @@ class TestOnBotBlock:
         assert seen == [{"downloads": {"auto_rotate_exit_node": True}}]
 
     def test_the_wait_can_see_a_stop_request(self, monkeypatch):
-        """a bot block is the moment a user goes and hits stop
-
-        The wait runs up to 1.5x the interval and used to be a plain
-        sleep, so the stop landed whenever it happened to finish. The
-        refusal changes nothing here - this aborts either way - but the
-        poll behind it is the point.
+        """a bot block is the moment a user hits stop, and the wait
+        behind it runs up to 1.5x the interval
         """
         seen = []
         monkeypatch.setattr(
@@ -94,8 +84,6 @@ class TestOnBotBlock:
 
 
 class TestBotMessages:
-    """the trigger itself, which this feature now hangs off"""
-
     def test_the_real_youtube_wording_is_matched(self):
         message = (
             "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not "

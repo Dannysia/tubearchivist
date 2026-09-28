@@ -67,11 +67,8 @@ class TaskManager:
             "task_id": task.request.id,
         }
         if existing.get("command"):
-            # preserve a STOP/KILL command across the task's own retries -
-            # init() runs again on every retry re-entry (e.g. a task
-            # waiting on a concurrency limit) and would otherwise silently
-            # overwrite a pending command before the task ever checks
-            # is_stopped()
+            # init() runs again on every retry re-entry, so a pending
+            # STOP/KILL has to survive it to be seen at all
             message["command"] = existing["command"]
         handler.set_key(task.request.id, message)
 

@@ -7,8 +7,7 @@ import loadArchiveMetadata from '../api/loader/loadArchiveMetadata';
 import { ChannelType } from '../pages/Channels';
 
 type ImportMetadataModalProps = {
-  // media files staged without metadata, offered as video id options so
-  // the id does not have to be retyped from the file name
+  // media files staged without metadata
   candidates: ImportFileType[];
   onClose: () => void;
   onCreated: () => void;
@@ -40,8 +39,7 @@ const EMPTY_FORM: FormState = {
   like_count: '',
 };
 
-// the fields the save insists on, in form order, for telling the user
-// what an Internet Archive capture did not cover
+// in form order, so the "still needed" list names fields in the order asked
 const REQUIRED_LABELS: { field: keyof FormState; label: string }[] = [
   { field: 'title', label: 'title' },
   { field: 'channel_id', label: 'channel ID' },
@@ -66,15 +64,10 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // the Internet Archive lookup keeps its own two messages: its result
-  // is about the form it just filled, not about the save
   const [looking, setLooking] = useState(false);
   const [lookupMessage, setLookupMessage] = useState('');
   const [lookupError, setLookupError] = useState('');
 
-  // picking an indexed channel is the common case and avoids retyping a
-  // 24 character id; a new one is only needed for a channel the archive
-  // has never seen
   const [channelMode, setChannelMode] = useState<ChannelMode>('existing');
   const [channelSearch, setChannelSearch] = useState('');
   const [channelResults, setChannelResults] = useState<ChannelType[]>([]);
@@ -93,8 +86,8 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
   useEffect(() => {
     if (channelMode !== 'existing') return;
 
-    // everything happens in the timer, including clearing: a state
-    // update in the effect body itself renders twice per keystroke
+    // clearing happens in the timer too: a state update in the effect body
+    // renders twice per keystroke
     const timer = setTimeout(async () => {
       const term = channelSearch.trim();
       if (!term) {
@@ -131,8 +124,7 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
 
   const setField = (field: keyof FormState, value: string) => {
     setForm(current => ({ ...current, [field]: value }));
-    // a lookup result is about the id it ran against, so it stops being
-    // true the moment that changes
+    // a lookup result is only true for the id it ran against
     if (field === 'video_id') {
       setLookupMessage('');
       setLookupError('');
@@ -154,11 +146,9 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
       }
 
       const found = response.data;
-      // only fill what the archive actually had, and never over
-      // something already typed in: a capture is a starting point, not
-      // a correction. The counts in particular come back null far more
-      // often than not, and String(undefined) would put the word
-      // "undefined" in a number input
+      // never fill over something already typed in. The counts usually come
+      // back null, and String(undefined) would put the word "undefined" in a
+      // number input
       const fill = (current: string, value: string | number | null | undefined) =>
         current || (value === null || value === undefined ? '' : String(value));
 
@@ -175,14 +165,11 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
         like_count: fill(current.like_count, found.like_count),
       });
 
-      // a functional update, so a field typed while the request was in
-      // flight is merged into rather than reverted. The message below
-      // reads a snapshot instead, which at worst names a field the user
-      // filled in during those few seconds
+      // functional update, so a field typed while the request was in flight
+      // is merged into rather than reverted
       let stale = false;
       setForm(current => {
-        // the id moved while this was in the air, so the answer is for
-        // a video the user is no longer filling in. Dropping it beats
+        // the id moved while this was in the air: dropping the answer beats
         // reverting the id and filling the form from the old video
         if (current.video_id.trim() !== videoId) {
           stale = true;
@@ -194,8 +181,9 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
 
       if (stale) return;
 
-      // a capture regularly has the title and nothing else, so say what
-      // is still needed rather than leave the user hunting for it
+      // a capture regularly has the title and nothing else, so say what is
+      // still needed. Reads the pre-update snapshot, so at worst it names a
+      // field that was typed in while the request was in flight
       const filled = merge(form);
       const stillEmpty = REQUIRED_LABELS.filter(({ field }) => !filled[field]).map(
         ({ label }) => label,
@@ -212,10 +200,7 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
     }
   };
 
-  // the backend validates all of this too, this only stops an obviously
-  // incomplete form costing a round trip
-  // driven by REQUIRED_LABELS so the save and the lookup's "still
-  // needed" list cannot drift apart
+  // the backend validates all of this too; this only saves a round trip
   const isComplete =
     form.video_id.length === 11 && REQUIRED_LABELS.every(({ field }) => !!form[field]);
 
@@ -258,8 +243,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
     <div
       className="import-modal-backdrop"
       onClick={event => {
-        // only a click on the backdrop itself, not one that bubbled up
-        // out of the form
         if (event.target === event.currentTarget) onClose();
       }}
     >

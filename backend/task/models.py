@@ -11,19 +11,17 @@ class CustomPeriodicTask(PeriodicTask):
 
     @property
     def schedule_parsed(self):
-        """parse schedule as a whole number in its interval unit"""
+        """a count in its interval unit, "legacy", or "" for none"""
         if self.interval_id:
             return str(int(self.interval.every))
 
         if self.crontab_id:
-            # legacy crontab schedule, not yet migrated to interval-based
             return "legacy"
 
         return ""
 
     @property
     def human_readable(self):
-        """human readable schedule description"""
         if self.interval_id:
             every = int(self.interval.every)
             unit = (

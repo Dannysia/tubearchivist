@@ -1,32 +1,23 @@
-"""
-Functionality:
-- recover metadata for a video YouTube has removed from the Wayback Machine
-- fills the generated info.json a manual import falls back to
-"""
+"""recover metadata for a removed video from the Wayback Machine"""
 
 from datetime import datetime
 
 from appsettings.src.manual import is_safe_channel_id, is_video_id
 from download.src.yt_dlp_base import YtWrap
 
-# yt-dlp's web.archive:youtube extractor. the prefix form lets it pick
-# the capture itself, so there is no snapshot timestamp to keep in step
-# with the video id
+# yt-dlp's web.archive:youtube extractor; the prefix form lets it pick
+# the capture, so there is no snapshot timestamp to keep in step
 ARCHIVE_PREFIX = "ytarchive:"
 
-# the caps ImportMetadataSerializer puts on these, applied here so what
-# comes back is always postable straight back to that endpoint
+# the caps ImportMetadataSerializer puts on these, so a result posts back
 MAX_DESCRIPTION = 50000
 MAX_TITLE = 500
 MAX_CHANNEL_NAME = 255
 
 # a capture of the video's own watch page carries at least one of these.
 # The wayback machine also holds captures of youtube's redirect and
-# "video unavailable" pages under the same watch url, and for a video
-# removed before its first capture those are all there is. They come
-# back with a page title and nothing else - "Broadcast Yourself." and
-# "YouTube" both measured live - so a title alone is not a hit. Taking
-# one would fill the form with a page title and index it as the video's
+# "video unavailable" pages under the same watch url, and those come
+# back with a page title and nothing else, so a title is not a hit.
 IDENTITY_FIELDS = (
     "channel_id",
     "uploader",
@@ -44,14 +35,11 @@ class WaybackMetadata:
         # metadata only, the media file is already in the import folder
         "skip_download": True,
         "noplaylist": True,
-        # the wayback video store and the page captures are indexed
-        # separately, and a watch page is regularly archived with no
-        # playable video behind it. that page is all this wants, so the
-        # missing formats must not read as the whole lookup failing
+        # a watch page is regularly archived with no playable video
+        # behind it, and that page is all this wants
         "ignore_no_formats_error": True,
-        # someone is sitting in front of this waiting on it, so keep it
-        # bounded. the cdx api is flaky enough that a retry or two still
-        # earns its place
+        # someone is waiting on this, so keep it bounded; the cdx api
+        # is flaky enough that a retry or two still earns its place
         "socket_timeout": 15,
         "retries": 2,
         "extractor_retries": 2,
@@ -62,14 +50,11 @@ class WaybackMetadata:
 
     def get(self) -> dict | None:
         """archived metadata, None when no capture had any"""
-        # the view checks this too, so a caller cannot reach yt-dlp with
-        # an unvalidated id by either route
         if not is_video_id(self.video_id):
             raise ValueError(f"{self.video_id}: not an 11 character video id")
 
-        # no config on purpose: this request goes to web.archive.org, and
-        # the youtube cookie and pot token have no business being sent
-        # anywhere but youtube
+        # no config on purpose: the youtube cookie and pot token must
+        # not be sent to web.archive.org
         response, error = YtWrap(self.OBS).extract(
             f"{ARCHIVE_PREFIX}{self.video_id}"
         )
@@ -84,11 +69,9 @@ class WaybackMetadata:
     def _build(self, response: dict) -> dict | None:
         """map a yt-dlp response onto the import metadata fields
 
-        fulltitle is the title as the extractor returned it, before
-        YoutubeDL substitutes a generic "<extractor> video #<id>" for a
-        missing one, so an empty one means no capture was readable at
-        all. A title on its own is not enough though - see
-        IDENTITY_FIELDS for the pages that also answer on this url.
+        fulltitle is the title before YoutubeDL substitutes a generic
+        "<extractor> video #<id>" for a missing one, so an empty one
+        means no capture was readable at all.
         """
         title = response.get("fulltitle")
         if not title:
@@ -106,9 +89,8 @@ class WaybackMetadata:
         return {
             "video_id": self.video_id,
             "title": title[:MAX_TITLE],
-            # channel_id becomes a directory name under the media root on
-            # import, so an id that could not be one is dropped rather
-            # than handed on for the user to paste into the form
+            # becomes a directory name under the media root on import,
+            # so an unusable id is dropped rather than handed on
             "channel_id": channel_id if is_safe_channel_id(channel_id) else "",
             "channel_name": (
                 response.get("uploader") or response.get("channel") or ""
@@ -139,8 +121,8 @@ class WaybackMetadata:
     def _thumbnail(response: dict) -> str:
         """best archived thumbnail url
 
-        the singular key is only promoted out of the list when there are
-        formats to go with it, and a page-only capture has none
+        yt-dlp promotes the singular key out of the list only when there
+        are formats, and a page-only capture has none
         """
         thumbnail = response.get("thumbnail")
         if thumbnail:

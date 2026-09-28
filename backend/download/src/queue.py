@@ -155,11 +155,11 @@ class PendingList(PendingIndex):
         return self.added
 
     def _wait_for_next(self, idx: int, total: int) -> bool:
-        """pace the next youtube request, naming it when there is one
+        """False when a stop cut the wait short
 
         At the last entry there is no next url to name, but the wait
-        still paces the next extraction queue entry - run_queue goes
-        straight on to it - and still has to be stoppable.
+        still paces the next extraction queue entry and still has to be
+        stoppable.
         """
         if not self.task or idx == total:
             return countdown_sleep(self.config, self.task)
@@ -172,7 +172,6 @@ class PendingList(PendingIndex):
         )
 
     def _notify(self, idx: int, total: int, waiting: str | None = None):
-        """send progress back to task"""
         message = [f"Extracting URL {idx}/{total}"]
         if waiting:
             message.append(waiting)
@@ -359,14 +358,9 @@ class PendingList(PendingIndex):
     def _parse_video(
         self, url: str, vid_type, track_failure: bool = True, notify=None
     ) -> dict | None:
-        """parse video when not flat, fetch from YT
-
-        The wait is in a finally because every exit below has already
-        spent the youtube request it exists to pace. It used to sit on
-        the success path alone, so a channel add whose extractions were
-        failing ran the whole channel at full speed - and a run where
-        extraction is failing is a bot block, which is exactly when the
-        pacing matters.
+        """the wait is in a finally because every exit below has already
+        spent the youtube request it paces, and a run where extraction
+        keeps failing is a bot block - which is when pacing matters most
         """
         try:
             return self._extract_video(url, vid_type, track_failure)
@@ -376,7 +370,6 @@ class PendingList(PendingIndex):
     def _extract_video(
         self, url: str, vid_type, track_failure: bool = True
     ) -> dict | None:
-        """fetch one video from youtube and parse it"""
         video = YoutubeVideo(youtube_id=url)
         video.get_from_youtube()
 
@@ -424,12 +417,8 @@ class PendingList(PendingIndex):
         return to_add
 
     def _pace_notify(self, item_type: str, name: str, idx: int, total: int):
-        """build the callback _pace reports the countdown through
-
-        None at the tail: after the last video there is no next one to
-        name, and this is the highest volume wait in here - one per
-        video of every channel and playlist add. The wait still happens,
-        it just is not narrated as something it is not.
+        """None at the tail: after the last video there is no next one
+        to name, and the wait still happens, just unnarrated
         """
         if not self.task or idx == total:
             return None
@@ -443,19 +432,12 @@ class PendingList(PendingIndex):
         )
 
     def _pace(self, notify) -> None:
-        """the per video wait, counted down when there is a line for it
+        """the wait that dominates a channel or playlist add, one per
+        video
 
-        This is the wait that dominates a channel or playlist add - one
-        per video, behind a counter that only moves once it is over. A
-        single video add has no counter to hang it off, so it waits
-        without narrating - but still stoppably.
-
-        Every caller checks is_stopped() before the next youtube request
-        - the channel loop right after _parse_video returns, the
-        playlist loop at the top of the next pass, parse_url_list
-        before its own wait - which is the break countdown_sleep's
-        contract asks for. Nothing reaches youtube in between, so a
-        shortened wait cannot turn into an unpaced request.
+        Every caller checks is_stopped() before its next youtube
+        request, which is the break countdown_sleep's contract asks for,
+        so a shortened wait cannot turn into an unpaced request.
         """
         countdown_sleep(self.config, self.task, notify, label="next video")
 

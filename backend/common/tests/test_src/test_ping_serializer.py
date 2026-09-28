@@ -1,8 +1,6 @@
-"""test the ping payload carries build metadata safely
-
+"""
 an image built without the TA_BUILD_* build args reports empty strings,
-so the serializer has to pass those through rather than reject them -
-that is the shape a plain docker build produces
+so the serializer has to pass those through rather than reject them
 """
 
 import pytest
@@ -10,7 +8,6 @@ from common.serializers import PingSerializer
 
 
 def build_payload(**overwrites):
-    """a ping response"""
     payload = {
         "response": "pong",
         "user": 1,
@@ -24,7 +21,6 @@ def build_payload(**overwrites):
 
 
 def test_serializes_a_built_image():
-    """sha and date from the build args"""
     data = PingSerializer(build_payload()).data
 
     assert data["build_sha"] == "52ef730f"
@@ -39,7 +35,6 @@ def test_serializes_a_dirty_build():
 
 
 def test_serializes_an_image_built_without_the_args():
-    """empty is valid, the frontend then shows the version alone"""
     data = PingSerializer(build_payload(build_sha="", build_date="")).data
 
     assert data["build_sha"] == ""
@@ -48,7 +43,6 @@ def test_serializes_an_image_built_without_the_args():
 
 @pytest.mark.parametrize("field", ["build_sha", "build_date"])
 def test_accepts_blank_build_fields_on_input(field):
-    """blank must not raise, it is the unbuilt default"""
     serializer = PingSerializer(data=build_payload(**{field: ""}))
     serializer.is_valid(raise_exception=True)
 

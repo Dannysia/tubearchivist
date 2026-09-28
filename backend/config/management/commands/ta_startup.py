@@ -133,13 +133,10 @@ class Command(BaseCommand):
 
     def _clear_downscale_leftovers(self):
         """
-        auto-resume any downscale job left queued or running by a hard
-        restart, then clear cache files not spoken for by any job still
-        in the queue. The celery worker for this container isn't
-        started until after this command finishes, so a job in either
-        of those states now can only be a leftover, never one actually
-        in progress. Jobs already marked failed are left alone for
-        manual review/retry.
+        the celery worker for this container is not started until after
+        this command finishes, so a job still queued or running now can
+        only be a leftover, never one in progress. Jobs already marked
+        failed are left alone for manual review/retry.
         """
         self.stdout.write("[4b] resume interrupted downscale jobs")
         self._backfill_downscale_worker_fields()
@@ -151,13 +148,11 @@ class Command(BaseCommand):
                 os.remove(tmp_path)
 
         if interrupted:
-            # one query resets every interrupted job's status/task_id at
-            # once instead of a per-job ES round-trip - matters once
-            # this is resetting hundreds of jobs on startup
+            # one query instead of a per-job ES round-trip, which
+            # matters at hundreds of jobs on startup
             DownscaleInteract().requeue_interrupted()
-            # dispatch is just enqueueing to the broker, so it's fine to
-            # call before the celery worker itself has started - one
-            # pass covers the whole batch rather than once per job
+            # dispatch only enqueues to the broker, so it is fine before
+            # the celery worker itself has started
             dispatch_pending_downscales()
             self.stdout.write(
                 self.style.SUCCESS(
@@ -182,15 +177,12 @@ class Command(BaseCommand):
 
     def _backfill_downscale_worker_fields(self) -> None:
         """
-        add the remote-worker fields (worker/last_heartbeat/progress/
-        stop_requested/ffmpeg_args) to any downscale queue doc that
-        predates them. get_interrupted()/requeue_interrupted() (called
-        right after this) and count_running() all key off worker=="" to
-        tell a local job from a remote one, so a doc missing the field
-        entirely would be invisible to this very startup sweep and to
-        the concurrency counter, with nothing else ever going to notice
-        it again (the lease reaper only looks at worker != ""). This has
-        to run before that sweep.
+        add the remote-worker fields to any downscale queue doc that
+        predates them. get_interrupted/requeue_interrupted and
+        count_running all key off worker=="" to tell a local job from a
+        remote one, so a doc missing the field entirely is invisible to
+        the startup sweep and to the concurrency counter, and the lease
+        reaper only looks at worker != "". Has to run before the sweep.
         """
         self._run_migration(
             index_name="ta_downscale",
@@ -238,8 +230,6 @@ class Command(BaseCommand):
         ElasticSnapshot().setup()
 
     def _create_default_schedules(self) -> None:
-        """create default schedules for new installations, migrate any
-        pre-existing crontab-based auto schedules to the interval format"""
         self.stdout.write("[8] create initial schedules")
         self._clear_orphaned_schedules()
         builder = ScheduleBuilder()
@@ -280,18 +270,13 @@ class Command(BaseCommand):
     def _clear_orphaned_schedules(self) -> None:
         """delete schedules whose task no longer exists
 
-        A CustomPeriodicTask row outlives the code that registered it:
-        the db lives on the cache volume, so rolling back to an image
-        without a task, or retiring one for good, leaves beat
-        dispatching something no worker can run. Celery discards those
-        messages rather than requeueing them, so nothing breaks, but it
-        logs a traceback at ERROR every time the schedule comes round,
-        which is a standing red herring in the logs.
-
-        Deleting rather than disabling: nothing else in TA reads or
-        writes `enabled`, and get_set_task would not clear it again, so
-        a disabled row would linger in the scheduling page never
-        running with no way to tell why.
+        The db lives on the cache volume, so a CustomPeriodicTask row
+        outlives the code that registered it and beat keeps dispatching
+        something no worker can run - discarded, but with a traceback at
+        ERROR every time the schedule comes round. Deleted rather than
+        disabled because nothing else in TA reads `enabled`, so a
+        disabled row would linger in the scheduling page never running
+        with no way to tell why.
         """
         scheduled = CustomPeriodicTask.objects.values_list("name", flat=True)
         orphaned = orphaned_schedules(scheduled, TASK_CONFIG)
@@ -309,9 +294,8 @@ class Command(BaseCommand):
     def _mig_update_subscribed_to_minutes(
         self, builder: ScheduleBuilder
     ) -> None:
-        """migrate a pre-existing update_subscribed schedule from hours to
-        the new minutes-based interval, resetting to the default cadence
-        since the old number no longer means the same thing"""
+        """an hours-based schedule is reset to the default cadence, since
+        the old number does not mean the same thing in minutes"""
         task_name = "update_subscribed"
         existing = CustomPeriodicTask.objects.filter(name=task_name).first()
         if not existing:

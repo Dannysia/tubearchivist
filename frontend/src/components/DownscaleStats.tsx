@@ -7,8 +7,7 @@ import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders
 import buildTransitionCard from '../functions/buildTransitionCard';
 import buildSavingsBandCard from '../functions/buildSavingsBandCard';
 
-// the backend folds every encoder past its display limit into this one
-// entry, so it never reads as a real encoder string
+// the backend folds every encoder past its display limit into this one entry
 const OTHER_ENCODER = 'other';
 
 const buildSavingsCard = (savings: DownscaleSavingsType, useSIUnits: boolean) => {
@@ -35,8 +34,7 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
       title: `Total: ${downscaleStats.saved_percent}% Saved`,
       data: buildSavingsCard(downscaleStats, useSIUnits),
     },
-    // a remote worker reports its own encoder string, so fall back to
-    // the raw key for anything ALL_ENCODER_LABELS does not know
+    // a remote worker reports its own encoder string, hence the raw-key fallback
     ...downscaleStats.by_encoder.map(encoderStats => {
       const label =
         encoderStats.encoder === OTHER_ENCODER
@@ -48,7 +46,6 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
         data: buildSavingsCard(encoderStats, useSIUnits),
       };
     }),
-    // nothing downscaled yet means no pairs to report
     ...(downscaleStats.by_transition.transitions.length > 0
       ? [
           {
@@ -57,10 +54,8 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
           },
         ]
       : []),
-    // guarded on the downscaled count, not on having any populated
-    // band like the pairs above are: an archive whose downscaled videos
-    // all failed to measure has zero in every band and still has
-    // something to say, in the Unknown row
+    // guarded on the downscaled count, not on a populated band: an archive
+    // whose downscales all failed to measure still has an Unknown row
     ...(downscaleStats.doc_count > 0
       ? [
           {

@@ -24,14 +24,10 @@ class ChannelOverwriteSerializer(
     """serialize channel overwrites"""
 
     download_format = serializers.CharField(required=False, allow_null=True)
-    # queue a downscale to this height for every video downloaded for
-    # this channel that lands above it. The point of downloading high
-    # and re-encoding down is that youtube encodes each ladder rung
-    # separately and starves the low ones, so a 2160p rung downscaled
-    # beats the 1080p rung it ships - pair this with a download_format
-    # that actually fetches the high rung or there is nothing to gain.
-    # Jobs land in pending_review like any other, they are not
-    # auto-accepted - the original file is never replaced unattended.
+    # youtube encodes each ladder rung separately and starves the low
+    # ones, so a 2160p rung downscaled beats the 1080p rung it ships -
+    # only worth pairing with a download_format that fetches the high
+    # rung. Jobs land in pending_review, never auto-accepted
     downscale_target_height = serializers.ChoiceField(
         choices=DOWNSCALE_LADDER, required=False, allow_null=True
     )
@@ -220,12 +216,10 @@ class ChannelDownscaleSerializer(serializers.Serializer):
 class ChannelVideoDeleteQuerySerializer(serializers.Serializer):
     """serialize query parameters for deleting videos by type"""
 
-    # required and with no default on purpose: this endpoint is a
-    # narrower delete than DELETE /api/channel/<id>/, and a missing or
-    # misspelled type has to fail rather than fall back to everything
+    # no default on purpose: a missing or misspelled type has to fail
+    # rather than fall back to deleting everything
     vid_type = serializers.ChoiceField(
         choices=VideoTypeEnum.values_known(), required=True
     )
-    # add the deleted videos to the ignore list so a subscribed channel
-    # does not just download them again on the next scan
+    # so a subscribed channel does not download them again on the next scan
     ignore = serializers.BooleanField(required=False, default=False)

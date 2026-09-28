@@ -1,5 +1,3 @@
-"""test channel list query building and stat sorting"""
-
 # pylint: disable=protected-access
 
 import pytest
@@ -43,7 +41,6 @@ def stats():
 
 
 def build_query(sort_by, order="desc", query_filter=None):
-    """build a list query"""
     return ChannelListQuery(
         query_filter=query_filter,
         sort_by=ChannelSortEnum.from_name(sort_by),
@@ -52,7 +49,6 @@ def build_query(sort_by, order="desc", query_filter=None):
 
 
 def sorted_ids(sort_by, order, stats, ids=None):
-    """apply the stat sort to name ordered ids"""
     query = build_query(sort_by, order)
     all_ids = list(ids or ["UC1", "UC2", "UC3", "UC4"])
     all_ids.sort(key=query._build_sort_key(stats), reverse=order == "desc")
@@ -61,17 +57,15 @@ def sorted_ids(sort_by, order, stats, ids=None):
 
 
 def test_sort_by_videos_desc(stats):
-    """most videos first, ties stay in name order, no videos last"""
+    """ties stay in name order, a channel with no videos sorts last"""
     assert sorted_ids("videos", "desc", stats) == ["UC1", "UC2", "UC3", "UC4"]
 
 
 def test_sort_by_videos_asc(stats):
-    """channel without videos sorts first"""
     assert sorted_ids("videos", "asc", stats) == ["UC4", "UC2", "UC3", "UC1"]
 
 
 def test_sort_by_media_size(stats):
-    """largest first"""
     assert sorted_ids("media_size", "desc", stats) == [
         "UC2",
         "UC1",
@@ -81,7 +75,6 @@ def test_sort_by_media_size(stats):
 
 
 def test_sort_by_duration(stats):
-    """longest first"""
     assert sorted_ids("duration", "desc", stats) == [
         "UC1",
         "UC2",
@@ -91,7 +84,6 @@ def test_sort_by_duration(stats):
 
 
 def test_sort_by_watch_progress(stats):
-    """fully watched first"""
     assert sorted_ids("watch_progress", "desc", stats) == [
         "UC3",
         "UC1",
@@ -101,7 +93,6 @@ def test_sort_by_watch_progress(stats):
 
 
 def test_sort_by_last_download(stats):
-    """most recently archived first, never archived last"""
     assert sorted_ids("last_download", "desc", stats) == [
         "UC1",
         "UC3",
@@ -121,13 +112,12 @@ def test_sort_by_last_published_asc(stats):
 
 
 def test_sort_key_falls_back_to_empty_stats():
-    """unknown channel gets the zeroed bucket"""
     query = build_query("videos")
     assert query._build_sort_key({})("UC1") == 0
 
 
 def test_stat_sorts_are_not_doc_fields():
-    """stat sorts are resolved from the video index"""
+    """is_stat means resolved from the video index, not a doc field"""
     assert ChannelSortEnum.VIDEOS.is_stat is True
     assert ChannelSortEnum.WATCH_PROGRESS.is_stat is True
     assert ChannelSortEnum.NAME.is_stat is False
@@ -136,7 +126,6 @@ def test_stat_sorts_are_not_doc_fields():
 
 
 def test_sort_enum_unknown_name():
-    """invalid sort raises"""
     with pytest.raises(ValueError):
         ChannelSortEnum.from_name("not_a_sort")
 
@@ -150,12 +139,10 @@ def test_every_stat_sort_has_a_stat_key():
 
 
 def test_build_query_without_filter():
-    """no filter, match all channels"""
     assert build_query("name")._build_query(None) == {"bool": {"must": []}}
 
 
 def test_build_query_subscribed():
-    """filter subscribed"""
     expected = {
         "bool": {"must": [{"term": {"channel_subscribed": {"value": True}}}]}
     }
@@ -163,7 +150,6 @@ def test_build_query_subscribed():
 
 
 def test_build_query_unsubscribed():
-    """filter unsubscribed"""
     expected = {
         "bool": {"must": [{"term": {"channel_subscribed": {"value": False}}}]}
     }
@@ -171,7 +157,6 @@ def test_build_query_unsubscribed():
 
 
 def test_agg_query_all_channels():
-    """aggregate every channel"""
     query = ChannelListAggs().build_query()
     assert query["query"] == {"match_all": {}}
     terms = query["aggs"]["by_channel"]["terms"]
@@ -180,14 +165,12 @@ def test_agg_query_all_channels():
 
 
 def test_agg_query_limited_to_ids():
-    """aggregate a single page of channels"""
     query = ChannelListAggs(["UC1", "UC2"]).build_query()
     assert query["query"] == {"terms": {"channel.channel_id": ["UC1", "UC2"]}}
     assert query["aggs"]["by_channel"]["terms"]["size"] == 2
 
 
 def test_agg_build_stats():
-    """parse a channel bucket"""
     bucket = {
         "key": "UC1",
         "doc_count": 4,

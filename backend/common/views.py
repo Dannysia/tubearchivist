@@ -231,7 +231,6 @@ class LogView(ApiBaseView):
 
     @staticmethod
     def _build_must_list(validated_query: dict) -> list[dict]:
-        """build the filter part of the query"""
         must_list: list[dict] = []
         for field in ("source", "level", "task_name"):
             value = validated_query.get(field)
@@ -264,8 +263,7 @@ class LogView(ApiBaseView):
 
         response, _ = ElasticWrap(self.search_base).get(data=self.data)
         # deliberately not get_document_list: that 404s on an empty
-        # result, and an empty log is the normal state of a fresh
-        # install rather than a missing page
+        # result, and an empty log is normal on a fresh install
         hits = response.get("hits", {})
         self.pagination_handler.validate(hits.get("total", {}).get("value", 0))
         serializer = LogListSerializer(
@@ -281,14 +279,10 @@ class LogView(ApiBaseView):
     @staticmethod
     def _build_task_aggs(validated_query: dict) -> dict:
         """
-        build the aggs for the task filter dropdown
-
-        Deliberately scoped to the source alone rather than the active
-        filters: an agg over the current result set would drop every
-        other task the moment one is picked, leaving no way back to
-        them, and would miss any task whose entries all sit on a later
-        page. With no source given the list spans every source, exactly
-        as the unfiltered result set does.
+        scoped to the source alone rather than the active filters: an
+        agg over the current result set would drop every other task the
+        moment one is picked, and would miss any task whose entries all
+        sit on a later page
         """
         source = validated_query.get("source")
         source_filter: dict = (
@@ -311,11 +305,8 @@ class LogView(ApiBaseView):
                                         {"field": "task_name"},
                                         # multi_terms drops a document
                                         # missing any of its fields, and
-                                        # a task with no TASK_CONFIG
-                                        # entry logs without a title.
-                                        # Without this it would have
-                                        # rows in the log that the
-                                        # filter could not select
+                                        # a task with no config entry
+                                        # logs without a title
                                         {"field": "task_title", "missing": ""},
                                     ],
                                     "order": {"_count": "desc"},
@@ -329,7 +320,6 @@ class LogView(ApiBaseView):
 
     @staticmethod
     def _parse_task_aggs(response: dict) -> list[dict]:
-        """pull the task name/title pairs back out of the agg response"""
         buckets = (
             response.get("aggregations", {})
             .get("all", {})

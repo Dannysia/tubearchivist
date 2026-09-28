@@ -1,5 +1,3 @@
-"""resolve a page of the channel list"""
-
 from channel.src.aggs import ChannelListAggs
 from channel.src.constants import ChannelSortEnum
 from common.src.es_connect import ElasticWrap
@@ -9,9 +7,8 @@ from common.src.search_processor import SearchProcess
 class ChannelListQuery:
     """get a sorted page of channels with their video stats
 
-    the stat sorts are not backed by a field on the channel doc, they get
-    resolved from the video index and applied here, everything else is
-    sorted and paginated by ES
+    the stat sorts have no field on the channel doc: they come from the
+    video index and are sorted and paginated here, the rest by ES
     """
 
     path = "ta_channel/_search"
@@ -28,7 +25,6 @@ class ChannelListQuery:
 
     @staticmethod
     def _build_query(query_filter: str | None) -> dict:
-        """build channel filter query"""
         must_list = []
         if query_filter is not None:
             must_list.append(
@@ -51,7 +47,6 @@ class ChannelListQuery:
         return self._by_field(page_from, page_size)
 
     def _by_field(self, page_from: int, page_size: int) -> tuple[list, int]:
-        """sort and paginate on a field of the channel doc"""
         data = {
             "query": self.query,
             "sort": [{self.sort_by.value: {"order": self.order}}],
@@ -65,7 +60,6 @@ class ChannelListQuery:
         channels = SearchProcess(response).process()
         total_hits = response["hits"]["total"]["value"]
 
-        # only the channels of this page need their stats looked up
         ids = [i["channel_id"] for i in channels]
         self._attach_stats(channels, ChannelListAggs(ids).process())
 
@@ -88,7 +82,6 @@ class ChannelListQuery:
 
     @property
     def _reverse(self) -> bool:
-        """python sort direction"""
         return self.order == "desc"
 
     def _get_all_ids(self) -> list[str]:
@@ -106,7 +99,6 @@ class ChannelListQuery:
         return [i["_id"] for i in response["hits"]["hits"]]
 
     def _build_sort_key(self, stats: dict[str, dict]):
-        """sort channel ids by their aggregated value"""
         field = self.sort_by.value
         empty = ChannelListAggs.empty_stats()
 
@@ -137,7 +129,6 @@ class ChannelListQuery:
 
     @staticmethod
     def _attach_stats(channels: list, stats: dict[str, dict]) -> None:
-        """add the video stats to every channel of the page"""
         for channel in channels:
             channel["channel_stats"] = stats.get(
                 channel["channel_id"], ChannelListAggs.empty_stats()

@@ -1,9 +1,7 @@
 import APIClient from '../../functions/APIClient';
 
-// what the Wayback Machine had for the video. Same field names
-// ImportMetadataType posts back, so a lookup drops straight into the
-// form - but only the title is guaranteed, an archived watch page is
-// often missing the rest
+// only the title is guaranteed, an archived watch page is often missing the
+// rest. Field names match ImportMetadataType, so a lookup drops into the form
 export type ArchiveMetadataType = {
   video_id: string;
   title: string;

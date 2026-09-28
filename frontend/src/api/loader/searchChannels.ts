@@ -7,12 +7,7 @@ type ChannelSearchResponse = {
   };
 };
 
-/**
- * Typeahead over indexed channels.
- *
- * The channel: prefix scopes SearchParser to ta_channel, which matches
- * on channel_name.search_as_you_type - see QueryBuilder._build_channel.
- */
+/** channel: scopes the search to ta_channel's channel_name.search_as_you_type */
 const searchChannels = async (term: string) => {
   const query = encodeURIComponent(`channel:${term}`);
 

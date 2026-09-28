@@ -1,10 +1,8 @@
 """test how a manual import reports a video it cannot import
 
-The failure that prompted these: a media file named for a video id with
-a single character typo in it. YT answers for any well formed eleven
-character id, so the import got the same empty stub a removed video
-returns, had no info.json to fall back on, and died with a bare
-ValueError that rendered as "Task failed: " in the ui.
+YT answers for any well formed eleven character id, so a media file
+named with a typo in its id gets the same empty stub a removed video
+returns, with no info.json to fall back on.
 """
 
 import subprocess
@@ -42,17 +40,15 @@ def build_importer(**overwrites):
 
 
 def build_video(answered: bool):
-    """
-    a YoutubeVideo as build_json leaves it when it raises. A stand in,
-    not the real class: constructing one reaches for ES to read the
-    config, and the two attributes below are all the message reads
+    """a YoutubeVideo as build_json leaves it when it raises
+
+    a stand in, not the real class: constructing one reaches for ES, and
+    these two attributes are all the message reads
     """
     return SimpleNamespace(youtube_id=VIDEO_ID, youtube_answered=answered)
 
 
 class TestWhyNoMetadata:
-    """the message that replaces the bare ValueError"""
-
     def test_names_the_file_not_just_the_id(self):
         """a bulk import reports by file, the id alone is not findable"""
         message = build_importer()._why_no_metadata(
@@ -64,10 +60,8 @@ class TestWhyNoMetadata:
         assert f"{VIDEO_ID}.mp4" in message
 
     def test_points_at_a_typo_when_youtube_never_answered(self):
-        """
-        the typo and the removed video are indistinguishable here, so
-        the message has to offer both
-        """
+        """the typo and the removed video are indistinguishable here, so
+        the message offers both"""
         message = build_importer()._why_no_metadata(
             build_video(answered=False),
             info_json=False,
@@ -78,10 +72,8 @@ class TestWhyNoMetadata:
         assert "Generate metadata" in message
 
     def test_says_the_sidecar_came_up_short_when_there_was_one(self):
-        """
-        a file was supplied and still did not cover the gap, so the
-        remedy is fixing that file, not writing one
-        """
+        """a file was supplied and still did not cover the gap, so the
+        remedy is fixing that file, not writing one"""
         message = build_importer(metadata=f"{VIDEO_ID}.info.json")
         message = message._why_no_metadata(
             build_video(answered=False),
@@ -95,10 +87,8 @@ class TestWhyNoMetadata:
         assert "Generate metadata" not in message
 
     def test_passes_the_original_through_when_youtube_did_answer(self):
-        """
-        an age gated video answers in full, so a failure past that is
-        some other gap and the underlying message is the useful one
-        """
+        """an age gated video answers in full, so a failure past that is
+        some other gap and the underlying message is the useful one"""
         message = build_importer()._why_no_metadata(
             build_video(answered=True),
             info_json=False,
@@ -132,7 +122,6 @@ class TestBatchKeepsGoing:
         return scanner
 
     def test_later_videos_still_import(self, monkeypatch):
-        """the abort used to skip everything queued after the bad one"""
         monkeypatch.setattr(
             "appsettings.src.manual.AppConfig",
             lambda: type("C", (), {"config": {}})(),
@@ -157,7 +146,6 @@ class TestBatchKeepsGoing:
         assert len(scanner.failed) == 1
 
     def test_a_sidecar_with_no_media_is_reported_not_fatal(self, monkeypatch):
-        """a leftover info.json used to abort the whole run"""
         monkeypatch.setattr(
             "appsettings.src.manual.AppConfig",
             lambda: type("C", (), {"config": {}})(),
@@ -189,10 +177,8 @@ class TestBatchKeepsGoing:
         ],
     )
     def test_survives_what_one_unusable_file_raises(self, monkeypatch, err):
-        """
-        a corrupt media file raises out of ffprobe, not as a ValueError,
-        and used to take the rest of the queue with it
-        """
+        """a corrupt media file raises out of ffprobe, not as a
+        ValueError"""
         monkeypatch.setattr(
             "appsettings.src.manual.AppConfig",
             lambda: type("C", (), {"config": {}})(),
@@ -225,10 +211,7 @@ class TestBatchKeepsGoing:
         assert "bad.mp4" in scanner.failed[0]
 
     def test_scan_raises_once_with_every_reason(self, monkeypatch):
-        """
-        the run is still a failure, but the report covers all of it -
-        on_failure renders this straight into the ui
-        """
+        """the run is still a failure, but the report covers all of it"""
         monkeypatch.setattr(
             "appsettings.src.manual.AppConfig",
             lambda: type("C", (), {"config": {}})(),
@@ -260,8 +243,6 @@ class TestBatchKeepsGoing:
 
 
 class TestDetectYoutubeId:
-    """the id failure is reported by file too"""
-
     def test_names_the_file(self):
         """ "failed to find video id" alone is unactionable in a batch"""
         scanner = ImportFolderScanner()

@@ -18,14 +18,11 @@ from common.views import LogView
 
 
 def tasks_agg(query: dict) -> dict:
-    """the multi_terms body, dug out of the nesting"""
     built = LogView._build_task_aggs(query)
     return built["all"]["aggs"]["in_source"]["aggs"]["tasks"]["multi_terms"]
 
 
 class TestBuildTaskAggs:
-    """_build_task_aggs"""
-
     def test_is_global_so_the_active_filters_do_not_narrow_it(self):
         # without the global wrapper the dropdown would collapse to the
         # one task already picked, leaving no way back to the others
@@ -48,16 +45,13 @@ class TestBuildTaskAggs:
 
     def test_a_task_without_a_title_still_buckets(self):
         # multi_terms drops a document missing any of its fields, so a
-        # task with no TASK_CONFIG entry would have rows in the log that
-        # the filter could not select
+        # task with no config entry would have unselectable log rows
         terms = tasks_agg({"source": "notification"})["terms"]
         title = [i for i in terms if i["field"] == "task_title"][0]
         assert title["missing"] == ""
 
 
 class TestParseTaskAggs:
-    """_parse_task_aggs"""
-
     def test_reads_name_and_title_out_of_the_buckets(self):
         response = {
             "aggregations": {

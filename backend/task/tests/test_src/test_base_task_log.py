@@ -1,8 +1,7 @@
 """test which task outcomes reach the log
 
 BaseTask fires its callbacks on every run of every task, so what it
-chooses to record is what decides whether the log is readable. These
-cover the choice, not the writing, which test_task_log covers.
+chooses to record is what decides whether the log is readable.
 """
 
 # flake8: noqa: E402
@@ -19,14 +18,12 @@ from task import tasks
 
 
 class FakeRequest:
-    """the id celery hangs off a bound task"""
-
     def __init__(self, task_id="abc-123"):
         self.id = task_id
 
 
 class StubTask(tasks.BaseTask):
-    """a BaseTask with a name and a request, as celery would give it"""
+    """a BaseTask with the name and request celery would give it"""
 
     name = "download_pending"
 
@@ -47,7 +44,6 @@ class FakeRedis:
 
 @pytest.fixture
 def logged(monkeypatch):
-    """capture log_task_event without touching es or redis"""
     calls: list = []
     monkeypatch.setattr(
         tasks,
@@ -66,16 +62,13 @@ def logged(monkeypatch):
 
 
 class TestOnSuccess:
-    """a task that finished without raising"""
-
     def test_a_summary_is_logged(self, logged):
         StubTask().on_success("downloaded 3 video(s).", "abc-123", (), {})
         assert logged == [("completed", "downloaded 3 video(s).")]
 
     def test_nothing_to_do_is_not_logged(self, logged):
         # update_subscribed ticks every five minutes and returns None
-        # when it finds nothing. Logging those would bury every real
-        # event under hundreds of them
+        # when it finds nothing; logging those buries every real event
         StubTask().on_success(None, "abc-123", (), {})
         assert logged == []
 
@@ -85,8 +78,6 @@ class TestOnSuccess:
 
 
 class TestOnFailure:
-    """a task that raised"""
-
     def test_every_failure_is_logged(self, logged):
         StubTask().on_failure(
             ConnectionError("YouTube bot detection, abort!"),
@@ -134,12 +125,11 @@ class UnknownTask(StubTask):
 
 
 class TestATaskWithNoConfig:
-    """the callbacks used to raise on one, which is the worst place
+    """the callbacks are the worst place for a missing entry to bite
 
     An exception in on_failure or after_return is attributed to the task
-    that just finished, so a missing line in a dict read as that task
-    having failed. It also meant the log writer's own guard, and the log
-    page's task filter clause for a missing title, could never fire.
+    that just finished, so a missing line in a dict reads as that task
+    having failed.
     """
 
     def test_success_still_logs(self, logged):
@@ -166,8 +156,8 @@ class TestATaskWithNoConfig:
 
         /api/notification/ serializes every stored message as one list,
         and nothing expires the key send_progress writes, so a task with
-        no config would have taken the whole notification feed down
-        until the next restart rather than merely looking wrong.
+        no config takes the whole notification feed down until the next
+        restart rather than merely looking wrong.
         """
         from common.serializers import NotificationSerializer
 

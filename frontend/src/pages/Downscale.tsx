@@ -96,10 +96,8 @@ const Downscale = () => {
   const selectableIds = jobList?.map(job => job.id);
   const allSelected = !!selectableIds?.length && selectableIds.every(id => selectedIds.has(id));
 
-  // queued/running jobs need the 'cancel' action to actually stop the
-  // encode - accept/reject/retry only ever touch the queue doc, so
-  // running one of those on a still-encoding job would just orphan it,
-  // not cancel it
+  // accept/reject/retry only touch the queue doc, so on a still-encoding job
+  // they orphan the encode rather than stop it: that needs 'cancel'
   const cancelableSelectedJobs =
     jobList?.filter(
       job => selectedIds.has(job.id) && (job.status === 'queued' || job.status === 'running'),
@@ -357,8 +355,7 @@ const Downscale = () => {
           >
             <option value="all">any size change</option>
             {DOWNSCALE_SIZE_CHANGES.map(({ value, label }) => {
-              // a count of 0 is worth showing - it says the rung is
-              // empty rather than leaving it looking unvisited
+              // 0 is worth showing; only a missing count is left off
               const count = sizeChangeCounts[value];
 
               return (

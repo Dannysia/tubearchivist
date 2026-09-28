@@ -6,8 +6,7 @@ export type DownscaleEncoderType =
   | 'av1'
   | 'av1_vaapi';
 
-// selectable for TA's own local encoding (SettingsApplication.tsx's
-// ENCODER_OPTIONS is derived from this) - keys match ENCODER_SETTINGS in
+// local encoding only - keys match ENCODER_SETTINGS in
 // backend/downscale/src/downscale.py
 export const ENCODER_LABELS: Record<string, string> = {
   h264: 'H.264',
@@ -30,18 +29,11 @@ export const QUALITY_LABELS: Record<string, string> = {
   av1_vaapi: 'ICQ',
 };
 
-// not locally selectable (no NVENC hardware on the TA host) - a remote
-// worker reports its own encoder string as-is (see
-// docs/remote-downscale/worker.md), never TA's internal h264/h265/av1
-// aliases. Kept out of ENCODER_LABELS so these never show up as options
-// in the local downscale_encoder dropdown.
-//
-// Both naming conventions appear here on purpose, because the string
-// depends on which tool the worker drives: ffmpeg suffixes the encoder
-// (av1_nvenc, and "hevc" rather than "h265"), HandBrake prefixes it
-// (nvenc_av1). The shipped worker drives HandBrakeCLI, so it reports the
-// prefixed form; the suffixed form stays mapped for jobs finished by an
-// ffmpeg-driven worker, past or future.
+// remote workers only: a worker reports its own encoder string, never TA's
+// internal aliases, and both naming conventions appear because the string
+// depends on the tool - ffmpeg suffixes it (av1_nvenc, and "hevc" rather than
+// "h265"), HandBrake prefixes it (nvenc_av1). Kept out of ENCODER_LABELS so
+// they are never offered as local options: the TA host has no NVENC hardware.
 export const NVENC_ENCODER_LABELS: Record<string, string> = {
   h264_nvenc: 'H.264 (Hardware - NVENC)',
   hevc_nvenc: 'H.265 (Hardware - NVENC)',
@@ -61,8 +53,6 @@ export const NVENC_QUALITY_LABELS: Record<string, string> = {
   nvenc_av1: 'CQ',
 };
 
-// display-only union of local + remote encoders, for anywhere (like the
-// video page) that may be showing a job encoded by either
 export const ALL_ENCODER_LABELS: Record<string, string> = {
   ...ENCODER_LABELS,
   ...NVENC_ENCODER_LABELS,

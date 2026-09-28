@@ -2,12 +2,11 @@
 
 countdown_sleep returns False when a stop request cut the wait short,
 and the wait *is* the rate limit - carrying on after a shortened one
-hits youtube harder than a normal pass does. Nothing enforced that per
-site, so a loop could quietly drop the break and every other test would
-still pass. These drive each real loop with a wait that always refuses.
-
-The message shape tests are the other half: the countdown line goes
-*under* whatever the loop is working on, never replacing it.
+hits youtube harder than a normal pass does. Each test drives a real
+loop with a wait that always refuses, because a loop that drops the
+break passes every other test. The message shape tests are the other
+half: the countdown line goes *under* whatever the loop is working on,
+never replacing it.
 """
 
 # flake8: noqa: E402
@@ -38,7 +37,6 @@ CONFIG = {"downloads": {"sleep_interval": 10}}
 
 
 def capture_task():
-    """a task that records the lines that reach it"""
     sent = []
     task = SimpleNamespace(
         is_stopped=lambda: False,
@@ -61,10 +59,8 @@ def queue_of_one(length=1):
 
 
 def endless_queue():
-    """never drains, so only a break can end the loop
-
-    A queue that runs dry ends the loop by itself, which is why a stop
-    test against one passes whether or not the break is there.
+    """never drains - a queue that runs dry ends the loop by itself, so
+    a stop test against one passes whether or not the break is there
     """
     counter = count(1)
 
@@ -84,8 +80,6 @@ def refuse(monkeypatch, module):
 
 
 def record(monkeypatch, module, seen):
-    """a wait that reports what it was asked to narrate"""
-
     def fake(config, task, notify=None, label=""):
         if notify:
             notify(f"Waiting 8s before {label}")
@@ -97,8 +91,6 @@ def record(monkeypatch, module, seen):
 
 
 class TestCommentIndex:
-    """video/src/comments.py CommentList.index"""
-
     @staticmethod
     def _handler(task, monkeypatch, length=1):
         monkeypatch.setattr(
@@ -165,8 +157,6 @@ class TestCommentIndex:
 
 
 class TestChannelPlaylistIndex:
-    """channel/src/index.py YoutubeChannel.index_channel_playlists"""
-
     @staticmethod
     def _handler(task, playlists):
         handler = SimpleNamespace(
@@ -197,7 +187,7 @@ class TestChannelPlaylistIndex:
 
         YoutubeChannel.index_channel_playlists(handler)
 
-        # the first playlist's own line, and nothing from the second
+        # the second playlist never gets a line of its own
         assert not any("2/2" in line for msg in sent for line in msg)
 
     def test_countdown_goes_under_the_counter(self, monkeypatch):
@@ -220,8 +210,6 @@ class TestChannelPlaylistIndex:
 
 
 class TestFilesystemScan:
-    """appsettings/src/filesystem.py Scanner.index"""
-
     @staticmethod
     def _handler(task, to_index):
         handler = SimpleNamespace(
@@ -261,8 +249,6 @@ class TestFilesystemScan:
 
 
 class TestPostProcessPlaylists:
-    """download/src/yt_dlp_handler.py DownloadPostProcess.refresh_playlist"""
-
     @staticmethod
     def _handler(task, monkeypatch, length=1):
         monkeypatch.setattr(
@@ -313,7 +299,6 @@ class TestPostProcessPlaylists:
 
     @staticmethod
     def _run_handler(ran, refresh=True, stopped=False):
-        """a post process with every step of run recorded as it goes"""
         return SimpleNamespace(
             VIDEO_QUEUE="v",
             task=SimpleNamespace(is_stopped=lambda: stopped),
@@ -326,7 +311,6 @@ class TestPostProcessPlaylists:
 
     @staticmethod
     def _run(handler, ran):
-        """drive run() with the redis and comment queues recorded"""
         comment_list = SimpleNamespace(
             add=lambda video_ids: ran.append("queue comments"),
             index=lambda: ran.append("comments") or True,
@@ -342,9 +326,9 @@ class TestPostProcessPlaylists:
                 DownloadPostProcess.run(handler)
 
     def test_run_does_not_go_to_youtube_after_a_refusal(self):
-        """the stop was swallowed here: refresh_playlist broke out of a
-        wait that had been cut short and the comment index went straight
-        to youtube with no pacing, which is what the wait exists to stop
+        """a refusal reported by refresh_playlist must not be dropped:
+        the comment index would go straight to youtube with no pacing,
+        which is the one thing the wait exists to stop
         """
         ran = []
         self._run(self._run_handler(ran, refresh=False), ran)
@@ -356,10 +340,9 @@ class TestPostProcessPlaylists:
     def test_run_queues_comments_even_after_a_refusal(self):
         """queueing is a redis write, not a youtube request
 
-        Skipping it along with the index lost the comments for good:
-        the clear at the end of run is the last thing holding those
-        video ids, and the comment queue is what carries them into the
-        next run.
+        The clear at the end of run is the last thing holding those
+        video ids and the comment queue is what carries them into the
+        next run, so skipping it loses the comments for good.
         """
         ran = []
         self._run(self._run_handler(ran, refresh=False), ran)
@@ -368,11 +351,9 @@ class TestPostProcessPlaylists:
         assert ran.index("queue comments") < ran.index("clear")
 
     def test_run_skips_the_youtube_steps_when_already_stopped(self):
-        """run_queue calls this even when a stop broke its own loop
-
-        refresh_playlist reaches youtube on the way to its return, so
+        """refresh_playlist reaches youtube on the way to its return, so
         the check has to gate the call itself, not only act on what it
-        reports back.
+        reports back
         """
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
@@ -384,7 +365,7 @@ class TestPostProcessPlaylists:
 
     def test_a_stopped_run_still_queues_the_quick_sync(self):
         """_add_video_playlists hangs off refresh_playlist, which a stop
-        skips whole - so run has to do it itself or the ids are cleared
+        skips whole, so run has to do it itself or the ids are cleared
         below and those playlists never learn what was downloaded"""
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
@@ -408,10 +389,9 @@ class TestPostProcessPlaylists:
         assert "refresh" in ran
 
     def test_auto_downscale_runs_after_the_file_is_final(self):
-        """embed_metadata rewrites the media file in place
-
-        Queueing a downscale before it would encode a file that is about
-        to be rewritten underneath the job and throw the encode away.
+        """embed_metadata rewrites the media file in place, so a
+        downscale queued before it encodes a file that is about to be
+        rewritten underneath the job
         """
         ran = []
         self._run(self._run_handler(ran), ran)
@@ -426,11 +406,7 @@ class TestPostProcessPlaylists:
         assert ran.index("downscale") < ran.index("clear")
 
     def test_a_stopped_run_still_queues_downscales(self):
-        """es and redis only, it never reaches youtube
-
-        Same reason match_videos and the comment queue add survive a
-        stop: it files work that is already downloaded.
-        """
+        """es and redis only: it files work that is already downloaded"""
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
 
@@ -452,11 +428,9 @@ class TestPostProcessPlaylists:
         ]
 
     def test_pacing_happens_without_a_task(self, monkeypatch):
-        """the wait used to sit behind an early continue for this case
-
-        No task means nowhere to narrate to, so the label is empty - but
-        the wait itself still has to happen. Skipping it left a
-        scheduled refresh hitting youtube with no pacing at all.
+        """no task means nowhere to narrate to, so the label is empty -
+        but the wait itself still has to happen, or a scheduled refresh
+        reaches youtube with no pacing at all
         """
         handler = self._handler(None, monkeypatch, length=3)
         seen = []
@@ -468,17 +442,13 @@ class TestPostProcessPlaylists:
 
 
 class TestPostProcessChannelScan:
-    """download/src/yt_dlp_handler.py DownloadPostProcess
-
-    _add_channel_playlists asks youtube for the playlists of every
-    channel with index_playlists set, and used to do it with neither
-    pacing nor a stop check - so it was the first thing a stopped
-    download run went on to hammer youtube with.
+    """_add_channel_playlists asks youtube for the playlists of every
+    channel with index_playlists set, so without pacing and a stop check
+    it is the first thing a stopped download run hammers youtube with
     """
 
     @staticmethod
     def _queue(length=1, endless=False):
-        """a channel queue that also takes the playlists back"""
         queue = endless_queue() if endless else queue_of_one(length)
         queue.add_list = lambda to_add: None
 
@@ -488,9 +458,8 @@ class TestPostProcessChannelScan:
         monkeypatch.setattr(
             post_mod, "RedisQueue", lambda name: self._queue(length)
         )
-        # no default on task: this is the loop the bot block wait had to
-        # become interruptible in, so a construction that forgets to
-        # hand the task over has to fail here rather than pass quietly
+        # no default on task: a construction that forgets to hand the
+        # task over has to fail here rather than pass quietly
         monkeypatch.setattr(
             post_mod,
             "YoutubeChannel",
@@ -586,13 +555,11 @@ class TestPostProcessChannelScan:
 class TestFailedRequestsStillPace:
     """a spent youtube request owes the wait whether or not it worked
 
-    All three of these skipped it on failure, which inverts the point of
-    the setting: a run where requests are failing is a bot block, and a
-    bot block is when pacing matters most.
+    A run where requests are failing is a bot block, and a bot block is
+    when pacing matters most.
     """
 
     def test_a_failed_extraction_paces(self, monkeypatch):
-        """queue.py PendingList._parse_video"""
         _, task = capture_task()
         monkeypatch.setattr(
             queue_mod,
@@ -620,7 +587,6 @@ class TestFailedRequestsStillPace:
         assert seen == ["next video"], "the spent request still paces"
 
     def test_a_failed_playlist_import_paces(self, monkeypatch):
-        """yt_dlp_handler.py DownloadPostProcess.refresh_playlist"""
         _, task = capture_task()
         handler = TestPostProcessPlaylists._handler(task, monkeypatch)
         monkeypatch.setattr(
@@ -638,7 +604,6 @@ class TestFailedRequestsStillPace:
         assert seen == [""], "update_playlist is what failed, so it paces"
 
     def test_a_failed_download_paces(self, monkeypatch):
-        """yt_dlp_handler.py VideoDownloader.run_queue"""
         _, task = capture_task()
         pending = [
             {"youtube_id": i, "channel_id": "c", "vid_type": "videos"}

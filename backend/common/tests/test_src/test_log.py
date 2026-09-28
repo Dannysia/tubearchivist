@@ -10,8 +10,6 @@ from common.src import log
 
 
 class FakeWrap:
-    """stands in for ElasticWrap, recording what it was asked to do"""
-
     calls: list = []
 
     def __init__(self, path):
@@ -34,8 +32,6 @@ def fake_es(monkeypatch):
 
 
 class TestWriteLog:
-    """write_log"""
-
     def test_writes_to_the_log_index(self, fake_es):
         log.write_log("notification", "info", "all done")
         path, data = fake_es.calls[0]
@@ -85,8 +81,6 @@ class TestWriteLog:
 
 
 class TestPruneLogs:
-    """prune_logs"""
-
     def test_deletes_older_than_the_window(self, fake_es):
         deleted = log.prune_logs(7)
         path, data = fake_es.calls[0]
@@ -115,8 +109,6 @@ class TestPruneLogs:
 
 
 class TestClearLogs:
-    """clear_logs"""
-
     def test_clears_everything_by_default(self, fake_es):
         assert log.clear_logs() == 2
         _, data = fake_es.calls[0]

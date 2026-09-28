@@ -1,5 +1,3 @@
-"""all downscale API urls"""
-
 from django.urls import path
 from downscale import views, worker_views
 

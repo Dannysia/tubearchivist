@@ -58,9 +58,8 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
     const failed: FailureType[] = [];
     setFailures([]);
 
-    // one request per file, sequentially. a single request holding 200
-    // videos would have no per file progress, and one rejected name would
-    // take the whole batch down with it
+    // one request per file, sequentially: a single batch request would have no
+    // per file progress, and one rejected name would take the batch down
     for (const [index, file] of queue.entries()) {
       setUpload({
         done: index,
@@ -92,8 +91,6 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
   const handleDelete = async (filename: string) => {
     if (!window.confirm(`Delete ${filename} from the import folder?`)) return;
 
-    // only drop the row once the file is really gone, otherwise the list
-    // would claim a delete that failed on disk
     try {
       const response = await deleteImportFile(filename);
       if (response.error) {
@@ -116,8 +113,6 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
     setFiles(response.data ?? []);
   };
 
-  // media staged without a matching json, the videos that actually need
-  // a metadata file written for them
   const withMetadata = new Set(
     files.filter(file => file.category === 'metadata').map(file => file.video_id),
   );
@@ -197,10 +192,8 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
                 <span>{humanFileSize(file.size)}</span>
                 <span>{file.video_id ?? <i>not detected</i>}</span>
                 <div className="button-box">
-                  {/* an anchor, not a button calling fetch: the file can
-                      be many GB, and this way the browser streams it to
-                      disk itself and middle click and copy link address
-                      behave like the rest of the app's links */}
+                  {/* an anchor, not a fetch: the file can be many GB, so the
+                      browser streams it to disk itself */}
                   <a
                     className="link-button"
                     href={importFileUrl(file.filename)}

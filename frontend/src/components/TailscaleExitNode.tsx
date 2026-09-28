@@ -53,8 +53,7 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
-  // distinguishes the first read not having landed yet from it having
-  // landed and found nothing, which render very differently
+  // "not read yet" renders differently from "read and found nothing"
   const [loaded, setLoaded] = useState(false);
   const [maxRotatesInput, setMaxRotatesInput] = useState<number | null>(maxRotates);
 
@@ -67,8 +66,7 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
           setCountry(response.data.current?.country ?? '');
           setNodeId(response.data.current?.node_id ?? '');
         } else {
-          // a socket that is there but will not answer, which is the
-          // most worth saying out loud of all the failures here
+          // the socket is there but did not answer
           setLoadError(response.error?.error ?? 'could not read tailscale state');
         }
       } catch (err) {
@@ -84,8 +82,7 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
     return [...new Set(named as string[])].sort();
   }, [state]);
 
-  // a node with no country is one of the user's own machines, which is
-  // what the empty country groups together
+  // a node with no country is one of the user's own machines
   const selectable = useMemo(
     () => (state?.nodes ?? []).filter(node => (node.country ?? '') === country),
     [state, country],
@@ -118,8 +115,7 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
         setState(response.data);
         setCountry(response.data.current?.country ?? '');
         setNodeId(response.data.current?.node_id ?? '');
-        // the address only moves once tailscaled has re-routed, so the
-        // readout is worth nothing until after the change landed
+        // the address only moves once tailscaled has re-routed
         await checkEgress();
       } else {
         setError(response.error?.error ?? 'exit node change failed');
@@ -130,15 +126,11 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
     setBusy(false);
   };
 
-  // nothing at all until the first read lands, so the panel does not
-  // flash an absence it is about to contradict
   if (!loaded) {
     return null;
   }
 
-  // there is nothing to steer, but say so rather than vanishing: a panel
-  // that silently disappears is indistinguishable from one that was
-  // never built, and hides the case where tailscale is meant to be here
+  // say so rather than vanishing: a missing panel looks like one never built
   if (loadError || !state?.available) {
     return (
       <div className="info-box-item">

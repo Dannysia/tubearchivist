@@ -1,19 +1,15 @@
-"""test downscale savings aggregation"""
-
 # pylint: disable=protected-access
 
 from stats.src.aggs import Downscale
 
 
 def test_query_filters_on_new_height():
-    """same downscaled marker as the channel panel and video filter"""
     assert Downscale.data["query"] == {
         "exists": {"field": "downscale.new_height"}
     }
 
 
 def test_query_aggs():
-    """sums the recorded sizes, split by encoder"""
     aggs = Downscale.data["aggs"]
     assert aggs["original_size"] == {
         "sum": {"field": "downscale.original_size"}
@@ -23,14 +19,12 @@ def test_query_aggs():
 
 
 def test_encoder_buckets_are_bounded():
-    """the breakdown never grows past the display limit"""
     terms = Downscale.data["aggs"]["by_encoder"]["terms"]
     assert terms["size"] == Downscale.ENCODER_LIMIT
     assert terms["order"] == {"original_size": "desc"}
 
 
 def test_build_totals():
-    """savings and percent of the original"""
     agg = {"original_size": {"value": 1000.0}, "new_size": {"value": 250.0}}
     assert Downscale._build_totals(4, agg) == {
         "doc_count": 4,
@@ -42,7 +36,6 @@ def test_build_totals():
 
 
 def test_build_totals_with_encoder():
-    """encoder buckets carry their key"""
     agg = {"original_size": {"value": 200.0}, "new_size": {"value": 100.0}}
     result = Downscale._build_totals(1, agg, "nvenc_av1_10bit")
     assert result["encoder"] == "nvenc_av1_10bit"
@@ -62,7 +55,6 @@ def test_build_totals_nothing_downscaled():
 
 
 def test_build_totals_grown():
-    """an encode that came out bigger reports a negative saving"""
     agg = {"original_size": {"value": 100.0}, "new_size": {"value": 150.0}}
     result = Downscale._build_totals(1, agg)
     assert result["saved"] == -50
@@ -70,7 +62,6 @@ def test_build_totals_grown():
 
 
 def build_encoder(doc_count, original_size, new_size, encoder="h265"):
-    """build a parsed encoder entry"""
     return {
         "encoder": encoder,
         "doc_count": doc_count,
@@ -82,7 +73,6 @@ def build_encoder(doc_count, original_size, new_size, encoder="h265"):
 
 
 def test_no_remainder_when_every_encoder_is_shown():
-    """the shown encoders already account for the total"""
     total = {"doc_count": 3, "original_size": 300, "new_size": 100}
     shown = [
         build_encoder(2, 200, 60, "h265"),
@@ -92,7 +82,6 @@ def test_no_remainder_when_every_encoder_is_shown():
 
 
 def test_remainder_folds_the_truncated_tail():
-    """what the terms agg left out still reconciles with the total"""
     total = {"doc_count": 10, "original_size": 1000, "new_size": 400}
     shown = [build_encoder(7, 800, 300, "h265")]
 

@@ -1,15 +1,4 @@
-/**
- * Format bits per second as human-readable text.
- *
- * Always uses decimal (SI) prefixes, powers of 1000, since bit rates are
- * conventionally quoted that way (e.g. network/video bitrates), unlike
- * file sizes where binary (MiB) units are common.
- *
- * @param bitsPerSecond Bit rate in bits per second.
- * @param dp Number of decimal places to display.
- *
- * @return Formatted string, e.g. "1.5 Mbps".
- */
+/** always decimal (SI) prefixes, powers of 1000: bit rates are quoted that way */
 function humanBitRate(bitsPerSecond: number, dp = 1) {
   const thresh = 1000;
 

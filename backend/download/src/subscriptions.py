@@ -24,15 +24,14 @@ MIN_INTERVAL_HOURS = 1
 
 
 def _is_due(item: dict, field: str, now_epoch: int) -> bool:
-    """a subscription is due if it was never checked or its next
-    check has passed"""
+    """never checked, i.e. a falsy field, counts as due"""
     return not item.get(field) or item[field] <= now_epoch
 
 
 def _compute_next_check(
     frequency_hours: float, jitter_percent: float, now: datetime | None = None
 ) -> int:
-    """compute a jittered next-check epoch, independent per call"""
+    """a next-check epoch, jitter rerolled per call"""
     jitter_factor = 1 + random.uniform(-jitter_percent, jitter_percent) / 100
     interval_hours = max(frequency_hours * jitter_factor, MIN_INTERVAL_HOURS)
     next_check = (now or datetime.now()) + timedelta(hours=interval_hours)
@@ -47,7 +46,6 @@ def _advance_next_check(
     due_items: list[dict],
     config: dict,
 ) -> None:
-    """bulk persist a freshly jittered next-check time for each due item"""
     if not due_items:
         return
 
@@ -75,11 +73,6 @@ def _run_subscription_scan(
     next_check_field: str,
     build_urls: Callable[[list[dict]], list[ParsedURLType]],
 ) -> int:
-    """
-    shared skeleton for channel/playlist subscription scans: filter to due
-    items, let the caller build the type-specific queue entries, queue them,
-    then advance each due item's next-check independently
-    """
     if not all_items:
         return 0
 
@@ -115,7 +108,7 @@ class ChannelSubscription:
         self.task = task
 
     def find_missing(self) -> int:
-        """find missing videos from due channel subscriptions"""
+        """returns how many queue entries were added"""
         if self.task:
             self.task.send_progress(["Looking up channels."])
 
@@ -183,7 +176,7 @@ class PlaylistSubscription:
         self.task = task
 
     def find_missing(self) -> int:
-        """find missing from due playlist subscriptions"""
+        """returns how many queue entries were added"""
         all_playlists = get_playlists(
             subscribed_only=True,
             source=["playlist_id", "playlist_subscribed_next_check"],

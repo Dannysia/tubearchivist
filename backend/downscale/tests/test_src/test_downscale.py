@@ -1,5 +1,3 @@
-"""tests for ffmpeg command construction"""
-
 import pytest
 from downscale.src.downscale import (
     _build_ffmpeg_cmd,
@@ -22,12 +20,10 @@ VAAPI_DEVICE = "/dev/dri/renderD128"
     ],
 )
 def test_is_hw_encoder(encoder_key, expected):
-    """hardware encoder keys all carry a _vaapi suffix"""
     assert is_hw_encoder(encoder_key) is expected
 
 
 def test_missing_vaapi_device_message_when_present(tmp_path):
-    """an existing device path reports no problem"""
     device = tmp_path / "renderD128"
     device.touch()
 
@@ -35,7 +31,6 @@ def test_missing_vaapi_device_message_when_present(tmp_path):
 
 
 def test_missing_vaapi_device_message_when_absent():
-    """a missing device path reports an actionable message"""
     message = missing_vaapi_device_message("/dev/dri/does-not-exist")
 
     assert message is not None
@@ -52,7 +47,6 @@ def test_missing_vaapi_device_message_when_absent():
     ],
 )
 def test_software_cmd_has_no_hw_flags(encoder_key, expected_codec):
-    """software encoders scale in one step and use -crf"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,
@@ -90,9 +84,8 @@ def test_hardware_cmd_uses_vaapi_pipeline(
     encoder_key, expected_codec, expected_rc_mode, expected_quality_flag
 ):
     """
-    hardware encoders keep software decode/scale, upload to a vaapi
-    surface. h264_vaapi/h265_vaapi use CQP+-qp; av1_vaapi doesn't
-    support -qp/CQP in ffmpeg, so it uses ICQ+-global_quality instead
+    av1_vaapi has no -qp/CQP in ffmpeg, so it takes
+    ICQ+-global_quality where the other two take CQP+-qp
     """
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
@@ -128,10 +121,7 @@ def test_hardware_cmd_uses_vaapi_pipeline(
 
 
 def test_h265_vaapi_maps_to_hevc_vaapi_not_h265_vaapi():
-    """
-    ffmpeg has no encoder literally named h265_vaapi, only hevc_vaapi -
-    guard against reintroducing that mixup
-    """
+    """ffmpeg has no encoder named h265_vaapi, only hevc_vaapi"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,
@@ -148,7 +138,6 @@ def test_h265_vaapi_maps_to_hevc_vaapi_not_h265_vaapi():
 
 
 def test_unknown_encoder_falls_back_to_h264():
-    """unknown encoder key defaults to software h264"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,
@@ -168,12 +157,12 @@ def test_unknown_encoder_falls_back_to_h264():
         ("h264", "veryfast", "-preset", "veryfast"),
         ("h264", "placebo", "-preset", "placebo"),
         ("h265", "slow", "-preset", "slow"),
-        # libsvtav1 has no named presets, so the chosen name is mapped
-        # onto its own 0 (slowest/best) - 13 (fastest) numeric scale
+        # libsvtav1 has no named presets, only its own 0 (slowest/best)
+        # - 13 (fastest) numeric scale
         ("av1", "veryfast", "-preset", "8"),
         ("av1", "placebo", "-preset", "0"),
-        # h264_vaapi's -quality is Intel's Target Usage (1 best/slowest -
-        # 7 fastest/worst), a much narrower range than the named presets
+        # h264_vaapi's -quality is Intel's Target Usage, 1 (best,
+        # slowest) - 7 (fastest, worst)
         ("h264_vaapi", "medium", "-quality", "4"),
         ("h264_vaapi", "ultrafast", "-quality", "7"),
         ("h264_vaapi", "veryslow", "-quality", "1"),
@@ -182,7 +171,6 @@ def test_unknown_encoder_falls_back_to_h264():
 def test_preset_maps_onto_whatever_speed_knob_the_encoder_supports(
     encoder_key, preset, expected_flag, expected_value
 ):
-    """named preset is translated per-encoder, not passed through as-is"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,
@@ -215,7 +203,6 @@ def test_preset_has_no_effect_on_encoders_without_a_speed_knob(encoder_key):
 
 
 def test_no_preset_omits_speed_flags():
-    """preset=None adds no speed-related flag at all"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,

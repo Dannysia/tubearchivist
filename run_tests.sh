@@ -16,25 +16,21 @@
 # notes:
 #
 # - a reachable redis is required or three test modules fail during
-#   collection (downscale test_views, test_worker_views and task
-#   test_config_schedule import it at module level). this script starts
-#   its own throwaway redis rather than using archivist-redis, so the
-#   live instance's keys are never touched.
+#   collection. this script starts its own throwaway redis, so the live
+#   instance's keys are never touched.
 # - elasticsearch is mocked in the tests, ES_URL only has to be set.
-# - test_is_shorts in common/tests/test_src/test_helper.py makes a live
-#   request to youtube.com and fails without outbound access. it is
-#   unrelated to any local change.
+# - test_is_shorts makes a live request to youtube.com and fails without
+#   outbound access.
 # - dev dependency versions are pinned to requirements-dev.txt and
 #   .pre-commit-config.yaml, keep them in sync.
-# - lint is still narrower than CI, which runs pre-commit: end-of-file
-#   fixer, eslint and prettier have no equivalent here. eslint and
-#   prettier at least have node on the host, run them from frontend/ as
-#   npm run lint and npx prettier --check .
+# - lint is narrower than CI, which runs pre-commit: end-of-file fixer,
+#   eslint and prettier have no equivalent here. node is on the host, so
+#   run those from frontend/ as npm run lint and npx prettier --check .
 # - the container runs as root over the bind mount, so any file it writes
-#   comes back owned by root and unwritable on the host. that is what
-#   PYTHONDONTWRITEBYTECODE is for: no __pycache__, nothing to chown.
-#   format is the one mode that rewrites tracked files, so it runs as the
-#   host user instead, with HOME pointed somewhere it can pip install.
+#   comes back owned by root and unwritable on the host: hence
+#   PYTHONDONTWRITEBYTECODE. format is the one mode that rewrites tracked
+#   files, so it runs as the host user instead, with HOME somewhere it
+#   can pip install.
 
 set -euo pipefail
 
@@ -89,18 +85,13 @@ function run_lint {
 function run_codespell {
     echo "==> codespell"
     # the file list is built on the host because git is not in the image,
-    # and it has to be built at all because this is what pre-commit hands
-    # the hook: tracked files, minus the excludes in
-    # .pre-commit-config.yaml. Left to walk the tree itself codespell
-    # reports on frontend/dist and node_modules, neither of which is in
-    # the repo or checked by CI.
-    #
-    # --others --exclude-standard adds files that are not tracked yet,
-    # which plain ls-files omits. Without them a brand new file is
-    # invisible to this gate until the commit that adds it, so the first
-    # run that can flag anything in it is CI - which is how the savings
-    # filter's dropdown constants got through on 2026-09-21. .gitignore
-    # still applies, so dist and node_modules stay out.
+    # and built at all because that is what pre-commit hands the hook:
+    # tracked files, minus the .pre-commit-config.yaml excludes. Left to
+    # walk the tree itself codespell reports on frontend/dist and
+    # node_modules, neither of which is in the repo or checked by CI.
+    # --others --exclude-standard adds files not yet tracked, so a brand
+    # new file is not invisible to this gate until CI; .gitignore still
+    # applies, so dist and node_modules stay out.
     git -C "$REPO_DIR" ls-files -z --cached --others --exclude-standard \
         | grep -zvE '\.svg$|/migrations/|^frontend/package-lock\.json$' \
         | docker run --rm -i -e PYTHONDONTWRITEBYTECODE=1 \
@@ -116,8 +107,7 @@ function run_codespell {
 
 function run_format {
     echo "==> black and isort, rewriting"
-    # as the caller, not root: this is the one mode that writes back to
-    # the working tree, and root owned source is unwritable afterwards
+    # as the caller, not root: root owned source would be unwritable
     docker run --rm --user "$(id -u):$(id -g)" \
         -e HOME=/tmp \
         -e PYTHONDONTWRITEBYTECODE=1 \
@@ -144,8 +134,7 @@ function run_pytest {
     docker run -d --rm --name "$REDIS" --network "$NETWORK" redis >/dev/null
 
     echo "==> running pytest"
-    # run from the repo root, backend/common/tests/conftest.py chdirs to
-    # rootdir/backend itself
+    # run from the repo root, conftest.py chdirs to rootdir/backend
     docker run --rm --network "$NETWORK" \
         -v "$REPO_DIR":/src -w /src \
         -e PYTHONDONTWRITEBYTECODE=1 \

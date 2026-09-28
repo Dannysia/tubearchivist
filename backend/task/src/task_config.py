@@ -15,9 +15,9 @@ class TaskItemConfig(TypedDict):
     group: str
     api_start: bool
     api_stop: bool
-    # optional, defaults to api_stop. Only set it to split the two:
-    # stop asks the loop to finish the item it is on and leave, kill
-    # terminates the worker wherever it happens to be.
+    # optional, defaults to api_stop; set it only to split the two: stop
+    # asks the loop to finish the item it is on and leave, kill
+    # terminates the worker wherever it happens to be
     api_kill: NotRequired[bool]
 
 
@@ -55,14 +55,12 @@ CHECK_REINDEX: TaskItemConfig = {
     "api_start": False,
     # stoppable: the run only checks between items, after the current
     # one is fully indexed and cleared, so a stop never leaves a half
-    # written document. Whatever is still queued stays queued in redis
-    # and is picked up first on the next scheduled run.
+    # written document, and whatever is queued stays queued in redis
     "api_stop": True,
-    # but not killable. None of the above holds for a terminate: the id
-    # has already been popped off the queue, and reindex_single_video
-    # deletes the old subtitle files before it writes the new document,
-    # so a kill in that window loses the queue entry and leaves ES
-    # advertising subtitles that are gone from disk.
+    # not killable: the id has already been popped off the queue, and
+    # reindex_single_video deletes the old subtitle files before it
+    # writes the new document, so a kill in that window loses the queue
+    # entry and leaves ES advertising subtitles that are gone from disk
     "api_kill": False,
 }
 
@@ -187,13 +185,7 @@ def get_task_config(task_name: str) -> TaskItemConfig | dict:
     """the config for a task, empty when nothing registered one
 
     A task with no entry here is a bug rather than a state to design
-    around, but it used to be a bug that took out the celery callbacks:
-    after_return and _build_message both ran a bare
-    TASK_CONFIG.get(name).get(...), so a task the dict had never heard
-    of raised inside the callback and reported the run as failed.
-
-    The log writer and the log page's task filter were already written
-    for an entry that is missing, which they could never actually see
-    while the callbacks raised first. Reads go through here so they can.
+    around, but every read goes through here so a missing entry degrades
+    instead of raising inside a celery callback.
     """
     return TASK_CONFIG.get(task_name) or {}

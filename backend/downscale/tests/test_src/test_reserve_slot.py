@@ -1,13 +1,3 @@
-"""
-tests for the downscale dispatch/concurrency-limit retry cadence.
-
-with a large backlog and a low downscale_max_concurrent, most queued
-jobs spend their time purely waiting for a running slot to free up -
-that only happens on encode completion (at least a minute in practice),
-so it shouldn't retry on the same short cadence as transient dispatch-
-lock contention between concurrently-dispatching tasks.
-"""
-
 from unittest.mock import MagicMock, Mock, patch
 
 from downscale.src.downscale import CONCURRENCY_RETRY_DELAY, DownscaleRunner
@@ -21,11 +11,7 @@ def _make_runner(task):
 
 
 def _mock_task():
-    """
-    real celery Task.retry() raises internally - side_effect mirrors
-    that so `raise self.task.retry(...)` in the source behaves the same
-    way here as it does for real
-    """
+    """real celery Task.retry() raises, so the mock has to as well"""
     task = Mock()
     task.request.id = "task-1"
     task.retry.side_effect = RuntimeError("retry raised")
@@ -39,10 +25,6 @@ def _mock_lock(acquired=True):
 
 
 def test_concurrency_limit_retries_with_longer_countdown():
-    """
-    blocked purely on downscale_max_concurrent -> use the longer,
-    concurrency-specific delay, not the task's short default
-    """
     task = _mock_task()
     runner = _make_runner(task)
 
@@ -70,11 +52,8 @@ def test_concurrency_limit_retries_with_longer_countdown():
 
 def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
     """
-    defense in depth: even if a local celery task somehow got dispatched
-    while downscale_max_concurrent=0 (e.g. a leftover from before the
-    setting was changed), _reserve_slot() must not treat 0 as falsy/no
-    limit - it should retry forever waiting for a slot that never opens,
-    same as any other exhausted concurrency limit
+    0 is a real limit, not falsy - a local job dispatched under it
+    retries forever, waiting for a slot that never opens
     """
     task = _mock_task()
     runner = _make_runner(task)
@@ -102,12 +81,6 @@ def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
 
 
 def test_dispatch_lock_contention_uses_default_retry_cadence():
-    """
-    failing to acquire the dispatch lock is short-lived contention
-    between concurrently-dispatching tasks, not "nothing to do for a
-    while" - it keeps the task's own short default_retry_delay rather
-    than the longer concurrency-limit-specific one
-    """
     task = _mock_task()
     runner = _make_runner(task)
 

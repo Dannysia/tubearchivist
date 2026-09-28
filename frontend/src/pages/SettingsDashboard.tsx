@@ -160,8 +160,6 @@ const SettingsDashboard = () => {
             <DownloadHistoryStats downloadHistoryStats={downloadHistoryStats} useSIUnits={false} />
           </div>
         </div>
-        {/* nothing downscaled is the normal case, only show this
-            section once there are savings to report */}
         {!!downscaleStats?.doc_count && (
           <div className="settings-item">
             <h2>Downscale Savings</h2>

@@ -1,8 +1,7 @@
 import APIClient from '../../functions/APIClient';
 import { ImportFileType } from '../loader/loadImportFiles';
 
-// the fields the import path actually reads, see
-// ImportFolderFiles.build_info_json - not the whole yt-dlp schema
+// only the fields ImportFolderFiles.build_info_json reads, not yt-dlp's schema
 export type ImportMetadataType = {
   video_id: string;
   channel_id: string;

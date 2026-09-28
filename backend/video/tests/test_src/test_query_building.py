@@ -66,7 +66,6 @@ def test_parse_sort():
 
 
 def test_parse_downscale():
-    """downscaled and not downscaled query building"""
     qb = QueryBuilder(user_id=1, downscale=True)
     exists = {"exists": {"field": "downscale.new_height"}}
 
@@ -95,7 +94,6 @@ def test_build_query_downscale_false_is_not_skipped():
 
 
 def test_build_query_without_downscale():
-    """no downscale params, no downscale clauses"""
     qb = QueryBuilder(user_id=1, type="videos")
     assert qb.build_query()["bool"]["must"] == [
         {"match": {"vid_type": "videos"}}
@@ -103,7 +101,6 @@ def test_build_query_without_downscale():
 
 
 def test_build_query_downscale_combined():
-    """downscale filters stack with the other filters"""
     qb = QueryBuilder(
         user_id=1,
         channel="test_channel",

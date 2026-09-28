@@ -1,9 +1,8 @@
 """per channel overwrite keys
 
-The serializer validates an incoming update and set_overwrites writes
-it. Both decide for themselves which keys are real, and when they
-disagree the update validates cleanly and then raises ValueError deep in
-the writer - a 500 with an empty body, not a 400 naming the bad key.
+When the serializer's key list and set_overwrites' disagree, an update
+validates cleanly and then raises deep in the writer - a 500 with an
+empty body, not a 400 naming the bad key.
 """
 
 # flake8: noqa: E402
@@ -34,22 +33,13 @@ def a_channel(overwrites=None):
 
 
 class TestOverwriteKeys:
-    """the serializer and the writer have to agree on the key list"""
-
     def test_every_serializer_field_is_writable(self):
-        """
-        a key added to the serializer alone validates and then dies in
-        set_overwrites, which is a 500 with an empty body rather than a
-        400 naming the key
-        """
         declared = set(ChannelOverwriteSerializer().fields)
 
         assert declared == set(OVERWRITE_KEYS)
 
 
 class TestSetOverwrites:
-    """YoutubeChannel.set_overwrites"""
-
     def test_writes_a_new_key(self):
         channel = a_channel()
         YoutubeChannel.set_overwrites(
@@ -72,7 +62,6 @@ class TestSetOverwrites:
         }
 
     def test_a_null_clears_the_key(self):
-        """what the ui sends when a setting goes back to unset"""
         channel = a_channel({"subscriptions_channel_size": 50})
         YoutubeChannel.set_overwrites(
             channel, {"subscriptions_channel_size": None}
@@ -87,10 +76,7 @@ class TestSetOverwrites:
 
 
 class TestDownscaleTarget:
-    """the auto downscale on download overwrite"""
-
     def test_is_a_writable_overwrite(self):
-        """the download post process reads this off the channel doc"""
         assert "downscale_target_height" in OVERWRITE_KEYS
         assert "downscale_target_height" in ChannelOverwriteSerializer().fields
 
@@ -102,7 +88,6 @@ class TestDownscaleTarget:
         assert serializer.is_valid(), serializer.errors
 
     def test_accepts_null_to_clear(self):
-        """what the ui sends when the select goes back to Off"""
         serializer = ChannelOverwriteSerializer(
             data={"downscale_target_height": None}
         )

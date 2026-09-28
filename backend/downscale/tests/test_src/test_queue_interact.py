@@ -1,5 +1,3 @@
-"""tests for downscale queue lookups used by startup auto-resume"""
-
 from unittest.mock import patch
 
 from downscale.src.queue_interact import DownscaleInteract
@@ -11,9 +9,8 @@ def _es_response(hits: list[dict]) -> dict:
 
 def test_get_interrupted_maps_hits_to_docs():
     """
-    queued/running local docs come back with their id merged into the
-    doc, paginated in batches of 1000 rather than a single capped query
-    - a restart backlog past 1000 jobs must not be silently truncated
+    paginated rather than a single capped query, so a restart backlog
+    past 1000 jobs is not silently truncated
     """
     hits = [
         {"_id": "doc1", "_source": {"status": "queued", "youtube_id": "a"}},
@@ -42,7 +39,6 @@ def test_get_interrupted_maps_hits_to_docs():
 
 
 def test_get_interrupted_empty():
-    """no queued/running docs returns an empty list"""
     with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
         mock_paginate.return_value.get_results.return_value = []
 
@@ -52,7 +48,6 @@ def test_get_interrupted_empty():
 
 
 def test_get_next_queued_maps_hits_and_sorts_oldest_first():
-    """oldest queued job first, id merged into the doc"""
     hits = [
         {"_id": "doc1", "_source": {"status": "queued", "timestamp": 1}},
         {"_id": "doc2", "_source": {"status": "queued", "timestamp": 2}},
@@ -81,13 +76,9 @@ def test_get_next_queued_maps_hits_and_sorts_oldest_first():
 
 def test_get_next_queued_excludes_already_dispatched_jobs():
     """
-    regression test: a job stays status=queued from the moment it's
-    dispatched until its task actually reaches _reserve_slot() and
-    flips it to running, so status=queued alone can't tell "never
-    dispatched" apart from "just dispatched, task hasn't started yet".
-    Without also filtering on an empty task_id, two
-    dispatch_pending_downscales() calls close together could both pick
-    the same job and start two celery tasks for one doc.
+    a job stays status=queued from dispatch until its task reaches
+    _reserve_slot(), so without the empty task_id filter two dispatch
+    passes close together could start two tasks for one doc
     """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response([]), 200)
@@ -101,7 +92,7 @@ def test_get_next_queued_excludes_already_dispatched_jobs():
 
 
 def test_get_next_queued_unlimited_uses_a_capped_size():
-    """limit=None (unlimited concurrency) still caps the query size"""
+    """limit=None is unlimited concurrency, not an unlimited query"""
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response([]), 200)
 
@@ -112,7 +103,6 @@ def test_get_next_queued_unlimited_uses_a_capped_size():
 
 
 def test_get_next_queued_zero_or_negative_limit_skips_the_query():
-    """no free slots (limit<=0) shouldn't even hit ES"""
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         assert DownscaleInteract.get_next_queued(0) == []
         assert DownscaleInteract.get_next_queued(-1) == []
@@ -121,12 +111,7 @@ def test_get_next_queued_zero_or_negative_limit_skips_the_query():
 
 
 def test_requeue_interrupted_uses_a_single_update_by_query():
-    """
-    regression test: resetting a large interrupted backlog on startup
-    must be one ES call, not one per job - the script resets
-    status/message/task_id in bulk for anything still queued/running.
-    Remote-held jobs (worker != "") are excluded from the sweep.
-    """
+    """remote-held jobs (worker != "") are excluded from the sweep"""
     with patch("common.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.post.return_value = ({}, 200)
 
@@ -153,7 +138,6 @@ def test_requeue_interrupted_uses_a_single_update_by_query():
 
 
 def test_get_all_tmp_filenames_returns_basenames():
-    """tmp_file_path is reduced to its basename for cache-keep matching"""
     hits = [
         {"_source": {"tmp_file_path": "/cache/downscale/a_720p.mp4"}},
         {"_source": {"tmp_file_path": "/cache/downscale/b_480p.mp4"}},
@@ -167,7 +151,7 @@ def test_get_all_tmp_filenames_returns_basenames():
 
 
 def test_get_all_tmp_filenames_skips_docs_without_tmp_path():
-    """a doc with no tmp_file_path (e.g. never reserved a slot) is skipped"""
+    """a doc that never reserved a slot has no tmp_file_path"""
     hits = [{"_source": {}}]
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response(hits), 200)
@@ -204,9 +188,8 @@ def test_count_running_excludes_remote_jobs():
 
 def test_build_queued_doc_defaults_worker_fields_for_a_local_job():
     """
-    a freshly queued job explicitly carries worker="" (not just an
-    absent field) - the count_running/get_interrupted/requeue_interrupted
-    local-vs-remote filters all rely on an exact term match against it
+    worker is written as "" rather than left absent: the local-vs-remote
+    filters all rely on an exact term match against it
     """
     video_json_data = {
         "channel": {"channel_id": "UC123", "channel_name": "chan"},
@@ -228,11 +211,6 @@ def test_build_queued_doc_defaults_worker_fields_for_a_local_job():
 
 
 def test_create_keys_the_doc_id_off_youtube_id():
-    """
-    doc_id is derived from doc["youtube_id"], not randomly generated -
-    see docs/downscale-dedup/README.md. Verified against the ElasticWrap
-    path used, since there's no uuid call left to assert on.
-    """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.put.return_value = ({}, 200)
 
@@ -244,9 +222,8 @@ def test_create_keys_the_doc_id_off_youtube_id():
 
 def test_create_is_deterministic_across_repeated_calls_for_one_video():
     """
-    two create() calls for the same video (e.g. a racing double
-    submission, or a retry after a different target_height) write to the
-    same doc path rather than generating a new id each time
+    a racing double submission, or a retry at a different target_height,
+    writes to the same doc path
     """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.put.return_value = ({}, 200)
@@ -264,11 +241,7 @@ def test_create_is_deterministic_across_repeated_calls_for_one_video():
 
 
 def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
-    """
-    only remote (worker != "") running jobs with a heartbeat older than
-    the threshold are stale leases - a job that never set worker (local)
-    or is heartbeating on time is excluded
-    """
+    """a local job, or one heartbeating on time, is not a stale lease"""
     hits = [
         {
             "_id": "doc1",
@@ -313,12 +286,9 @@ def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
 
 def test_get_stale_leases_range_declares_epoch_second_format():
     """
-    regression test: last_heartbeat is mapped date/epoch_second, but ES
-    reads a bare numeric on a date field as epoch *millis*. Without an
-    explicit format the threshold is read ~1000x too small (an epoch
-    second value lands in Jan 1970), so the range matches nothing, no
-    lease is ever reaped, and a cancelled remote job whose worker never
-    acked hangs in status=running forever
+    ES reads a bare numeric on a date field as epoch *millis*, so
+    without the explicit format the threshold lands in Jan 1970, the
+    range matches nothing and no lease is ever reaped
     """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response([]), 200)

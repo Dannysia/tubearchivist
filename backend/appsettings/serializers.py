@@ -74,9 +74,8 @@ class AppConfigDownloadsSerializer(
         """0 and null both mean off, and both stay allowed
 
         Anything between is not a real setting: at 1 the randomised
-        window collapses to always zero, and 2 to 4 are too narrow to
-        be worth the option. Rejecting 0 outright would break stored
-        configs already using it to disable pacing.
+        window collapses to zero, and 2 to 4 are too narrow to be worth
+        the option. Rejecting 0 would break stored configs using it.
         """
         if value and value < MIN_SLEEP_INTERVAL:
             raise serializers.ValidationError(
@@ -177,7 +176,7 @@ class ImportMetadataSerializer(serializers.Serializer):
     """
 
     video_id = serializers.RegexField(f"^{VIDEO_ID_PATTERN}$")
-    # see CHANNEL_ID_PATTERN: this one becomes a directory name
+    # becomes a directory name, so the pattern is strict
     channel_id = serializers.RegexField(f"^{CHANNEL_ID_PATTERN}$")
     channel_name = serializers.CharField(max_length=255)
     title = serializers.CharField(max_length=500)

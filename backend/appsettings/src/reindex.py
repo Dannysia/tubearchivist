@@ -304,17 +304,16 @@ class Reindex(ReindexBase):
             self._clear_active(queue_name=queue.key)
 
             if not self._wait_for_next(queue, name, total, idx):
-                # all the way out, not just this index: the next type
-                # would start its own run of youtube requests
+                # out of the whole run: the next type would also
+                # start hitting youtube
                 return False
 
         return True
 
     def _wait_for_next(self, queue, name: str, total: int, idx: int) -> bool:
-        """pace the next youtube request, naming it when there is one
+        """False when a stop request cut the wait short
 
-        A drained queue has no next item to name, but the wait still
-        paces the next index type and still has to be stoppable.
+        A drained queue still waits: it paces the next index type.
         """
         if not self.task or not queue.length():
             return countdown_sleep(self.config, self.task)
@@ -356,13 +355,9 @@ class Reindex(ReindexBase):
         youtube_id: str, es_meta: dict, is_redownload: bool
     ) -> str | bool:
         """
-        find the file to probe for a reindex. During an active
-        force-redownload, prefer a fresh download still sitting in the
-        cache dir over the archived file, since the archive hasn't been
-        overwritten yet. For a routine reindex (no redownload happening),
-        always use the archived file - a stale/leftover cache file from
-        an unrelated interrupted download should never be probed instead
-        of the real, current archive.
+        during a force-redownload the archive has not been overwritten
+        yet, so prefer the fresh cache file; otherwise never probe the
+        cache, where a leftover from an interrupted download may sit.
         """
         if is_redownload:
             cache_path = os.path.join(
@@ -394,7 +389,6 @@ class Reindex(ReindexBase):
 
         es_meta = video.json_data.copy()
 
-        # get new
         media_url: str | bool = self._get_media_path(
             youtube_id, es_meta, is_redownload
         )

@@ -1,19 +1,11 @@
-"""
-functionality:
-- rotate the tailscale exit node when youtube blocks the address
-- cap how often that happens so a total block cannot spin forever
-"""
-
 from appsettings.src import tailscale
 from common.src.ta_redis import RedisArchivist
 
-# consecutive rotations that have not yet been followed by a working
-# request. lives in redis because it is runtime state about right now,
-# not configuration
+# consecutive rotations not yet followed by a working request; redis
+# because it is runtime state, not configuration
 ROTATE_COUNT_KEY = "exit_node_rotates"
 
-# only used if the config somehow carries no cap, the serializer makes
-# that unreachable through the api
+# unreachable through the api, the serializer always sets a cap
 FALLBACK_MAX_ROTATES = 3
 
 
@@ -25,11 +17,7 @@ def _budget_used() -> int:
 
 
 def _is_enabled(config) -> bool:
-    """whether rotation is switched on for this request
-
-    urlparser builds a YtWrap with no config at all, which is neither on
-    nor off but has to read as off.
-    """
+    """no config at all is neither on nor off, and has to read as off"""
     if not config:
         return False
 
@@ -37,12 +25,9 @@ def _is_enabled(config) -> bool:
 
 
 def clear_budget(config=None) -> None:
-    """a request got through, so the address is fine and the next block
-    starts with a full budget again
-
-    takes the config because this runs after every successful request:
-    an install with rotation switched off must not pay a redis round
-    trip, or need a redis at all, for a budget it cannot have spent.
+    """takes the config because this runs after every successful
+    request: an install with rotation switched off must not pay a redis
+    round trip, or need a redis at all
     """
     if not _is_enabled(config):
         return
@@ -52,11 +37,10 @@ def clear_budget(config=None) -> None:
 
 
 def rotate_on_bot_block(config) -> str | None:
-    """move to another exit node after youtube called this a bot
+    """returns a line to log, or None when there is nothing to say
 
-    returns a line to log, or None when there is nothing to say. never
-    raises: a failure to rotate must not replace the bot error that is
-    already on its way up.
+    never raises: a failure to rotate must not replace the bot error
+    that is already on its way up.
     """
     if not _is_enabled(config):
         return None
@@ -80,9 +64,8 @@ def rotate_on_bot_block(config) -> str | None:
             return "no mullvad exit node available to rotate onto"
 
         tailscale.set_exit_node(picked["node_id"])
-    # deliberately broad. this runs with a bot error already on its way
-    # up, and that error is the more useful of the two, so nothing that
-    # goes wrong in here is worth replacing it with
+    # deliberately broad: the bot error already on its way up is more
+    # useful than anything that fails in here
     except Exception as err:
         return f"exit node rotate failed: {err}"
 

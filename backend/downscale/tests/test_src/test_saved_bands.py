@@ -1,11 +1,3 @@
-"""
-tests for the savings band payload behind the dashboard panel.
-
-The bands are the same ones the queue's size filter rungs are summed
-from, so these also pin the contract that keeps the two reporting in the
-same categories.
-"""
-
 from downscale.src.constants import (
     QUEUE_SIZE_FIELDS,
     SAVED_BUCKET_EDGES,
@@ -16,7 +8,6 @@ from downscale.src.constants import (
 
 
 def _agg(**counts):
-    """a range agg response with the given per band doc counts"""
     buckets = [{"key": "larger", "doc_count": counts.get("larger", 0)}]
     buckets += [
         {"key": str(edge), "doc_count": counts.get(str(edge), 0)}
@@ -27,9 +18,8 @@ def _agg(**counts):
 
 def test_video_agg_reads_the_downscale_subfields():
     """
-    a video doc carries the sizes an accepted job wrote under downscale,
-    not at the top level like a queue doc - reading the queue's field
-    names off a video would match nothing and report an empty panel
+    a video doc carries the sizes under downscale, not at the top level
+    like a queue doc, so the queue's field names would match nothing
     """
     source = saved_percent_agg(VIDEO_SIZE_FIELDS)["range"]["script"]["source"]
 
@@ -39,7 +29,6 @@ def test_video_agg_reads_the_downscale_subfields():
 
 
 def test_queue_fields_stay_the_default():
-    """the size filter calls this with no argument and must not move"""
     source = saved_percent_agg()["range"]["script"]["source"]
 
     assert (
@@ -50,7 +39,6 @@ def test_queue_fields_stay_the_default():
 
 
 def test_bands_run_biggest_saving_first():
-    """the panel leads with the best result, like the transition panel"""
     parsed = parse_saved_bands(_agg(), total=0)
     edges = [band["from"] for band in parsed["bands"]]
 
@@ -70,10 +58,7 @@ def test_counts_land_in_their_own_band():
 
 
 def test_grew_is_reported_separately_from_every_band():
-    """
-    a video that came out larger is not a saving of any size, so it must
-    not be folded into the 0-5% band
-    """
+    """a video that came out larger is not a saving of any size"""
     parsed = parse_saved_bands(_agg(larger=9, **{"0": 1}), total=10)
 
     assert parsed["grew"] == 9
@@ -84,9 +69,8 @@ def test_grew_is_reported_separately_from_every_band():
 
 def test_rows_reconcile_with_the_caller_total():
     """
-    the shortfall is reported rather than dropped, so the panel adds up
-    to the downscaled total - a video whose original_size was never
-    indexed fails the guard and lands in no band
+    the shortfall is reported rather than dropped: a video whose
+    original_size was never indexed fails the guard and lands in no band
     """
     parsed = parse_saved_bands(_agg(**{"50": 4}), total=7)
 
@@ -100,10 +84,7 @@ def test_rows_reconcile_with_the_caller_total():
 
 
 def test_total_below_the_bands_never_goes_negative():
-    """
-    the agg and the total come from the same response, but clamp rather
-    than render a negative row if they ever disagree
-    """
+    """clamped rather than rendering a negative row if they disagree"""
     parsed = parse_saved_bands(_agg(**{"50": 4}), total=0)
 
     assert parsed["unknown"] == 0

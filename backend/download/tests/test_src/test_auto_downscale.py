@@ -1,10 +1,3 @@
-"""per channel auto downscale on download
-
-The channel overwrite queues a downscale for anything that lands above
-its target height. It queues only - jobs go through the normal
-pending_review flow, so none of this ever replaces an original file.
-"""
-
 # pylint: disable=protected-access
 
 from types import SimpleNamespace
@@ -16,7 +9,7 @@ from downscale.src.queue_interact import DownscaleInteract
 
 
 def a_video(youtube_id, channel_id, height):
-    """a video document as _get_downscale_candidates returns one"""
+    """shaped like a _get_downscale_candidates hit"""
     return {
         "youtube_id": youtube_id,
         "title": f"title of {youtube_id}",
@@ -32,14 +25,11 @@ def a_video(youtube_id, channel_id, height):
 
 
 def fake_interact(active=()):
-    """a DownscaleInteract stand in, plus the list it records into"""
+    """returns (stand in, the list it records into)"""
     created = []
 
     class FakeInteract:
-        """records created job docs instead of writing to es"""
-
         def create(self, doc):
-            """record rather than index"""
             created.append(doc)
             return doc["youtube_id"]
 
@@ -57,14 +47,13 @@ def fake_interact(active=()):
 
         @staticmethod
         def get_active_for_video(youtube_id, exclude_id=None):
-            """pretend these ids already have a job in flight"""
             return {"id": youtube_id} if youtube_id in active else None
 
     return FakeInteract, created
 
 
 def make_handler(overwrites, candidates):
-    """a DownloadPostProcess stand in holding the overwrites under test"""
+    """returns (stand in, the args the candidate query saw)"""
     seen_args = {}
 
     def _candidates(video_ids, targets):
@@ -81,7 +70,7 @@ def make_handler(overwrites, candidates):
 
 
 def patch_env(monkeypatch, interact, video_ids=("vid1",)):
-    """wire redis, the queue interact and dispatch, return dispatch calls"""
+    """returns the list dispatch calls land in"""
     dispatched = []
     monkeypatch.setattr(
         handler_mod,
@@ -98,8 +87,6 @@ def patch_env(monkeypatch, interact, video_ids=("vid1",)):
 
 
 class TestAutoDownscale:
-    """DownloadPostProcess.auto_downscale"""
-
     def test_queues_a_video_above_the_target(self, monkeypatch):
         interact, created = fake_interact()
         dispatched = patch_env(monkeypatch, interact)
@@ -117,7 +104,6 @@ class TestAutoDownscale:
         assert dispatched == [True]
 
     def test_skips_a_video_already_at_or_below_the_target(self, monkeypatch):
-        """the same rule the channel batch view applies"""
         interact, created = fake_interact()
         dispatched = patch_env(
             monkeypatch, interact, video_ids=("at", "below")
@@ -146,7 +132,6 @@ class TestAutoDownscale:
         assert [i["youtube_id"] for i in created] == ["vid1"]
 
     def test_skips_a_video_that_already_has_a_job(self, monkeypatch):
-        """a manual submission got here first, don't queue a sibling"""
         interact, created = fake_interact(active={"vid1"})
         dispatched = patch_env(monkeypatch, interact)
         handler, _ = make_handler(
@@ -160,7 +145,6 @@ class TestAutoDownscale:
         assert dispatched == []
 
     def test_skips_a_video_with_no_video_stream(self, monkeypatch):
-        """nothing to compare a target against"""
         interact, created = fake_interact()
         patch_env(monkeypatch, interact)
         audio_only = a_video("vid1", "chan1", 2160)
@@ -194,7 +178,6 @@ class TestAutoDownscale:
         assert dispatched == [True]
 
     def test_uses_the_target_of_each_video_s_own_channel(self, monkeypatch):
-        """one download run covers many channels, each with its own target"""
         interact, created = fake_interact()
         patch_env(monkeypatch, interact, video_ids=("a", "b"))
         handler, _ = make_handler(
@@ -211,7 +194,7 @@ class TestAutoDownscale:
         assert by_id == {"a": 1080, "b": 480}
 
     def test_does_nothing_when_no_channel_has_a_target(self, monkeypatch):
-        """the overwhelmingly common case - don't even hit es"""
+        """don't even hit es"""
         interact, created = fake_interact()
         dispatched = patch_env(monkeypatch, interact)
         handler, seen = make_handler(
@@ -240,7 +223,6 @@ class TestAutoDownscale:
         assert seen == {}
 
     def test_does_nothing_when_nothing_was_downloaded(self, monkeypatch):
-        """a run that downloaded nothing still reaches post processing"""
         interact, created = fake_interact()
         patch_env(monkeypatch, interact, video_ids=())
         handler, seen = make_handler(
@@ -256,7 +238,6 @@ class TestAutoDownscale:
     def test_looks_up_only_the_new_videos_of_targeted_channels(
         self, monkeypatch
     ):
-        """the candidate query is scoped both ways, not a full index scan"""
         interact, _ = fake_interact()
         patch_env(monkeypatch, interact, video_ids=("a", "b"))
         handler, seen = make_handler(
@@ -270,21 +251,16 @@ class TestAutoDownscale:
 
 
 class TestCandidateQuery:
-    """DownloadPostProcess._get_downscale_candidates"""
-
     def test_scopes_the_query_to_the_new_ids_and_channels(self, monkeypatch):
         captured = {}
 
         class FakePaginate:
-            """capture the query instead of running it"""
-
             def __init__(self, index_name, data, **kwargs):
                 captured["index"] = index_name
                 captured["data"] = data
 
             @staticmethod
             def get_results():
-                """no hits, the query itself is what's under test"""
                 return []
 
         monkeypatch.setattr(handler_mod, "IndexPaginate", FakePaginate)
@@ -299,22 +275,17 @@ class TestCandidateQuery:
         assert {"terms": {"channel.channel_id": ["chan1", "chan2"]}} in must
 
     def test_asks_for_every_field_build_queued_doc_reads(self, monkeypatch):
-        """
-        the candidate query hands its hits straight to build_queued_doc,
-        so a field added there and not here would queue jobs with a hole
-        in them rather than fail loudly
+        """a field build_queued_doc reads and the query does not fetch
+        holes the job doc rather than failing loudly
         """
         captured = {}
 
         class FakePaginate:
-            """capture the query instead of running it"""
-
             def __init__(self, index_name, data, **kwargs):
                 captured["data"] = data
 
             @staticmethod
             def get_results():
-                """no hits needed"""
                 return []
 
         monkeypatch.setattr(handler_mod, "IndexPaginate", FakePaginate)

@@ -104,7 +104,6 @@ class QueryBuilder:
 
     @staticmethod
     def parse_downscale(downscale: bool):
-        """build has/has not been downscaled query"""
         exists = downscaled_filter()
         if downscale:
             return exists
@@ -114,9 +113,8 @@ class QueryBuilder:
     @staticmethod
     def parse_downscale_encoder(encoder: str):
         """
-        build downscale encoder query. Not validated against a fixed
-        list: a remote worker reports its own encoder string, so the
-        values here are whatever finished jobs actually wrote
+        not validated against a fixed list: a remote worker reports its
+        own encoder string, so the values are whatever jobs wrote
         """
         return {"term": {"downscale.encoder": {"value": encoder}}}
 

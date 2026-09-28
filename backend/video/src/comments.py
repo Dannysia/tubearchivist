@@ -231,10 +231,10 @@ class CommentList:
         return True
 
     def _wait_for_next(self, queue, idx: int, total: int) -> bool:
-        """pace the next youtube request, naming it when there is one
+        """False when the wait was interrupted - stop the loop
 
         A drained queue has no next video to name, but the wait still
-        has to happen and still has to be stoppable.
+        happens and still has to be stoppable.
         """
         if not self.task or not queue.length():
             return countdown_sleep(self.config, self.task)

@@ -1,14 +1,10 @@
 import { DownscaleSavedAggsType } from '../../api/loader/loadDownscaleAggs';
 
 /**
- * The rungs the downscale queue's size filter offers, mirroring
- * SIZE_CHANGE_VALUES in backend/downscale/src/constants.py. The labels
- * live here only - the backend has no use for them. It validates the
- * values against its own copy, so a rung added here and not there is
- * rejected as an invalid choice rather than silently ignored.
- *
- * 'smaller' and 'larger' predate the rungs and keep their old meaning,
- * so an existing ?size_change=smaller link still resolves.
+ * mirrors SIZE_CHANGE_VALUES in backend/downscale/src/constants.py, which
+ * validates the value, so a rung added here and not there is rejected. The
+ * labels live here only. 'smaller' and 'larger' stay as the broad rungs, so an
+ * existing ?size_change=smaller link still resolves.
  */
 export type DownscaleSizeChange =
   | 'larger'
@@ -37,18 +33,10 @@ export const sizeChangeLabel = (value: string): string =>
   DOWNSCALE_SIZE_CHANGES.find(option => option.value === value)?.label ?? value;
 
 /**
- * How many jobs each rung would match, summed out of the disjoint
- * savings bands the aggs endpoint returns.
- *
- * The bands have to be summed rather than read one-per-rung because the
- * rungs overlap: >5% contains >10%, and 'got smaller' contains all of
- * them. ES cannot express that in a single range agg, so the split
- * lives here.
- *
- * Bands are keyed by their lower edge as a string, plus 'larger' for
- * jobs that grew. A band the backend adds but this does not know about
- * still lands in the 'got smaller' total, so a new edge under-reports a
- * rung rather than vanishing from the page.
+ * the rungs overlap - >5% contains >10%, 'got smaller' contains all of them -
+ * so the disjoint bands are summed rather than read one per rung. A band the
+ * backend adds but this does not know still lands in the 'got smaller' total,
+ * so a new edge under-reports a rung rather than dropping off the page.
  */
 export const countsBySizeChange = (
   aggs: DownscaleSavedAggsType | undefined,

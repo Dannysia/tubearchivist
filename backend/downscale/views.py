@@ -1,5 +1,3 @@
-"""all downscale queue API views"""
-
 from common.src.es_connect import ElasticWrap
 from common.views_base import AdminOnly, ApiBaseView
 from downscale.serializers import (
@@ -22,16 +20,13 @@ from downscale.src.encoder_capability import EncoderCapabilityTest
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
 
-# practical downscale queues stay small (same size cap already used
-# elsewhere for "get everything matching" queries, e.g.
-# DownscaleInteract.get_interrupted/get_all_tmp_filenames)
+# practical downscale queues stay small; the same cap the other
+# "get everything matching" queries use
 BULK_BY_FILTER_MAX = 1000
 
-# unfiltered list view: lead with what's actionable right now - running,
-# then pending_review (done encoding, waiting on accept/reject), then
-# failed (needs a retry/dismiss decision) - ahead of the passive queued
-# backlog, newest first within each group. Only applied with no filters,
-# since filtering to a single status already makes the grouping a no-op.
+# lead with what is actionable - running, then pending_review, then
+# failed - ahead of the passive queued backlog, newest first within each
+# group. Only applied unfiltered: one status makes the grouping a no-op.
 _STATUS_SORT = [
     {
         "_script": {
@@ -55,11 +50,6 @@ _STATUS_SORT = [
 
 
 def _build_must_list(validated_query: dict) -> list[dict]:
-    """
-    build the bool-query must clauses for the list/status/channel/search/
-    size_change/encoder filters, shared between listing and resolving ids
-    for a bulk-by-filter action
-    """
     must_list = []
     status_filter = validated_query.get("status")
     if status_filter:
@@ -79,10 +69,8 @@ def _build_must_list(validated_query: dict) -> list[dict]:
 
     size_change = validated_query.get("size_change")
     if size_change:
-        # new_size is only ever set once an encode actually finishes
-        # (_finish_success), so the clause requires it > 0 to keep
-        # queued/running/failed jobs out rather than treating their
-        # unset 0 as "smaller" - see size_change_clause()
+        # new_size is only set once an encode finishes, so the clause
+        # requires it > 0 rather than reading an unset 0 as "smaller"
         must_list.append(size_change_clause(size_change))
 
     return must_list
@@ -152,8 +140,8 @@ class DownscaleApiListView(ApiBaseView):
                 success.append(doc_id)
 
         if action == "retry" and success:
-            # retry() only resets a doc to status=queued - one dispatch
-            # pass covers the whole batch rather than one call per job
+            # retry() only resets docs to queued, so one dispatch pass
+            # covers the whole batch
             dispatch_pending_downscales()
 
         response_serializer = DownscaleBulkResultSerializer(
@@ -164,7 +152,6 @@ class DownscaleApiListView(ApiBaseView):
 
     @staticmethod
     def _get_ids_by_filter(request) -> list[str]:
-        """resolve doc ids matching the current list filter query params"""
         query_serializer = DownscaleListQuerySerializer(
             data=request.query_params
         )
@@ -187,18 +174,11 @@ SAVED_AGGS_KEY = "saved_downscale"
 
 def _build_aggs_query(field_filter: str) -> tuple[str, dict]:
     """
-    build the aggs block for the queue's channel/encoder/saved filter
-    dropdowns, returning (agg_key, agg_body) - the caller needs agg_key
-    to pull the matching bucket set back out of the ES response. encoder
-    is a plain terms agg (a single string key); channel is multi_terms
-    since the frontend needs both a display name and a separately
-    filterable id; saved is a scripted range agg over disjoint savings
-    bands, which the frontend sums into the overlapping rungs its
-    dropdown offers.
-
-    encoder is only ever set once a job finishes (see _finish_success()/
-    worker.finish()), so this naturally excludes queued/running jobs
-    rather than surfacing an empty-string bucket for them.
+    returns (agg_key, agg_body); the caller needs agg_key to pull the
+    bucket set back out of the ES response. channel is multi_terms
+    because a display name and a filterable id are both needed. encoder
+    is only ever set once a job finishes, so aggregating on it excludes
+    queued and running jobs rather than bucketing them under "".
     """
     if field_filter == "encoder":
         return ENCODER_AGGS_KEY, {"terms": {"field": "encoder", "size": 30}}

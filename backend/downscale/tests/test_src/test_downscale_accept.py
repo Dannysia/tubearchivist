@@ -1,5 +1,3 @@
-"""tests for accepting a finished downscale job"""
-
 from unittest.mock import MagicMock, patch
 
 from downscale.src.downscale import DownscaleReview
@@ -29,10 +27,6 @@ def _mock_video(json_data):
 
 
 def test_accept_copies_ffmpeg_args_onto_the_video():
-    """
-    the exact argv that produced the accepted file becomes part of the
-    video's permanent downscale record, alongside encoder/quality/preset
-    """
     video = _mock_video({"media_url": "video1.mp4"})
 
     with patch.object(
@@ -56,20 +50,9 @@ def test_accept_copies_ffmpeg_args_onto_the_video():
 
 def test_accept_matches_the_candidates_container_when_it_differs():
     """
-    a remote worker may encode to .mkv (e.g. for HDR10 static metadata
-    support MP4 muxing doesn't reliably carry) while the original source
-    is .mp4 - accept() must rename to match the candidate's actual
-    container rather than force it onto the original's extension (which
-    would silently mismatch the file's real content), and update
-    media_url in ES to match.
-
-    The .mkv tmp_file_path below is a state the pipeline really
-    reaches, not a hypothetical: build_queued_doc() hardcodes .mp4 at
-    enqueue time and worker.finish() corrects it from the container the
-    worker reports (see test_worker.py's
-    test_finish_renames_to_the_container_the_worker_reported). Without
-    that correction this test would pass while the real path stayed
-    broken.
+    a worker may encode to .mkv - HDR10 static metadata does not mux
+    reliably into MP4 - while the source is .mp4, so the accepted file
+    keeps the candidate's container and media_url follows it
     """
     job = {**PENDING_JOB, "tmp_file_path": "/cache/downscale/video1_480p.mkv"}
     video = _mock_video({"media_url": "video1.mp4"})
@@ -97,7 +80,7 @@ def test_accept_matches_the_candidates_container_when_it_differs():
 
 
 def test_accept_preserves_missing_ffmpeg_args_as_none():
-    """a job accepted before this field existed has nothing to copy"""
+    """older job docs carry no ffmpeg_args field at all"""
     job = {**PENDING_JOB}
     del job["ffmpeg_args"]
     video = _mock_video({"media_url": "video1.mp4"})

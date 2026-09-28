@@ -1,8 +1,8 @@
 """the paced waits every long running queue sits in
 
-each of these loops notifies at the top of a pass and slept at the
-bottom, so the wait was spent showing the item that had just finished.
-the countdown is what the user sees instead.
+each of these loops notifies at the top of a pass and sleeps at the
+bottom, so without a countdown the wait is spent showing the item that
+just finished.
 """
 
 from types import SimpleNamespace
@@ -16,7 +16,6 @@ CONFIG = {"downloads": {"sleep_interval": 10}}
 
 @pytest.fixture
 def clock(monkeypatch):
-    """record sleeps instead of taking them"""
     slept: list[int] = []
     monkeypatch.setattr(helper, "sleep", slept.append)
     return slept
@@ -24,18 +23,14 @@ def clock(monkeypatch):
 
 @pytest.fixture
 def running():
-    """a task nobody has stopped"""
     return SimpleNamespace(is_stopped=lambda: False)
 
 
 def set_interval(monkeypatch, secs):
-    """pin the randomised duration"""
     monkeypatch.setattr(helper, "rand_sleep_secs", lambda config: secs)
 
 
 class TestCountdownSleep:
-    """common.src.helper.countdown_sleep"""
-
     def test_counts_the_wait_down(self, monkeypatch, clock, running):
         seen: list[str] = []
         set_interval(monkeypatch, 3)
@@ -50,7 +45,6 @@ class TestCountdownSleep:
         assert sum(clock) == 3
 
     def test_label_names_what_is_waited_for(self, monkeypatch, clock, running):
-        """each queue waits before a different thing"""
         seen: list[str] = []
         set_interval(monkeypatch, 1)
 
@@ -59,7 +53,6 @@ class TestCountdownSleep:
         assert seen == ["Waiting 1s before next URL"]
 
     def test_waits_the_full_interval(self, monkeypatch, clock, running):
-        """stepping through it must not shorten or extend the wait"""
         set_interval(monkeypatch, 14)
 
         countdown_sleep(CONFIG, running, lambda msg: None, "download")
@@ -92,7 +85,6 @@ class TestCountdownSleep:
         assert sum(clock) == 2
 
     def test_stop_before_the_first_step_says_nothing(self, monkeypatch, clock):
-        """already stopped, so there is no wait to report"""
         seen: list[str] = []
         set_interval(monkeypatch, 10)
         task = SimpleNamespace(is_stopped=lambda: True)
@@ -117,8 +109,7 @@ class TestSilentWait:
     """no notify: the waits with nothing honest to say
 
     After the last item of a queue there is no next one to name, but the
-    wait still happens and is exactly where a stop request tends to
-    land. Dropping to a plain sleep there would make stop look broken.
+    wait still happens and is exactly where a stop request tends to land.
     """
 
     def test_waits_the_full_interval_silently(
@@ -154,8 +145,6 @@ class TestPollsEvenWithPacingOff:
 
     countdown_sleep is the only place most of these loops ever look for
     a stop - reindex and the comment index have no other check at all.
-    Polling only inside the countdown loop meant Stop did nothing for
-    anyone who had turned pacing off.
     """
 
     @pytest.mark.parametrize("interval", [None, 0])

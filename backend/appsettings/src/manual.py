@@ -42,48 +42,35 @@ def extract_video_id(base_name: str) -> str | None:
     return None
 
 
-# channel_id ends up as a directory name under the media root, through
-# add_file_path -> media_url -> _move_to_archive, so a hand entered one
-# is charset restricted rather than free text. No dot at all, which
-# rules out traversal without having to reason about it
+# channel_id becomes a directory name, so no dot at all: that rules out
+# traversal without having to reason about it
 CHANNEL_ID_PATTERN = r"[a-zA-Z0-9_-]{2,64}"
-# the same eleven characters strict_video_id insists on
 VIDEO_ID_PATTERN = r"[a-zA-Z0-9_-]{11}"
 
-# view and like counts left blank on a generated info.json. A video that
-# is gone from YouTube and was never captured with its counts has an
-# unknown view count, not a zero one, and 0 claims to know something it
-# does not - it also reads as a real number everywhere it is displayed.
-#
-# -1 rather than null because stats.view_count is read back through a
-# plain IntegerField (video.serializers.StatsSerializer) and is a sort
-# field (video.src.constants.SortEnum), both of which a null breaks.
-# Being in band, it is only correct where a reader knows about it: every
-# display site has to check. See isKnownCount in the frontend.
+# a count missing from a generated info.json is unknown, not zero, and 0
+# reads as a real number wherever it is shown. -1 rather than null because
+# it is read back through an IntegerField and sorted on, both of which a
+# null breaks; being in band, every display site has to check for it.
 UNKNOWN_COUNT = -1
 
 
 def is_safe_channel_id(channel_id: str | None) -> bool:
-    """channel_id is usable as a directory name"""
     return bool(re.fullmatch(CHANNEL_ID_PATTERN, channel_id or ""))
 
 
 def is_video_id(video_id: str | None) -> bool:
-    """an unambiguous eleven character video id"""
     return bool(re.fullmatch(VIDEO_ID_PATTERN, video_id or ""))
 
 
 def strict_video_id(base_name: str) -> str | None:
     """video id from a file base name, unambiguous spellings only"""
-    # yt-dlp default like [youtubeid]
     id_search = re.search(r"\[([a-zA-Z0-9_-]{11})\]$", base_name)
     if id_search:
         return id_search.group(1)
 
-    # the bare id and nothing else. extract_video_id would happily take the
-    # trailing 11 chars of any longer name, so mystery-clip.mp4 imports as
-    # ystery-clip. at upload time we can insist on a name that can't be
-    # misread instead of finding out after the file is on disk
+    # the bare id and nothing else: extract_video_id would take the
+    # trailing 11 chars of any longer name, so mystery-clip.mp4 imports
+    # as ystery-clip
     if re.fullmatch(r"[a-zA-Z0-9_-]{11}", base_name):
         return base_name
 
@@ -131,8 +118,7 @@ class ImportFolderScanner:
         self.match_files(all_files)
         self.process_videos()
         if self.failed:
-            # every file got its turn before this, so the report covers
-            # the whole run rather than whichever video failed first
+            # every file got its turn first, so this covers the whole run
             raise ValueError("; ".join(self.failed))
 
         return self.to_import
@@ -209,20 +195,12 @@ class ImportFolderScanner:
         return False, False
 
     def process_videos(self):
-        """loop through all videos
-
-        A video that cannot be imported is recorded and the run carries
-        on. A bulk import is exactly where one bad file name or one
-        video YT has dropped turns up, it is unattended, and aborting
-        the loop used to leave every queued video after it unprocessed
-        with nothing said about why.
-
-        The three caught here are what one unusable file raises: a
-        ValueError for metadata that cannot be built, CalledProcessError
-        from ffmpeg and ffprobe on a truncated or corrupt media file,
-        and OSError for the disk itself, which PIL also raises on an
-        unreadable thumbnail. Anything else is not about this one file
-        and still stops the run.
+        """
+        a video that cannot be imported is recorded and the run carries
+        on: a bulk import is unattended. Caught here is what one unusable
+        file raises - ValueError for metadata, CalledProcessError from
+        ffmpeg and ffprobe, OSError for the disk and for an unreadable
+        thumbnail. Anything else still stops the run.
         """
         config = AppConfig().config
         self.failed = []
@@ -243,9 +221,8 @@ class ImportFolderScanner:
                 break
 
             if idx:
-                # pace metadata extraction like the download queue does.
-                # a bulk import otherwise hits youtube a few hundred times
-                # back to back, which is what gets you blocked
+                # a bulk import otherwise hits youtube a few hundred
+                # times back to back, which is what gets you blocked
                 if not countdown_sleep(
                     config,
                     self.task,
@@ -277,7 +254,6 @@ class ImportFolderScanner:
                 self.failed.append(message)
 
     def _process_video(self, current_video, config):
-        """identify and import a single video"""
         self._detect_youtube_id(current_video)
         self._dump_thumb(current_video)
         self._convert_thumb(current_video)
@@ -572,15 +548,11 @@ class ManualImport:
             if not json_data:
                 if not self.ignore_error:
                     # re-raise rather than build a fresh ValueError: a
-                    # bare one renders as "Task failed: " in the ui,
-                    # which is the whole reason an import failure used
-                    # to say nothing
+                    # bare one renders as "Task failed: " in the ui
                     raise
 
-                # ignore_error carries on, but this video is still not
-                # imported and its file stays in the import folder.
-                # Unsaid, it disappears into a run that then reports
-                # success
+                # not imported, and the file stays in the import
+                # folder, inside a run that reports success
                 print(f"manual import: skipping, {err}")
 
         if not json_data:
@@ -606,8 +578,7 @@ class ManualImport:
         except ValueError as err:
             # not printed here: the fallbacks below may still rescue
             # this video, and "check the id for a typo" in the log of an
-            # import that then succeeded is worse than no line at all.
-            # run() and process_videos print it once it is terminal
+            # import that then succeeded is worse than no line at all
             message = self._why_no_metadata(video, info_json, err)
             raise ValueError(message) from err
 
@@ -638,13 +609,10 @@ class ManualImport:
     def _why_no_metadata(self, video, info_json, err) -> str:
         """explain a failed metadata build in terms of what to do next
 
-        YT answers for any well formed eleven character id, including
-        one that never existed: the same stub it returns for a removed
-        video, with the id echoed back and everything identifying it
-        null. So a typo in the file name and a video YT has dropped are
-        indistinguishable from the answer alone, and both land here.
-        Name both, because nothing else in the run points at the typo
-        and it is the likelier of the two.
+        YT answers for any well formed eleven character id, including one
+        that never existed: the same stub it returns for a removed video.
+        A typo in the file name and a dropped video are indistinguishable
+        from that answer, so the message names both.
         """
         file_name = os.path.basename(self.current_video["media"])
         if video.youtube_answered:
@@ -724,8 +692,6 @@ class ManualImport:
 
 
 class ImportFolderFiles:
-    """list and stage files in the import folder"""
-
     IMPORT_DIR = ImportFolderScanner.IMPORT_DIR
     PART_SUFFIX = ".part"
     PART_MAX_AGE = 24 * 60 * 60
@@ -737,7 +703,6 @@ class ImportFolderFiles:
 
     @classmethod
     def _describe(cls, file_name: str) -> dict:
-        """build the api representation of one staged file"""
         file_path = os.path.join(cls.IMPORT_DIR, file_name)
         # same base name matching the scanner uses, so a sidecar like
         # <id>.info.json or <id>.en.vtt resolves to its video id too
@@ -754,10 +719,8 @@ class ImportFolderFiles:
     def _clear_stale_parts(cls, all_files: list[str]) -> None:
         """delete abandoned part files, e.g. killed mid upload
 
-        they are hidden from the listing, so without this they would sit
-        there taking up disk with no way to notice or remove them. the
-        cutoff is far beyond any plausible single upload, an in flight
-        part file is never this old
+        hidden from the listing, so without this they take up disk with
+        no way to notice. the cutoff is far beyond any single upload
         """
         cutoff = datetime.now().timestamp() - cls.PART_MAX_AGE
         for file_name in all_files:
@@ -771,7 +734,6 @@ class ImportFolderFiles:
 
     @classmethod
     def list_files(cls) -> list[dict]:
-        """list staged files with their detected video id"""
         os.makedirs(cls.IMPORT_DIR, exist_ok=True)
         all_files = ignore_filelist(os.listdir(cls.IMPORT_DIR))
         cls._clear_stale_parts(all_files)
@@ -810,13 +772,11 @@ class ImportFolderFiles:
 
     @classmethod
     def save(cls, upload) -> dict:
-        """write an uploaded file to the import folder"""
         clean_name = cls.validate_name(upload.name)
         os.makedirs(cls.IMPORT_DIR, exist_ok=True)
         file_path = os.path.join(cls.IMPORT_DIR, clean_name)
-        # write beside the target then rename into place. the import task
-        # scans this folder on its own schedule and must never find a half
-        # written file sitting under its final name
+        # the import task scans this folder on its own schedule and
+        # must never find a half written file under its final name
         part_path = f"{file_path}{cls.PART_SUFFIX}"
 
         try:
@@ -851,19 +811,11 @@ class ImportFolderFiles:
     def metadata_name(cls, video_id: str) -> str:
         """the info.json name that pairs with this video's media file
 
-        ImportFolderScanner.match_files joins a video's files by base
-        name, not by video id, and validate_name accepts a media file
-        under either spelling of that name. So <video_id>.info.json
-        pairs with <video_id>.mp4 but not with the equally valid
-        "Some Title [<video_id>].mp4" - it would sit there as a video
-        of its own with no media and fail the whole import.
-
-        The bare id is the fallback for when no media is staged yet. It
-        only pairs with a media file that arrives under the same bare
-        id - upload "Title [<id>].mp4" afterwards and the two do not
-        match, which is the same problem in reverse. Staging the media
-        first, which is what the modal's candidate list is for, avoids
-        it.
+        the scanner joins files by base name, not by video id, so
+        <video_id>.info.json pairs with <video_id>.mp4 but not with
+        "Some Title [<video_id>].mp4", which would sit there as a video of
+        its own with no media. The bare id is the fallback when no media
+        is staged yet.
         """
         # the listing below needs the folder to exist; write_metadata
         # makes it too rather than depend on this having run first
@@ -883,9 +835,8 @@ class ImportFolderFiles:
     @classmethod
     def write_metadata(cls, validated: dict) -> dict:
         """
-        write a hand filled info.json into the import folder, named for
-        the media file the scanner has to pair it with - the secondary
-        .info extension is what _detect_base_name strips to match them
+        named for the media file the scanner has to pair it with - the
+        secondary .info extension is what base name matching strips
         """
         video_id = validated["video_id"]
         info_json = cls.build_info_json(validated)
@@ -921,28 +872,19 @@ class ImportFolderFiles:
     @staticmethod
     def build_info_json(validated: dict) -> dict:
         """
-        build the info.json from validated input. Only the keys the
-        import path reads, but every one it reads without a default:
-        id and title and channel_id and thumbnail are indexed directly,
-        uploader is what the channel falls back to when the channel is
-        neither indexed nor reachable on youtube, and upload_date is the
-        published date when there is no timestamp
-
-        A count left off the form is unknown rather than zero, so it is
-        written as UNKNOWN_COUNT. A count given as 0 is a real zero and
-        is kept - _merge_offline_meta and _add_stats both preserve it.
+        only the keys the import path reads, and every one it reads
+        without a default. A count left off the form is unknown rather
+        than zero, so it is written as UNKNOWN_COUNT; a given 0 is real.
         """
         return {
             "id": validated["video_id"],
             "title": validated["title"],
             "channel_id": validated["channel_id"],
             "uploader": validated["channel_name"],
-            # yt-dlp spells this YYYYMMDD, and _build_published parses it
-            # with that exact format
+            # yt-dlp spells this YYYYMMDD and the import parses it exactly
             "upload_date": validated["upload_date"].strftime("%Y%m%d"),
             "description": validated.get("description") or "",
-            # read with [] not .get(), so the key has to exist even when
-            # there is no thumbnail to point at
+            # read with [] downstream, so the key must exist even empty
             "thumbnail": validated.get("thumbnail") or "",
             # .get with a default, not "or": an explicit 0 is a real
             # count and must not collapse into the unknown sentinel
@@ -954,9 +896,8 @@ class ImportFolderFiles:
     def find_indexed(cls, file_names: list[str]) -> list[str]:
         """file names whose video is already in the archive
 
-        re-importing overwrites the document and resets watch state, so
-        the upload endpoint refuses them. copying a file into the import
-        folder directly still overwrites, which is deliberate enough
+        re-importing overwrites the document and resets watch state, so an
+        upload is refused. a file copied in by hand still overwrites.
         """
         by_id: dict[str, list[str]] = {}
         for file_name in file_names:
@@ -982,10 +923,8 @@ class ImportFolderFiles:
     def file_path(cls, file_name: str) -> str | None:
         """absolute path of a staged file, None if it is not there
 
-        No strict name check: a file put in the folder by hand can be
-        named anything, and you still need to reach it. basename first
-        though - the name comes off a url and must not be able to walk
-        out of the import folder.
+        No strict name check: a file put there by hand can be named
+        anything. basename first though - the name comes off a url.
         """
         clean_name = os.path.basename(file_name or "").strip()
         if not clean_name or clean_name.startswith("."):

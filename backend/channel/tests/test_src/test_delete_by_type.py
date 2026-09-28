@@ -1,10 +1,3 @@
-"""deleting one video type out of a channel
-
-this is the narrower sibling of ChannelDelete. it has to leave the
-channel and the other types alone, and it has to refuse to run at all
-without a type rather than falling through to everything.
-"""
-
 # pylint: disable=protected-access
 # flake8: noqa: E402
 
@@ -23,8 +16,6 @@ from channel.src.index import ChannelVideoTypeDelete
 
 
 class TestDeleteQuerySerializer:
-    """the guard between a typed delete and deleting the lot"""
-
     def test_type_is_required(self):
         """no vid_type must fail, never mean 'all'"""
         serializer = ChannelVideoDeleteQuerySerializer(data={})
@@ -49,8 +40,6 @@ class TestDeleteQuerySerializer:
 
 
 class TestGetVideoIds:
-    """the query that decides what gets deleted"""
-
     def test_scoped_to_channel_and_type(self, monkeypatch):
         captured = {}
 
@@ -76,8 +65,6 @@ class TestGetVideoIds:
 
 
 class TestDelete:
-    """the delete loop"""
-
     @staticmethod
     def _patch(monkeypatch, ids, deleter):
         monkeypatch.setattr(
@@ -171,8 +158,6 @@ VIDEO_DOC = {
 
 
 class TestBuildIgnoreDoc:
-    """the ignore entry is built from the video we are about to delete"""
-
     def test_maps_every_field_the_queue_needs(self):
         doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
 
@@ -181,9 +166,8 @@ class TestBuildIgnoreDoc:
         assert doc["channel_name"] == "Some Channel"
         assert doc["channel_indexed"] is True
         assert doc["duration"] == "42s"
-        # equality, not just presence: this is what pins that the doc
-        # indexed is the built one and not the serializer's copy, where
-        # a CharField would have turned the epoch into a string
+        # equality, not presence: a CharField in the serializer's copy
+        # would have turned the epoch into a string
         assert doc["published"] == 1717607899
         assert doc["title"] == "Some Short"
         assert doc["vid_type"] == "shorts"
@@ -191,7 +175,6 @@ class TestBuildIgnoreDoc:
         assert doc["auto_start"] is False
 
     def test_satisfies_the_download_item_serializer(self):
-        """it lands in ta_download, so it has to look like one"""
         from download.serializers import DownloadItemSerializer
 
         doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
@@ -199,11 +182,9 @@ class TestBuildIgnoreDoc:
         assert serializer.is_valid(), serializer.errors
 
     def test_a_partial_video_document_is_refused(self):
-        """this writes to ta_download without going through PendingList
-
-        So it runs PendingList's own check itself, or a video document
-        with no channel on it puts an entry in the queue that nothing
-        can render and nobody asked for.
+        """it writes to ta_download without going through PendingList,
+        so it repeats PendingList's own check: a video with no channel
+        would put an entry in the queue that nothing can render
         """
         doc = ChannelVideoTypeDelete._build_ignore_doc(
             {**VIDEO_DOC, "channel": {}}
@@ -212,7 +193,8 @@ class TestBuildIgnoreDoc:
 
     def test_a_blank_thumb_url_is_not_a_refusal(self):
         """the field takes a null but not a blank, and older docs have
-        one where they have no thumb"""
+        a blank where they have no thumb
+        """
         doc = ChannelVideoTypeDelete._build_ignore_doc(
             {**VIDEO_DOC, "vid_thumb_url": ""}
         )
@@ -228,8 +210,6 @@ class TestBuildIgnoreDoc:
 
 
 class TestDeleteWithIgnore:
-    """delete and ignore, the batch version"""
-
     @staticmethod
     def _patch(monkeypatch, docs):
         monkeypatch.setattr(
@@ -252,13 +232,9 @@ class TestDeleteWithIgnore:
         monkeypatch.setattr(video_index, "YoutubeVideo", deleter)
 
     def test_a_refused_doc_is_reported_not_just_dropped(self, monkeypatch):
-        """the video goes either way, so this is the only trace
-
-        Without an ignore entry a subscribed channel downloads it again
-        on the next scan, which is the whole reason the button is not
-        just Delete. A progress line would not survive to be read - the
-        next loop pass overwrites the one redis key they share - so the
-        task reads this back for its summary, which the log keeps.
+        """without an ignore entry a subscribed channel downloads it
+        again, and a progress line would not survive to be read - the
+        next loop pass overwrites the one redis key they share
         """
         broken = {**VIDEO_DOC, "youtube_id": "def", "channel": {}}
         self._patch(monkeypatch, [VIDEO_DOC, broken])
@@ -302,7 +278,6 @@ class TestDeleteWithIgnore:
         assert {d["status"] for d in written} == {"ignore"}
 
     def test_plain_delete_writes_nothing(self, monkeypatch):
-        """the default has to stay a plain delete"""
         written = []
         self._patch(monkeypatch, [VIDEO_DOC])
         monkeypatch.setattr(
@@ -342,8 +317,6 @@ class TestDeleteWithIgnore:
 
 
 class TestWriteIgnore:
-    """the bulk write into ta_download"""
-
     def test_bulk_body_keys_on_youtube_id(self, monkeypatch):
         """same _id as the download queue, so it is an upsert not a dupe"""
         captured = {}

@@ -201,9 +201,8 @@ class AppConfigApiView(ApiBaseView):
         serializer.is_valid(raise_exception=True)
         validated_data = serializer.validated_data
         updated_config = AppConfig().update_config(validated_data)
-        # cheap and self-limiting even when unrelated - covers raising
-        # downscale_max_concurrent, which otherwise wouldn't take effect
-        # until the next unrelated job completion
+        # covers raising downscale_max_concurrent, which would not
+        # otherwise take effect until the next job completion
         dispatch_pending_downscales()
         updated_serializer = AppConfigSerializer(updated_config)
         return Response(updated_serializer.data)
@@ -472,9 +471,8 @@ class ImportFileView(ApiBaseView):
             error = ErrorResponseSerializer({"error": message})
             return Response(error.data, status=409)
 
-        # only the files written, not the whole folder: the client uploads
-        # one file per request, so re-listing hundreds of entries every time
-        # would cost far more than the upload itself
+        # only the files written, not the whole folder: one file per
+        # request, so re-listing hundreds of entries would cost more
         try:
             written = [ImportFolderFiles.save(upload) for upload in uploads]
         except ValueError as err:
@@ -516,8 +514,8 @@ class ImportFileMetadataView(ApiBaseView):
         validated = serializer.validated_data
 
         file_name = f"{validated['video_id']}.info.json"
-        # same rule the upload path applies: writing metadata for an
-        # already archived video would reset its watch state on import
+        # writing metadata for an already archived video would reset
+        # its watch state on import
         if ImportFolderFiles.find_indexed([file_name]):
             message = (
                 f"{validated['video_id']}: already in the archive. delete "
@@ -565,9 +563,8 @@ class ImportFileMetadataLookupView(ApiBaseView):
     def get(request, video_id):
         """look up archived metadata for a video id"""
         # pylint: disable=unused-argument
-        # outside the try: everything in get() would otherwise be able
-        # to surface as "not a video id", and json.JSONDecodeError deep
-        # in yt-dlp is a ValueError too
+        # outside the try, where anything raising a ValueError - such as
+        # a json.JSONDecodeError deep in yt-dlp - would read as this
         if not is_video_id(video_id):
             message = f"{video_id}: not an 11 character video id"
             error = ErrorResponseSerializer({"error": message})
@@ -593,14 +590,11 @@ class ImportFileMetadataLookupView(ApiBaseView):
         return Response(ArchiveMetadataSerializer(metadata).data)
 
 
-# nginx serves the bytes, ImportFileItemView.get only decides whether
-# it may. Django's own FileResponse is not an option: over the ASGI
-# worker pool it was found to retain the full file size in the serving
-# process for the life of that process, and an import folder holds
-# exactly the multi GB media that would hit it - see the comment in
-# downscale.src.worker for the measurement. The nginx location is
-# internal, so it is reachable only through this handoff and the
-# AdminOnly check above it still applies.
+# nginx serves the bytes, the view only decides whether it may: a Django
+# FileResponse over the ASGI worker pool retains the full file size in
+# the serving process for that process's lifetime, and an import folder
+# holds exactly the multi GB media that would hit it. The nginx location
+# is internal, so it is reachable only through this handoff.
 IMPORT_INTERNAL_PREFIX = "/internal/import/"
 
 
@@ -642,14 +636,13 @@ class ImportFileItemView(ApiBaseView):
 
         clean_name = os.path.basename(file_path)
         response = HttpResponse()
-        # safe="" so a separator could never survive into the internal
-        # uri. file_path has already basenamed the name, this keeps the
-        # header construction correct on its own terms
+        # safe="" so no separator can survive into the internal uri,
+        # even though file_path has already basenamed the name
         response["X-Accel-Redirect"] = IMPORT_INTERNAL_PREFIX + quote(
             clean_name, safe=""
         )
-        # quotes and non ascii in a staged name are the caller's to get
-        # wrong, this spells the header for both
+        # quotes and non ascii in a staged name are the caller's to
+        # get wrong, this spells the header for both
         response["Content-Disposition"] = content_disposition_header(
             as_attachment=True, filename=clean_name
         )
@@ -860,8 +853,8 @@ class TailscaleExitNodeView(ApiBaseView):
 
         try:
             tailscale.set_exit_node(node_id)
-            # read back rather than echo the request, so the panel shows
-            # what tailscaled actually settled on
+            # read back rather than echo the request, so the response
+            # shows what tailscaled settled on
             new_state = tailscale.get_state()
         except tailscale.TailscaleError as err:
             print(f"tailscale exit node change failed: {err}")

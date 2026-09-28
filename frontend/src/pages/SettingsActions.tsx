@@ -62,9 +62,8 @@ const SettingsActions = () => {
             setDeleteIgnored(false);
             setDeletePending(false);
             if (processingImports) {
-              // the task consumes the folder, so re-list what is left.
-              // functional update: this callback closes over a render's
-              // value and can fire more than once per render
+              // functional update: this callback closes over a render's value
+              // and can fire more than once per render
               setImportFilesRefresh(current => current + 1);
             }
             setProcessingImports(false);

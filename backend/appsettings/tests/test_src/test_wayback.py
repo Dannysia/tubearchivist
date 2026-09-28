@@ -1,9 +1,8 @@
 """test the Internet Archive metadata lookup
 
-The wayback machine's video store and its page captures are indexed
-separately, so a response regularly carries a readable watch page and no
-formats at all - and sometimes the reverse. What comes back has to drop
-straight into ImportMetadataSerializer's fields either way.
+the wayback machine's video store and its page captures are indexed
+separately, so a response regularly carries a readable watch page and
+no formats at all - and sometimes the reverse.
 """
 
 import pytest
@@ -19,9 +18,8 @@ CHANNEL_ID = "UC0RBTQIYLEQbcahZWkmzeTQ"
 
 
 # measured live for an id whose watch page was never captured: the
-# wayback machine answers on the same url with a capture of youtube's
-# redirect page, and yt-dlp hands that page's title back as the video's.
-# "YouTube" shows up the same way. A title alone is not a hit
+# wayback machine answers with a capture of youtube's redirect page, and
+# yt-dlp hands that page's title back as the video's
 REDIRECT_PAGE_CAPTURE = {
     "id": "aaaaaaaaaaa",
     "fulltitle": "Broadcast Yourself.",
@@ -53,12 +51,10 @@ def build_response(**overwrites):
 
 
 def build(**overwrites):
-    """the mapped metadata for a response"""
     return WaybackMetadata(VIDEO_ID)._build(build_response(**overwrites))
 
 
 def test_maps_onto_the_import_metadata_fields():
-    """the form posts these straight back to the metadata endpoint"""
     metadata = build()
 
     assert metadata == {
@@ -79,9 +75,8 @@ def test_maps_onto_the_import_metadata_fields():
 
 def test_no_readable_capture_is_a_miss():
     """
-    YoutubeDL substitutes a generic title for a missing one, so the
-    title key is populated even when nothing was found. fulltitle is
-    what the extractor itself returned
+    YoutubeDL substitutes a generic title for a missing one, so title
+    is populated even on a miss; fulltitle is the extractor's own
     """
     response = build_response(
         fulltitle=None, title=f"web.archive-youtube video #{VIDEO_ID}"
@@ -91,12 +86,8 @@ def test_no_readable_capture_is_a_miss():
 
 
 def test_a_capture_of_a_page_that_is_not_the_video_is_a_miss():
-    """
-    the case this feature exists for is a video removed from youtube,
-    and for one removed before its first capture the only thing on that
-    url is youtube's redirect page. Taking its title as the video's
-    would index a video called "Broadcast Yourself."
-    """
+    """for a video removed before its first capture, youtube's redirect
+    page is the only thing on that url"""
     built = WaybackMetadata("aaaaaaaaaaa")._build(dict(REDIRECT_PAGE_CAPTURE))
 
     assert built is None
@@ -114,10 +105,7 @@ def test_a_capture_of_a_page_that_is_not_the_video_is_a_miss():
     ],
 )
 def test_one_identifying_field_makes_it_the_video_s_own_page(field, value):
-    """
-    any of these means the capture was of the watch page itself. Only
-    one is needed - a thin capture is still the right video
-    """
+    """any one of these means the capture was of the watch page"""
     response = dict(REDIRECT_PAGE_CAPTURE)
     response[field] = value
 
@@ -170,15 +158,12 @@ def test_drops_a_channel_id_that_is_not_a_safe_directory_name(channel_id):
 
 
 def test_keeps_a_real_channel_id():
-    """the common case, and the reason the lookup is worth doing"""
     assert build()["channel_id"] == CHANNEL_ID
 
 
 def test_thumbnail_falls_back_to_the_best_of_the_list():
-    """
-    the singular key is only promoted out of the list when there are
-    formats to go with it, and a page-only capture has none
-    """
+    """yt-dlp promotes the singular key out of the list only when there
+    are formats, and a page-only capture has none"""
     metadata = build(
         thumbnail=None,
         thumbnails=[{"url": "http://small.jpg"}, {"url": "http://big.jpg"}],
@@ -197,7 +182,6 @@ def test_thumbnail_skips_list_entries_with_no_url():
 
 
 def test_no_thumbnail_anywhere_is_blank_not_missing():
-    """the field still has to serialize"""
     assert build(thumbnail=None, thumbnails=[])["thumbnail"] == ""
 
 

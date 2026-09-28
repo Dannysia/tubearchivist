@@ -1,10 +1,4 @@
-"""the per video wait inside a channel or playlist add
-
-this is the wait that dominates extraction - one per video, behind a
-counter that only moves once it is over. parse_url_list's own wait runs
-once per extraction queue entry, so wiring only that left the real one
-silent.
-"""
+"""the per video wait, not parse_url_list's once per queue entry"""
 
 # pylint: disable=protected-access
 
@@ -16,7 +10,7 @@ from download.src.queue import PendingList
 
 
 def capture_task():
-    """a task that records what reaches it"""
+    """returns (the message lines sent, the task)"""
     sent = []
     task = SimpleNamespace(
         is_stopped=lambda: False,
@@ -28,8 +22,6 @@ def capture_task():
 
 
 class TestPace:
-    """PendingList._pace"""
-
     def test_counts_down_when_there_is_a_line_for_it(self, monkeypatch):
         seen = []
         monkeypatch.setattr(
@@ -46,10 +38,8 @@ class TestPace:
         assert seen == ["next video"]
 
     def test_waits_stoppably_with_nothing_to_narrate(self, monkeypatch):
-        """a single video add has no counter to hang a countdown off
-
-        It still has to be interruptible, so it goes through the same
-        wait with no notify rather than a plain sleep.
+        """no counter to count down against, but the wait still has to
+        be interruptible
         """
         seen = []
         monkeypatch.setattr(
@@ -65,8 +55,6 @@ class TestPace:
 
 
 class TestPaceNotify:
-    """PendingList._pace_notify"""
-
     def test_countdown_goes_under_the_item_counter(self):
         sent, task = capture_task()
         handler = SimpleNamespace(task=task, flat=False)
@@ -93,9 +81,9 @@ class TestPaceNotify:
         assert PendingList._pace_notify(handler, "channel", "x", 1, 2) is None
 
     def test_the_last_video_names_no_next_one(self):
-        """this is the highest volume wait in here - one per video of
-        every channel and playlist add - so a lie at the tail is the
-        one the user sees most"""
+        """the highest volume wait here, so a lie at the tail is the
+        one seen most
+        """
         _, task = capture_task()
         handler = SimpleNamespace(task=task, flat=False)
 
@@ -109,8 +97,6 @@ class TestPaceNotify:
 
 
 class TestNotifyAdd:
-    """PendingList._notify_add keeps working without a waiting line"""
-
     @pytest.mark.parametrize("flat", [True, False])
     def test_plain_lines_unchanged(self, flat):
         sent, task = capture_task()

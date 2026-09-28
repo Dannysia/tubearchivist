@@ -1,5 +1,3 @@
-"""tests for retrying a failed downscale job"""
-
 from unittest.mock import patch
 
 from downscale.src.downscale import DownscaleReview
@@ -16,7 +14,6 @@ FAILED_JOB = {
 
 
 def test_retry_job_not_found():
-    """retrying a doc that no longer exists reports an error"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(None, 404)
     ), patch.object(DownscaleInteract, "update") as mock_update:
@@ -27,7 +24,6 @@ def test_retry_job_not_found():
 
 
 def test_retry_job_not_failed():
-    """retrying a job that isn't in failed status is rejected"""
     job = {**FAILED_JOB, "status": "pending_review"}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)
@@ -39,13 +35,7 @@ def test_retry_job_not_failed():
 
 
 def test_retry_requeues_failed_job():
-    """
-    a failed job's doc is reset to queued with no task_id - it no
-    longer dispatches a celery task itself. Callers (the bulk action
-    view, ta_startup's auto-resume) are responsible for calling
-    dispatch_pending_downscales() once after they're done requeueing,
-    so a batch retry doesn't dispatch once per job
-    """
+    """requeueing dispatches nothing, so a batch retry dispatches once"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(FAILED_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
@@ -62,7 +52,6 @@ def test_retry_requeues_failed_job():
 
 
 def test_retry_cleans_up_leftover_tmp_file():
-    """a leftover tmp file from the failed attempt is removed before retry"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(FAILED_JOB, 200)
     ), patch.object(DownscaleInteract, "update"), patch(
@@ -76,11 +65,7 @@ def test_retry_cleans_up_leftover_tmp_file():
 
 
 def test_requeue_works_on_queued_or_running_job():
-    """
-    requeue() itself doesn't gate on status - ta_startup's auto-resume
-    calls it directly on queued/running leftovers, bypassing retry()'s
-    failed-only check
-    """
+    """requeue() does not gate on status, unlike retry()"""
     job = {**FAILED_JOB, "status": "running"}
     with patch.object(DownscaleInteract, "update") as mock_update, patch(
         "downscale.src.downscale.os.path.exists", return_value=False

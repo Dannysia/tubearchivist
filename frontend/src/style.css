@@ -144,7 +144,6 @@ button:disabled:hover {
   color: #ffffff;
 }
 
-/* an anchor that sits level with the buttons it lines up next to */
 .link-button {
   display: inline-block;
   padding: 5px 13px;
@@ -280,8 +279,6 @@ button:disabled:hover {
   vertical-align: top;
 }
 
-/* the timestamp and task columns read as one line each, only the
-   message is allowed to wrap and take the leftover width */
 .log-table td:not(.log-message) {
   white-space: nowrap;
 }
@@ -291,8 +288,6 @@ button:disabled:hover {
   word-break: break-word;
 }
 
-/* the error rows are the reason to open this page at all, so they get
-   the same wash the rest of the ui uses for a failure */
 .log-table .log-error td {
   background-color: var(--highlight-error);
   color: #fff;
@@ -982,7 +977,7 @@ video:-webkit-full-screen {
   width: 100%;
 }
 
-/* direct child only: ChannelOverview nests its h3 and must stay inline */
+/* direct child only: a nested h3 must stay inline */
 .info-box-item > h3 {
   width: 100%;
 }
@@ -1423,7 +1418,7 @@ video:-webkit-full-screen {
   min-width: 300px;
 }
 
-/* unscoped from .settings-item: the channel about page uses these too */
+/* unscoped on purpose: used outside .settings-item too */
 .agg-channel-table {
   width: 100%;
 }

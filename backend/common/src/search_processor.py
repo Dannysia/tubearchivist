@@ -19,9 +19,7 @@ class SearchProcess:
         self.response = response
         self.processed = False
         self.position_index = self.get_user_progress(match_video_user_progress)
-        # index prefix to the handler that turns one hit into a frontend
-        # dict. Built once per instance rather than per hit, and first
-        # match wins - no prefix in here is a prefix of another
+        # first match wins: no prefix in here is a prefix of another
         self.processors = (
             ("ta_video", lambda hit: self._process_video(hit["_source"])),
             ("ta_channel", lambda hit: self._process_channel(hit["_source"])),
@@ -226,12 +224,10 @@ class SearchProcess:
         return dict(sorted(download_dict.items()))
 
     def _process_extraction(self, doc_id, extraction_dict):
-        """run on single extraction queue item"""
         extraction_dict.update({"id": doc_id})
         return dict(sorted(extraction_dict.items()))
 
     def _process_downscale(self, doc_id, downscale_dict):
-        """run on single downscale queue item"""
         vid_thumb_url = None
         if downscale_dict.get("vid_thumb_url"):
             video_id = downscale_dict["youtube_id"]
@@ -243,7 +239,6 @@ class SearchProcess:
         return dict(sorted(downscale_dict.items()))
 
     def _process_log(self, doc_id, log_dict):
-        """run on single log entry"""
         log_dict.update({"id": doc_id})
         return dict(sorted(log_dict.items()))
 

@@ -1,5 +1,3 @@
-"""tests for history tracking"""
-
 from unittest import mock
 
 import pytest
@@ -17,7 +15,6 @@ from common.src.history import (
 
 @pytest.fixture(name="video_doc")
 def fixture_video_doc():
-    """minimal indexed video document"""
     return {
         "youtube_id": "vid1",
         "active": True,
@@ -39,12 +36,11 @@ def fixture_video_doc():
 
 
 def _tracker(item_type="video", item_id="vid1"):
-    """tracker with fixed timestamp for predictable ids"""
+    """fixed timestamp, so doc ids are predictable"""
     return HistoryTracker(item_type, item_id, timestamp=1700000000)
 
 
 def test_no_changes_returns_empty(video_doc):
-    """identical documents record nothing"""
     changes = _tracker().build_changes(video_doc, video_doc.copy())
     assert changes == []
 
@@ -69,7 +65,6 @@ def test_title_change(video_doc):
 
 
 def test_nested_stat_change(video_doc):
-    """numeric change gets numeric fields and delta"""
     new = video_doc.copy()
     new["stats"] = video_doc["stats"] | {"view_count": 150}
     changes = _tracker().build_changes(video_doc, new)
@@ -84,14 +79,13 @@ def test_nested_stat_change(video_doc):
 
 
 def test_list_reorder_is_not_a_change(video_doc):
-    """tag order from youtube is not stable, ignore reordering"""
+    """tag order from youtube is not stable"""
     new = video_doc.copy()
     new["tags"] = ["a", "b"]
     assert _tracker().build_changes(video_doc, new) == []
 
 
 def test_list_content_change(video_doc):
-    """added tag is a change, stored as json"""
     new = video_doc.copy()
     new["tags"] = ["a", "b", "c"]
     changes = _tracker().build_changes(video_doc, new)
@@ -103,14 +97,12 @@ def test_list_content_change(video_doc):
 
 
 def test_thumb_query_params_ignored(video_doc):
-    """rotating signing params are not a thumbnail change"""
     new = video_doc.copy()
     new["vid_thumb_url"] = "https://i.ytimg.com/vi/vid1/max.jpg?sqp=two&rs=y"
     assert _tracker().build_changes(video_doc, new) == []
 
 
 def test_thumb_path_change(video_doc):
-    """a new thumbnail path is a change"""
     new = video_doc.copy()
     new["vid_thumb_url"] = "https://i.ytimg.com/vi/vid1/hq.jpg?sqp=two"
     changes = _tracker().build_changes(video_doc, new)
@@ -120,7 +112,6 @@ def test_thumb_path_change(video_doc):
 
 
 def test_removed_field(video_doc):
-    """field dropped upstream records as missing"""
     new = video_doc.copy()
     del new["description"]
     changes = _tracker().build_changes(video_doc, new)
@@ -133,7 +124,6 @@ def test_removed_field(video_doc):
 
 
 def test_multiple_changes_share_refresh_id(video_doc):
-    """all changes of one refresh are grouped"""
     new = video_doc.copy()
     new["title"] = "New Title"
     new["stats"] = video_doc["stats"] | {"view_count": 150}
@@ -151,13 +141,11 @@ def test_doc_id_is_deterministic(video_doc):
 
 
 def test_unknown_item_type_raises(video_doc):
-    """guard against typos in call sites"""
     with pytest.raises(ValueError):
         HistoryTracker("subtitle", "vid1").build_changes(video_doc, video_doc)
 
 
 def test_channel_change():
-    """channel fields are tracked on the channel item"""
     old = {
         "channel_id": "chan1",
         "channel_name": "Old Name",
@@ -192,7 +180,6 @@ def test_playlist_entry_count():
 
 
 def test_published_representation_flip_is_not_a_change(video_doc):
-    """epoch and upload_date for the same day are the same date"""
     new = video_doc.copy()
     # 1600000000 is 2020-09-13 UTC
     new["published"] = "2020-09-13"
@@ -200,7 +187,7 @@ def test_published_representation_flip_is_not_a_change(video_doc):
 
 
 def test_published_real_change(video_doc):
-    """a different day is a real change, stored as given"""
+    """a real change is stored as given, not normalized"""
     new = video_doc.copy()
     new["published"] = "2020-09-14"
     changes = _tracker().build_changes(video_doc, new)
@@ -228,7 +215,6 @@ def test_bulk_item_errors_are_reported(video_doc, capsys):
 
 
 def test_track_deactivation(video_doc, monkeypatch):
-    """deactivation records the active flag flipping"""
     written = []
     monkeypatch.setattr(
         HistoryTracker,
@@ -269,14 +255,12 @@ def test_track_never_raises(monkeypatch):
     ],
 )
 def test_encode_decode_roundtrip(value, expected_type):
-    """every supported value type survives a roundtrip"""
     stored, value_type, _ = encode_value(value)
     assert value_type == expected_type
     assert decode_value(stored, value_type) == value
 
 
 def test_decode_change():
-    """raw es source decodes both sides"""
     decoded = decode_change(
         {
             "field": "tags",
@@ -291,7 +275,6 @@ def test_decode_change():
 
 
 def test_query_filters():
-    """all filters end up in the query"""
     query = HistoryQuery(
         item_id="vid1",
         item_type="video",
@@ -322,11 +305,9 @@ def test_time_range_declares_epoch_second():
 
 
 def test_no_time_range_without_cutoffs():
-    """the format key must not leak into an unfiltered query"""
     must = HistoryQuery(item_id="vid1").build_query()["bool"]["must"]
     assert not [i for i in must if "range" in i]
 
 
 def test_query_without_filters():
-    """no filters matches everything"""
     assert HistoryQuery().build_query() == {"match_all": {}}

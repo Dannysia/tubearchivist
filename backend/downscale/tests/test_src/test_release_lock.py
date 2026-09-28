@@ -1,12 +1,7 @@
 """
-tests for _release_lock() - shared by dispatch_pending_downscales(),
-_reserve_slot(), and worker.claim(), all of which do real work under
-DISPATCH_LOCK_KEY in a try/finally. redis-py raises LockError from
-release() if the lock's TTL already expired before release() runs; left
-uncaught, that would replace an in-flight `return` value in the calling
-`finally` block (or crash a request after it already made a successful
-change) purely because of lock-cleanup timing, not anything wrong with
-the actual work done under the lock.
+redis-py raises LockError from release() when the lock's TTL lapsed
+first; uncaught in a caller's finally that replaces an in-flight return
+value, or fails a request whose work under the lock already succeeded.
 """
 
 from unittest.mock import MagicMock
@@ -26,10 +21,6 @@ def test_release_lock_releases_normally():
 
 @pytest.mark.parametrize("exc", [LockError("gone"), LockNotOwnedError("gone")])
 def test_release_lock_swallows_an_expired_lock(exc):
-    """
-    a TTL that lapsed before release() ran must not raise out of the
-    caller's finally block - the critical section already finished
-    """
     lock = MagicMock()
     lock.release.side_effect = exc
 
@@ -37,7 +28,6 @@ def test_release_lock_swallows_an_expired_lock(exc):
 
 
 def test_release_lock_does_not_swallow_unrelated_errors():
-    """only the lock-ownership case is expected; anything else surfaces"""
     lock = MagicMock()
     lock.release.side_effect = RuntimeError("something else broke")
 

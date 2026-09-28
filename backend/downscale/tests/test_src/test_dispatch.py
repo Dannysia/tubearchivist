@@ -1,11 +1,3 @@
-"""
-tests for dispatch_pending_downscales() - the event-driven replacement
-for having every queued job poll a timer asking "is a slot free yet?".
-Queuing a job no longer dispatches a celery task by itself; this
-function is what actually decides whether/how many to dispatch, called
-from every place slot availability could have changed.
-"""
-
 from unittest.mock import MagicMock, patch
 
 from downscale.src.downscale import dispatch_pending_downscales
@@ -22,7 +14,6 @@ def _mock_lock(acquired=True):
 
 
 def test_dispatches_up_to_the_number_of_free_slots():
-    """max_concurrent=2, 1 already running -> exactly 1 free slot"""
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
@@ -57,7 +48,6 @@ def test_dispatches_up_to_the_number_of_free_slots():
 
 
 def test_no_free_slots_skips_the_query_entirely():
-    """already at the concurrency limit -> don't even ask for queued jobs"""
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
@@ -79,7 +69,7 @@ def test_no_free_slots_skips_the_query_entirely():
 
 
 def test_unlimited_concurrency_dispatches_everything_queued():
-    """downscale_max_concurrent falsy -> no cap, get_next_queued(None)"""
+    """None means no cap: get_next_queued(None)"""
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
@@ -108,10 +98,8 @@ def test_unlimited_concurrency_dispatches_everything_queued():
 
 def test_max_concurrent_zero_disables_local_dispatch_entirely():
     """
-    downscale_max_concurrent=0 is the remote-only mode: dispatch nothing
-    locally (not even a query for queued jobs), distinct from None which
-    means unlimited. This used to be indistinguishable from unlimited
-    because `if max_concurrent:` treats 0 as falsy.
+    0 is remote-only - dispatch nothing locally, not even a query, as
+    distinct from None, which means unlimited
     """
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
@@ -135,10 +123,7 @@ def test_max_concurrent_zero_disables_local_dispatch_entirely():
 
 
 def test_lock_contention_does_nothing():
-    """
-    another dispatch already in progress -> back off entirely rather
-    than double-dispatch. It'll cover whatever's actually free.
-    """
+    """the dispatch already running will cover whatever is free"""
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
@@ -158,7 +143,6 @@ def test_lock_contention_does_nothing():
 
 
 def test_lock_is_released_even_when_no_slots_are_free():
-    """the lock must never be left held on an early return"""
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(

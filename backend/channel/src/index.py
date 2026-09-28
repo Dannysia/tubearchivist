@@ -212,12 +212,10 @@ class YoutubeChannel(YouTubeItem):
                 break
 
     def _wait_for_next_playlist(self, idx: int, total: int) -> bool:
-        """pace the next youtube request, when there is one to pace
+        """False when the wait was interrupted - stop the loop
 
-        idx counts from zero here, so the last pass is total - 1. There
-        is nothing to pace after it: index_channel_playlists is the
-        whole body of the index_playlists task, so a wait there would
-        only delay the task finishing.
+        Nothing is paced after the last pass, where a wait would only
+        delay the task finishing.
         """
         if idx + 1 == total:
             return True
@@ -396,13 +394,9 @@ class ChannelDelete(YouTubeItem):
 class ChannelVideoTypeDelete:
     """delete every video of one type from a channel
 
-    Video by video, not a delete_by_query. ChannelDelete can be that
-    blunt because it removes the whole channel folder afterwards, which
-    takes the subtitle files with it. Here the folder stays and the
-    other types stay in it, so every video has to go through
-    YoutubeVideo.delete_media_file() - the only path that clears
-    subtitle files off disk as well as comments, playlist entries and
-    the index.
+    Video by video, not a delete_by_query: the folder and the other
+    types stay in it, so each video goes through delete_media_file(),
+    the only path that clears subtitle files off disk too.
     """
 
     def __init__(
@@ -416,14 +410,11 @@ class ChannelVideoTypeDelete:
         self.vid_type = vid_type
         self.task = task
         self.ignore = ignore
-        # ids deleted without reaching the ignore list, read back by the
-        # task for its summary. A progress line would not survive: they
-        # all share one redis key, and the next loop pass overwrites it
-        # a few milliseconds later
+        # deleted without reaching the ignore list - a progress line
+        # would not survive, one redis key the next pass overwrites
         self.not_ignored: list[str] = []
 
     def delete(self) -> int:
-        """delete all videos of the type, return how many went"""
         # local import, video.src.index imports this module
         from video.src.index import YoutubeVideo
 
@@ -468,18 +459,10 @@ class ChannelVideoTypeDelete:
     def _build_ignore_doc(json_data: dict) -> dict | None:
         """build a ta_download ignore entry, None when it does not hold up
 
-        Everything the download queue needs is already on the video
-        document, so this costs no youtube requests - unlike the single
-        video "Delete and Ignore" button, which routes through
-        extract_download and re-extracts the metadata it already has.
-
-        Checked against the same serializer PendingList runs before its
-        own bulk index, and for the same reason: this writes straight to
-        ta_download without going near that path, so a video document
-        missing a channel or a title would otherwise put an entry in the
-        queue that nothing can render and nobody asked for. Validation
-        only - what gets indexed is this dict, not the serializer's
-        coerced copy, which is how PendingList uses it too.
+        The serializer runs only to reject a video document missing a
+        channel or a title, which would queue an entry nothing can
+        render. What gets indexed is this dict, not the serializer's
+        coerced copy.
         """
         channel = json_data.get("channel") or {}
         player = json_data.get("player") or {}
@@ -510,7 +493,6 @@ class ChannelVideoTypeDelete:
         return doc
 
     def _write_ignore(self, docs: list[dict]) -> None:
-        """bulk add the deleted videos to the ignore list"""
         if not docs:
             return
 
@@ -532,7 +514,6 @@ class ChannelVideoTypeDelete:
         print(f"{self.channel_id}: ignored {len(docs)} {self.vid_type}")
 
     def get_video_ids(self) -> list[str]:
-        """every indexed video id of this type in the channel"""
         data = {
             "query": {
                 "bool": {
@@ -555,7 +536,6 @@ class ChannelVideoTypeDelete:
         return [i["youtube_id"] for i in all_videos]
 
     def _notify(self, idx: int, total: int) -> None:
-        """send progress back to task"""
         message = [f"Deleting {self.vid_type} {idx}/{total}"]
         self.task.send_progress(message, progress=idx / total)
 

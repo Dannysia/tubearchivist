@@ -51,9 +51,8 @@ class BaseTask(Task):
         message.update({"messages": ["Task completed"]})
         RedisArchivist().set_message(key, message, expire=5)
         # a task returns a summary string when it did something and None
-        # when it found nothing to do. Logging every run would bury a
-        # real event under hundreds of "nothing to do" from the tasks
-        # that tick every few minutes, so only the former is recorded.
+        # when it found nothing to do - logging every run would bury a
+        # real event under the tasks that tick every few minutes
         if retval:
             log_task_event(self, "completed", str(retval))
 
@@ -69,9 +68,8 @@ class BaseTask(Task):
         print(f"{task_id} return callback")
         task_title = get_task_config(self.name).get("title")
         result = Notifications(self.name).send(task_id, task_title)
-        # None means there was nothing to send, which is the normal case
-        # on an install with no apprise urls configured and not worth an
-        # entry. Anything else is a dispatch that was actually attempted.
+        # None means nothing to send, the normal case on an install with
+        # no apprise urls configured; anything else was attempted
         if result:
             sent, detail = result
             log_task_event(
@@ -95,15 +93,13 @@ class BaseTask(Task):
         RedisArchivist().set_message(key, message)
 
     def _build_message(self, level="info"):
-        """build message dict
-
-        The four keys below are required by NotificationSerializer, and
-        /api/notification/ serializes every stored message as one list -
+        """
+        the four keys below are required by NotificationSerializer, and
+        /api/notification/ serializes every stored message as one list,
         so one message missing them fails that response for every
-        client, not just for the task it belongs to. Nothing expires the
-        key send_progress writes either, so it would stay broken until
-        the next restart. A task with no config gets its own name and no
-        stop button rather than a hole.
+        client. Nothing expires the key send_progress writes, so it
+        would stay broken until the next restart; a task with no config
+        gets its own name and no stop button rather than a hole.
         """
         task_id = self.request.id
         message = {
@@ -129,7 +125,6 @@ class BaseTask(Task):
 
 @shared_task(name="update_subscribed", bind=True, base=BaseTask)
 def update_subscribed(self):
-    """look for missing videos and add to extraction queue"""
     manager = TaskManager()
     if manager.is_pending(self):
         print(f"[task][{self.name}] rescan already running")
@@ -191,7 +186,6 @@ def download_pending(self, auto_only=False):
     default_retry_delay=10,
 )
 def process_extraction_queue(self):
-    """resolve pending extraction queue entries into the download queue"""
     manager = TaskManager()
     if manager.is_pending(self):
         print(f"[task][{self.name}] extraction queue already running")
@@ -229,7 +223,6 @@ def extrac_dl(
     force: bool = False,
     status: str = "pending",
 ) -> str | None:
-    """parse list passed and add to extraction queue"""
     TaskManager().init(self)
     if isinstance(youtube_ids, str):
         to_add = Parser(youtube_ids).parse()
@@ -395,7 +388,6 @@ def index_channel_playlists(self, channel_id):
 def delete_channel_videos(
     self, channel_id: str, vid_type: str, ignore: bool = False
 ):
-    """delete every video of one type from a channel"""
     manager = TaskManager()
     if manager.is_pending(self):
         print(f"[task][{self.name}] delete already running")
@@ -413,7 +405,6 @@ def delete_channel_videos(
     suffix = " and ignored them" if ignore else ""
     message = f"Deleted {deleted} {vid_type} from {channel_id}{suffix}."
     if handler.not_ignored:
-        # the log is the only durable place for this, and it matters:
         # without an ignore entry a subscribed channel downloads them
         # again on the next scan, which is the whole reason the button
         # is not just Delete
@@ -433,7 +424,6 @@ def delete_channel_videos(
     default_retry_delay=20,
 )
 def downscale_video(self, youtube_id: str, target_height: int, doc_id: str):
-    """downscale a single already downloaded video to target_height"""
     TaskManager().init(self)
     DownscaleRunner(
         task=self,
@@ -451,13 +441,11 @@ def version_check():
 
 @shared_task(name="downscale_reap_leases")
 def downscale_reap_leases():
-    """requeue/clean up remote downscale jobs with a stale lease"""
     reap_stale_leases()
 
 
 @shared_task(name="log_cleanup", bind=True, base=BaseTask)
 def log_cleanup(self):
-    """delete log entries past the configured retention window"""
     days = AppConfig().config["application"]["log_retention_days"]
     deleted = prune_logs(days)
     if deleted:

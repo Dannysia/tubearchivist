@@ -132,7 +132,6 @@ def test_get_duration_str():
 
 
 def test_rand_sleep_secs_disabled():
-    """no interval configured means no wait at all"""
     assert rand_sleep_secs({"downloads": {}}) == 0
     assert rand_sleep_secs({"downloads": {"sleep_interval": 0}}) == 0
 
@@ -145,11 +144,9 @@ def test_rand_sleep_secs_in_range():
 
 
 def test_rand_sleep_secs_floors_a_useless_interval():
-    """1 collapsed the range to randrange(0, 1), which is always 0
-
-    A user setting 1 to be gentle got no pacing at all, silently. 2 to 4
-    did pace, just too narrowly to be worth the setting. The serializer
-    rejects all four now, but stored configs predate that.
+    """
+    1 collapses the range to randrange(0, 1), which is always 0. The
+    serializer rejects 1 to 4, but stored configs may still hold them.
     """
     for value in (1, 2, 3, 4):
         for _ in range(20):
@@ -158,7 +155,6 @@ def test_rand_sleep_secs_floors_a_useless_interval():
 
 
 def test_rand_sleep_secs_floor_leaves_valid_intervals_alone():
-    """at and above the minimum the configured value is what is used"""
     for _ in range(50):
         assert 2 <= rand_sleep_secs({"downloads": {"sleep_interval": 5}}) < 7
         assert (

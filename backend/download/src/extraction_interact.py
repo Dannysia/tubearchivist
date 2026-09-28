@@ -1,15 +1,10 @@
-"""interact with items in the extraction queue"""
-
 from common.src.queue_interact import BaseQueueInteract
 
 
 class ExtractionInteract(BaseQueueInteract):
-    """interact with items in ta_extraction"""
-
     INDEX_NAME = "ta_extraction"
 
     def delete_bulk(self, item_type: str | None = None):
-        """delete all matching items by status"""
         must_list = [{"term": {"status": {"value": self.status}}}]
         if item_type:
             must_list.append({"term": {"item_type": {"value": item_type}}})
@@ -22,7 +17,6 @@ class ExtractionInteract(BaseQueueInteract):
         new_status: str,
         error: bool | None = None,
     ):
-        """update status in bulk"""
         must_list = [{"term": {"status": {"value": self.status}}}]
         must_not_list = []
 
@@ -47,9 +41,7 @@ class ExtractionInteract(BaseQueueInteract):
         self._update_by_query(must_list, must_not_list, source)
 
     def mark_extracting(self):
-        """flip status to extracting"""
         self.update(status="extracting")
 
     def mark_failed(self, message: str):
-        """flip status to failed with error message"""
         self.update(status="failed", message=message)

@@ -1,8 +1,8 @@
 """test exit node selection
 
 the localapi itself is not exercised here - these cover the decisions
-made around it, above all that a rotate never lands on one of the user's
-own tailnet machines, whose address would not change at all
+made around it, above all that a rotate never lands on a tailnet
+machine, whose address would not change
 """
 
 import pytest
@@ -17,9 +17,8 @@ def mullvad_peer(node_id, host, country, city, online=True):
         "HostName": host,
         "Online": online,
         "ExitNodeOption": True,
-        # CountryCode is what the localapi really sends and _parse_node
-        # deliberately drops, so the fixture keeps it: a peer here should
-        # look like a peer, not like the subset we happen to read
+        # the localapi really sends CountryCode and _parse_node drops
+        # it, so a peer here looks like a peer, not like our subset
         "Location": {
             "Country": country,
             "CountryCode": country[:2].upper(),
@@ -56,8 +55,6 @@ NODES = [
 
 
 class TestParseNode:
-    """the fields a picker reads off a peer"""
-
     def test_mullvad_carries_a_location(self):
         parsed = tailscale._parse_node(
             mullvad_peer("n1", "us-den-wg-101", "USA", "Denver")
@@ -77,8 +74,6 @@ class TestParseNode:
 
 
 class TestPickRandom:
-    """rotation, which ranges over the whole tailnet"""
-
     def test_never_picks_a_tailnet_node(self):
         """the user's own machines share the address being rotated away
         from, so drawing one would silently do nothing"""
@@ -91,14 +86,12 @@ class TestPickRandom:
             assert tailscale.pick_random(NODES)["online"] is True
 
     def test_ranges_across_countries(self):
-        """rotation is global - narrowing to one country is what picking
-        a node from the list is for"""
+        """rotation is global, not pinned to one country"""
         seen = {tailscale.pick_random(NODES)["country"] for _ in range(100)}
         assert seen == {"USA", "Sweden"}
 
     def test_excludes_the_current_node(self):
-        """rotating onto the node already in use is the one useless
-        outcome"""
+        """rotating onto the node in use is the one useless outcome"""
         for _ in range(50):
             picked = tailscale.pick_random(NODES, exclude_id="n1")
             assert picked["node_id"] != "n1"
@@ -114,15 +107,12 @@ class TestPickRandom:
 
 
 class TestPickRotationTarget:
-    """the rule the button and the automatic rotate both go through"""
-
     def test_skips_whatever_is_current(self):
         state = {"current": NODES[0], "nodes": NODES}
         for _ in range(50):
             assert tailscale.pick_rotation_target(state)["node_id"] != "n1"
 
     def test_handles_being_on_no_exit_node(self):
-        """rotating from direct is still a rotate"""
         state = {"current": None, "nodes": NODES}
         assert tailscale.pick_rotation_target(state)["is_mullvad"] is True
 
@@ -132,8 +122,6 @@ class TestPickRotationTarget:
 
 
 class TestSocketDiscovery:
-    """when present, and where"""
-
     def test_absent_when_no_socket(self, monkeypatch):
         monkeypatch.delenv("TS_SOCKET", raising=False)
         monkeypatch.setattr(
@@ -162,8 +150,6 @@ class TestSocketDiscovery:
 
 
 class TestGetState:
-    """what the panel reads"""
-
     def test_unavailable_without_a_socket(self, monkeypatch):
         monkeypatch.setattr(tailscale, "is_available", lambda: False)
         state = tailscale.get_state()
@@ -197,9 +183,8 @@ class TestGetState:
         assert [i["node_id"] for i in state["nodes"]] == ["n3", "n1"]
 
     def test_unreachable_socket_raises(self, monkeypatch, tmp_path):
-        """a socket that is present but will not connect is a different
-        state from tailscale being absent, and has to surface as an error
-        rather than quietly read as absent"""
+        """a present but unconnectable socket has to surface as an error
+        rather than read as tailscale being absent"""
         dead = tmp_path / "tailscaled.sock"
         dead.write_text("not a socket")
         monkeypatch.setenv("TS_SOCKET", str(dead))
@@ -208,8 +193,8 @@ class TestGetState:
             tailscale.get_state()
 
     def test_userspace_flagged(self, monkeypatch):
-        """switching the exit node under userspace networking would not
-        move the downloader's traffic, so the panel has to know"""
+        """under userspace networking the exit node would not move the
+        downloader's traffic"""
         monkeypatch.setattr(tailscale, "is_available", lambda: True)
         monkeypatch.setattr(
             tailscale, "_request", lambda *a, **kw: {"TUN": False}
@@ -218,11 +203,9 @@ class TestGetState:
 
 
 class TestSetExitNode:
-    """the write"""
-
     def test_masks_in_only_the_exit_node(self, monkeypatch):
-        """anything else in prefs, ExitNodeAllowLANAccess above all, has
-        to survive the call untouched"""
+        """anything else in prefs, ExitNodeAllowLANAccess above all,
+        survives the call untouched"""
         seen = {}
 
         def fake(method, path, payload=None):
@@ -262,8 +245,6 @@ class FakeResponse:
 
 
 class TestGetEgress:
-    """confirming a rotate actually moved the address"""
-
     def test_reports_the_exit_node_behind_the_address(self, monkeypatch):
         payload = {
             "ip": "198.51.100.7",
@@ -300,8 +281,8 @@ class TestGetEgress:
         assert egress["organization"] == "Wave Broadband"
 
     def test_falls_back_to_a_plain_echo(self, monkeypatch):
-        """is_mullvad is then unknown rather than false, since a bare ip
-        says nothing about how it was reached"""
+        """is_mullvad is then unknown rather than false: a bare ip says
+        nothing about how it was reached"""
 
         def fake_get(url, **kw):
             if url == tailscale.MULLVAD_CHECK_URL:

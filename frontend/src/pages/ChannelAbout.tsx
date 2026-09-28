@@ -26,8 +26,6 @@ import { FileSizeUnits } from '../api/actions/updateUserConfig';
 
 const DOWNSCALE_LADDER = [2160, 1440, 1080, 720, 480, 360, 240];
 
-// label in the singular too, so a channel with one short does not offer
-// to "Delete 1 Shorts"
 const VIDEO_TYPES: { key: ChannelVideoType; one: string; many: string }[] = [
   { key: 'videos', one: 'Video', many: 'Videos' },
   { key: 'streams', one: 'Stream', many: 'Streams' },
@@ -216,7 +214,6 @@ const ChannelAbout = () => {
                     {VIDEO_TYPES.map(({ key, one, many }) => {
                       const bucket = channelAggs?.by_type?.[key];
                       const count = bucket?.doc_count ?? 0;
-                      // a type the channel has none of is not an option
                       if (!count) {
                         return null;
                       }

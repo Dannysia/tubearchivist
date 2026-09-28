@@ -1,8 +1,7 @@
 """the progress lines the paced loops in appsettings send
 
-countdown_sleep hands back only the countdown line. each loop appends
-it below what it is working on, so the wait reads as the status of that
-item instead of replacing it.
+countdown_sleep hands back only the countdown line; each loop appends
+it below what it is working on rather than replacing it.
 """
 
 # flake8: noqa: E402
@@ -22,7 +21,6 @@ from appsettings.src.reindex import Reindex
 
 @pytest.fixture
 def sent():
-    """capture what reaches the task"""
     captured = []
 
     def send_progress(message, progress=False):
@@ -32,8 +30,6 @@ def sent():
 
 
 class TestReindexNotify:
-    """Reindex._notify"""
-
     def test_plain_line_while_working(self, sent):
         captured, task = sent
         Reindex._notify(SimpleNamespace(task=task), "video", 1445, 412)
@@ -41,7 +37,6 @@ class TestReindexNotify:
         assert captured == [(["Reindexing Videos 412/1445"], 412 / 1445)]
 
     def test_countdown_goes_under_the_counter(self, sent):
-        """the counter has to stay put while the wait ticks"""
         captured, task = sent
         Reindex._notify(
             SimpleNamespace(task=task),
@@ -60,8 +55,6 @@ class TestReindexNotify:
 
 
 class TestManualImportNotify:
-    """ImportFolderScanner._notify"""
-
     @staticmethod
     def _scanner(task):
         return SimpleNamespace(task=task, to_import=[1, 2, 3, 4])
@@ -93,7 +86,6 @@ class TestManualImportNotify:
         ]
 
     def test_long_filename_still_truncates(self, sent):
-        """the countdown must not cost the existing trim"""
         captured, task = sent
         video = {"media": "/youtube/" + "n" * 80 + ".mp4"}
         ImportFolderScanner._notify(
@@ -106,11 +98,7 @@ class TestManualImportNotify:
 
 
 class TestReindexStopPropagates:
-    """a stop has to leave reindex_all, not just the current index
-
-    breaking only the inner loop starts the next index type, which is a
-    fresh run of youtube requests - the thing stopping is meant to end.
-    """
+    """a stop has to leave reindex_all: the next type would hit youtube"""
 
     def test_reindex_type_reports_the_stop(self, monkeypatch):
         from appsettings.src import reindex as reindex_mod
@@ -189,8 +177,8 @@ class TestReindexStopPropagates:
 def _queue_of_one(length=1):
     """a queue holding one item, then empty
 
-    length is what is left *after* the item comes off, which is what
-    decides whether the wait gets counted down or just taken quietly.
+    length is what is left after the item comes off, which decides
+    whether the wait gets counted down.
     """
     items = iter([("abc", 1), (None, None)])
     return SimpleNamespace(
@@ -225,13 +213,11 @@ def _reindex_instance():
 
 
 class TestReindexTrailingWait:
-    """the wait after the last item must not name a next one"""
-
     def test_drained_queue_waits_without_narrating(self, monkeypatch):
         """otherwise it says 'before next video' with none left
 
-        Still through countdown_sleep though, with no notify: the wait
-        paces the next index type and has to stay stoppable.
+        Still through countdown_sleep with no notify: the wait paces the
+        next index type and has to stay stoppable.
         """
         from appsettings.src import reindex as reindex_mod
 

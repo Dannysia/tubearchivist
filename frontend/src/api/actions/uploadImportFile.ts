@@ -4,13 +4,7 @@ import getCookie from '../../functions/getCookie';
 
 export type UploadProgressType = (loaded: number, total: number) => void;
 
-/**
- * Upload a single file to the import folder.
- *
- * Uses XMLHttpRequest rather than fetch: fetch cannot report upload
- * progress, and media files are large enough that a bare spinner leaves
- * the user with no idea whether anything is happening.
- */
+/** XMLHttpRequest rather than fetch: fetch cannot report upload progress */
 const uploadImportFile = (file: File, onProgress?: UploadProgressType): Promise<void> => {
   return new Promise((resolve, reject) => {
     const formData = new FormData();

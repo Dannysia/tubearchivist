@@ -10,15 +10,11 @@ from task.src import task_log
 
 
 class FakeRequest:
-    """the id celery hangs off a bound task"""
-
     def __init__(self, task_id="abc-123"):
         self.id = task_id
 
 
 class FakeTask:
-    """stands in for a bound BaseTask"""
-
     def __init__(self, name="download_pending", task_id="abc-123"):
         self.name = name
         self.request = FakeRequest(task_id)
@@ -34,8 +30,6 @@ def written(monkeypatch):
 
 
 class TestLogTaskEvent:
-    """log_task_event"""
-
     def test_fills_in_the_task_identity(self, written):
         task_log.log_task_event(FakeTask(), "completed", "downloaded 3")
         entry = written[0]

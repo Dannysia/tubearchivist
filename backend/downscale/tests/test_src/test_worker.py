@@ -1,8 +1,3 @@
-"""
-tests for the remote worker API business logic (claim/heartbeat/result/
-finish/fail/delete). See docs/remote-downscale/ta-server.md.
-"""
-
 from unittest.mock import MagicMock, mock_open, patch
 
 from downscale.src import worker
@@ -28,11 +23,7 @@ def _mock_lock(acquired=True):
     return lock
 
 
-# --- claim() ---------------------------------------------------------
-
-
 def test_claim_lock_contention_returns_none():
-    """lock already held elsewhere -> back off, no candidate"""
     with patch(
         "downscale.src.worker.RedisBase"
     ) as mock_redis_base, patch.object(
@@ -49,7 +40,6 @@ def test_claim_lock_contention_returns_none():
 
 
 def test_claim_nothing_queued_returns_none():
-    """no queued candidates at all -> None (view turns this into 204)"""
     with patch(
         "downscale.src.worker.RedisBase"
     ) as mock_redis_base, patch.object(
@@ -63,10 +53,6 @@ def test_claim_nothing_queued_returns_none():
 
 
 def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
-    """
-    a candidate whose video no longer exists is deleted and skipped in
-    favor of the next queued candidate, mirroring the local runner
-    """
     gone_job = {
         "id": "doc-gone",
         "youtube_id": "video-gone",
@@ -234,7 +220,6 @@ def test_claim_deletes_candidate_with_another_active_job_for_the_video():
 
 
 def test_claim_defaults_quality_hint_when_unset():
-    """downscale_crf=None falls back to 23, same as the local runner"""
     job = {
         "id": "doc1",
         "youtube_id": "video1",
@@ -277,9 +262,6 @@ def test_claim_defaults_quality_hint_when_unset():
     assert result["quality_hint"] == 23
 
 
-# --- ownership checks (shared by every job-scoped op) -----------------
-
-
 def test_own_job_not_found():
     with patch.object(DownscaleInteract, "get_item", return_value=(None, 404)):
         job, error = worker._own_job(DOC_ID, WORKER)
@@ -316,9 +298,6 @@ def test_own_job_succeeds_for_the_owning_worker():
     assert error is None
 
 
-# --- heartbeat() -------------------------------------------------------
-
-
 def test_heartbeat_rejects_when_not_owned():
     with patch.object(DownscaleInteract, "get_item", return_value=(None, 404)):
         result, error = worker.heartbeat(DOC_ID, WORKER, 0.5)
@@ -347,9 +326,6 @@ def test_heartbeat_reports_stop_when_stop_requested():
 
     assert error is None
     assert result == {"stop": True}
-
-
-# --- upload_result() -----------------------------------------------------
 
 
 def test_upload_result_rejects_when_not_owned():
@@ -385,11 +361,9 @@ def test_upload_result_streams_to_part_then_renames_into_place():
 
 def test_upload_result_aborts_without_renaming_if_reclaimed_mid_upload():
     """
-    regression test: a large upload with no heartbeat traffic of its
-    own can run long enough for a reap to requeue-and-reclaim this doc
-    out from under a slow worker. Re-checking ownership right before
-    the rename must catch that and discard the (now-orphaned) .part
-    upload rather than let it clobber whatever the new claim produces
+    a large upload sends no heartbeat traffic of its own, so it can run
+    long enough for a reap to requeue-and-reclaim the doc; the .part is
+    then discarded rather than left to clobber the new claim's output
     """
     stream = MagicMock()
     reclaimed_job = {**RUNNING_JOB, "worker": "someone-else"}
@@ -417,11 +391,7 @@ def test_upload_result_aborts_without_renaming_if_reclaimed_mid_upload():
 
 
 def test_upload_result_aborts_without_renaming_if_cancelled_mid_upload():
-    """
-    a cancel that lands during the upload (before finish() gets a
-    chance to see stop_requested) must not let the rename proceed - the
-    result is discarded even though it's otherwise complete and valid
-    """
+    """the result is discarded even though it is complete and valid"""
     stream = MagicMock()
     cancelled_job = {**RUNNING_JOB, "stop_requested": True}
 
@@ -445,9 +415,6 @@ def test_upload_result_aborts_without_renaming_if_cancelled_mid_upload():
     assert error == worker.CANCELLED_ERROR
     mock_replace.assert_not_called()
     mock_remove.assert_called_once_with(f"{RUNNING_JOB['tmp_file_path']}.part")
-
-
-# --- finish() --------------------------------------------------------
 
 
 def test_finish_rejects_when_not_owned():
@@ -514,14 +481,9 @@ def test_finish_marks_pending_review_and_records_the_report():
 
 def test_finish_renames_to_the_container_the_worker_reported():
     """
-    regression test: tmp_file_path is hardcoded to .mp4 at enqueue time
-    (queue_interact.build_queued_doc), before it's known whether a
-    local or remote encode runs the job. A worker producing .mkv
-    (worker.md's "Output container") reports that here, and the doc has
-    to end up pointing at the file that actually exists - otherwise
-    pending_review advertises a .mp4 path for MKV bytes and
-    DownscaleReview.accept()'s container matching never sees a
-    mismatch to act on
+    tmp_file_path is hardcoded to .mp4 at enqueue time, so a worker that
+    produced .mkv reports it here and the doc has to end up pointing at
+    the file that actually exists
     """
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
@@ -559,7 +521,6 @@ def test_finish_renames_to_the_container_the_worker_reported():
 
 
 def test_finish_leaves_the_path_alone_for_a_matching_container():
-    """the common case - a worker whose output really is .mp4"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
@@ -588,10 +549,7 @@ def test_finish_leaves_the_path_alone_for_a_matching_container():
 
 
 def test_finish_without_a_container_keeps_the_existing_path():
-    """
-    container is optional - a worker that doesn't send one is taken at
-    its word that tmp_file_path already describes the upload
-    """
+    """container is optional: the stored path is taken at its word"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
@@ -619,11 +577,9 @@ def test_finish_without_a_container_keeps_the_existing_path():
 
 def test_finish_discards_instead_of_pending_review_when_already_cancelled():
     """
-    regression test: a cancel that raced in after the worker's last
-    heartbeat (no heartbeat happens during upload/finish for a worker
-    that hasn't adopted the concurrent-heartbeat pattern from
-    worker.md) must not let an otherwise-valid result reach
-    pending_review - the job is discarded, not marked done
+    a worker sends no heartbeat during upload/finish, so a cancel can
+    race in after its last one: the otherwise-valid result is discarded
+    rather than marked done
     """
     cancelled_job = {**RUNNING_JOB, "stop_requested": True}
 
@@ -652,9 +608,6 @@ def test_finish_discards_instead_of_pending_review_when_already_cancelled():
     mock_dispatch.assert_called_once()
 
 
-# --- fail() ------------------------------------------------------------
-
-
 def test_fail_rejects_when_not_owned():
     with patch.object(DownscaleInteract, "get_item", return_value=(None, 404)):
         error = worker.fail(DOC_ID, WORKER, "boom")
@@ -676,7 +629,6 @@ def test_fail_marks_failed_and_clears_worker():
 
 
 def test_fail_truncates_an_overlong_message_like_the_local_runner_does():
-    """same [-2000:] cap _encode()'s failure branch applies to stderr"""
     long_message = "x" * 3000
 
     with patch.object(
@@ -690,10 +642,7 @@ def test_fail_truncates_an_overlong_message_like_the_local_runner_does():
 
 
 def test_fail_discards_instead_of_failed_when_already_cancelled():
-    """
-    already cancelled - report becomes a delete, not a failed doc
-    sitting around for a retry the user never asked for
-    """
+    """not a failed doc left around for a retry nobody asked for"""
     cancelled_job = {**RUNNING_JOB, "stop_requested": True}
 
     with patch.object(
@@ -714,9 +663,6 @@ def test_fail_discards_instead_of_failed_when_already_cancelled():
     mock_delete.assert_called_once()
     assert mock_remove.call_count == 2
     mock_dispatch.assert_called_once()
-
-
-# --- delete() ----------------------------------------------------------
 
 
 def test_delete_rejects_when_not_owned():
@@ -744,9 +690,6 @@ def test_delete_cleans_up_tmp_files_and_dispatches():
     mock_dispatch.assert_called_once()
 
 
-# --- reap_stale_leases() ------------------------------------------------
-
-
 def test_reap_no_stale_leases_does_nothing():
     with patch.object(
         DownscaleInteract, "get_stale_leases", return_value=[]
@@ -760,11 +703,8 @@ def test_reap_no_stale_leases_does_nothing():
 
 def test_reap_requeues_a_stale_lease_and_clears_every_remote_field():
     """
-    a stale, not-cancelled job goes back to the queue looking exactly
-    like a fresh local job - worker/last_heartbeat/progress/
-    stop_requested all cleared, not just status - otherwise it would be
-    wrongly excluded from the local-only count_running/get_interrupted
-    filters, which key off worker==""
+    every remote field is cleared, not just status: the local-only
+    count_running/get_interrupted filters key off worker==""
     """
     stale_job = {
         "id": "doc1",
@@ -792,10 +732,8 @@ def test_reap_requeues_a_stale_lease_and_clears_every_remote_field():
 
 def test_reap_requeue_also_cleans_up_a_leftover_part_file():
     """
-    the tmp file and its .part upload-in-progress sibling both belong
-    to the lease that just expired - a leftover .part from a reaped
-    mid-upload must not survive to be reused (or collided with) by
-    whoever claims this job next
+    the .part sibling belongs to the expired lease too, and must not
+    survive to collide with whoever claims this job next
     """
     stale_job = {
         "id": "doc1",
@@ -819,11 +757,7 @@ def test_reap_requeue_also_cleans_up_a_leftover_part_file():
 
 
 def test_reap_deletes_a_stale_lease_with_stop_requested():
-    """
-    the user already cancelled this job and the worker died before it
-    could ack - delete rather than requeue, same end state a normal
-    worker-acked cancel reaches
-    """
+    """cancelled before the worker died: delete rather than requeue"""
     stale_job = {
         "id": "doc1",
         "tmp_file_path": "/cache/downscale/video1_720p.mp4",

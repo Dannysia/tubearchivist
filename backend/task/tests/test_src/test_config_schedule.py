@@ -23,7 +23,6 @@ VALID_SCHEDULES = ["1", "24", "168", 1, 24, "auto", None, "", " 24 "]
 
 @pytest.mark.parametrize("valid_value", VALID_SCHEDULES)
 def test_valid_schedule(valid_value):
-    """accept whole numbers, 'auto', and empty/None, regardless of unit"""
     validator = ScheduleValidator()
     validator.validate_schedule(valid_value)
 
@@ -39,34 +38,29 @@ INVALID_SCHEDULES = [
 
 @pytest.mark.parametrize("invalid_value", INVALID_SCHEDULES)
 def test_invalid_schedule(invalid_value):
-    """raise error on non-whole-number or sub-1 schedules"""
     validator = ScheduleValidator()
     with pytest.raises(ValueError):
         validator.validate_schedule(invalid_value)
 
 
 def test_config_rejects_unknown_key():
-    """raise error on unknown config key for a task that does take config"""
     validator = ScheduleValidator()
     with pytest.raises(ValueError, match="invalid config key"):
         validator.validate_config("check_reindex", {"nonexistent": 1})
 
 
 def test_config_rejects_task_without_config():
-    """raise error when a task that doesn't take config gets any"""
     validator = ScheduleValidator()
     with pytest.raises(ValueError, match="doesn't take config"):
         validator.validate_config("download_pending", {"days": 90})
 
 
 def test_config_accepts_known_key():
-    """accept a valid config key for a task that takes config"""
     validator = ScheduleValidator()
     validator.validate_config("check_reindex", {"days": 90})
 
 
 def test_update_subscribed_uses_minutes():
-    """the subscription ticker is scheduled in minutes, not hours"""
     assert (
         ScheduleBuilder.UNITS["update_subscribed"] == IntervalSchedule.MINUTES
     )
@@ -88,7 +82,6 @@ MINUTE_SCHEDULED_TASKS = {"update_subscribed", "downscale_reap_leases"}
 
 
 def test_other_tasks_default_to_hours():
-    """every other task falls back to the hourly interval unit"""
     for task_name in ScheduleBuilder.SCHEDULES:
         if task_name in MINUTE_SCHEDULED_TASKS:
             continue
@@ -99,14 +92,11 @@ def test_other_tasks_default_to_hours():
 
 
 class TestOrphanedSchedules:
-    """schedules whose task no longer exists"""
-
     def test_nothing_orphaned_when_every_name_is_known(self):
         known = ["download_pending", "log_cleanup"]
         assert orphaned_schedules(known, known) == []
 
     def test_finds_a_schedule_with_no_task_behind_it(self):
-        # what a rollback past the commit that added log_cleanup leaves
         assert orphaned_schedules(
             ["download_pending", "log_cleanup"], ["download_pending"]
         ) == ["log_cleanup"]
@@ -138,11 +128,9 @@ class TestOrphanedSchedules:
 def test_reindex_is_stoppable():
     """the reindex spends hours asleep between youtube requests
 
-    task/views.py refuses a stop for anything without this flag, so the
-    propagation the reindex loop implements was unreachable while it was
-    False. A stop is only ever checked between items, after the current
-    one is indexed and cleared, and whatever is still queued stays in
-    redis for the next scheduled run.
+    A stop is only ever checked between items, after the current one is
+    indexed and cleared, and whatever is still queued stays in redis for
+    the next scheduled run.
     """
     assert TASK_CONFIG["check_reindex"]["api_stop"] is True
 
@@ -150,17 +138,16 @@ def test_reindex_is_stoppable():
 def test_reindex_is_not_killable():
     """stop and kill are different things and share one flag by default
 
-    A stop asks the loop to finish its item and leave. A kill terminates
-    the worker wherever it is - the id is already popped off the queue,
-    and reindex_single_video deletes the old subtitle files before
-    writing the new document, so a kill in that window loses the entry
-    and leaves ES advertising subtitles that are gone from disk.
+    A kill terminates the worker wherever it is - the id is already
+    popped off the queue, and reindex_single_video deletes the old
+    subtitle files before writing the new document, so a kill in that
+    window loses the entry and leaves ES advertising subtitles that are
+    gone from disk.
     """
     assert TASK_CONFIG["check_reindex"]["api_kill"] is False
 
 
 def test_api_kill_defaults_to_api_stop():
-    """only check_reindex splits them, everything else must be unchanged"""
     for name, config in TASK_CONFIG.items():
         if name == "check_reindex":
             continue

@@ -1,13 +1,7 @@
-"""channel constants"""
-
 import enum
 
-# every key channel_overwrites accepts. Both the serializer that
-# validates an incoming update and YoutubeChannel.set_overwrites, which
-# refuses anything it does not recognise, build from this. They used to
-# hold the list separately, so a field added to the serializer alone
-# validated cleanly and then died in set_overwrites with a ValueError -
-# a 500 with nothing in the log, not a 400 saying what was wrong.
+# every key channel_overwrites accepts: the update serializer and
+# set_overwrites both build from this, so they cannot drift apart
 OVERWRITE_KEYS = [
     "download_format",
     "downscale_target_height",
@@ -38,17 +32,14 @@ class ChannelSortEnum(enum.Enum):
 
     @classmethod
     def values(cls) -> list[str]:
-        """value list"""
         return [i.value for i in cls]
 
     @classmethod
     def names(cls) -> list[str]:
-        """name list"""
         return [i.name.lower() for i in cls]
 
     @classmethod
     def from_name(cls, name: str) -> "ChannelSortEnum":
-        """get member by api name"""
         if not hasattr(cls, name.upper()):
             raise ValueError(f"'{name}' not in ChannelSortEnum")
 

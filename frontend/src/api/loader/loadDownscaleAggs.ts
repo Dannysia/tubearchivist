@@ -13,8 +13,7 @@ export type DownscaleAggsType = {
   buckets: DownscaleAggsBucket[];
 };
 
-// encoder is a plain single-field terms agg (no channel-style id/name
-// pair), so its bucket key is just the encoder string itself
+// a plain single-field terms agg, so the bucket key is the encoder string
 type DownscaleEncoderAggsBucket = {
   key: string;
   doc_count: number;
@@ -26,10 +25,9 @@ export type DownscaleEncoderAggsType = {
   buckets: DownscaleEncoderAggsBucket[];
 };
 
-// one disjoint savings band per bucket, keyed by its lower edge as a
-// string, plus 'larger' for jobs whose encode came out bigger. The
-// dropdown's rungs overlap, so countsBySizeChange sums these rather
-// than reading one bucket per rung
+// disjoint bands keyed by lower edge as a string, plus 'larger' when the
+// encode came out bigger. The dropdown's rungs overlap, so these are summed
+// rather than read one bucket per rung
 export type DownscaleSavedAggsBucket = {
   key: string;
   doc_count: number;

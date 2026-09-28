@@ -1,17 +1,8 @@
-"""test rotating the exit node away from a blocked address
-
-the cap is the point of most of this: a block that no address fixes must
-stop costing rotations, and a request that works must hand the budget
-back.
-"""
-
 import pytest
 from download.src import exit_node
 
 
 class FakeRedis:
-    """stands in for RedisArchivist, one key is all this needs"""
-
     def __init__(self, stored=None):
         self.stored = stored
         self.deleted = False
@@ -61,7 +52,7 @@ NODES = [
 
 @pytest.fixture
 def wired(monkeypatch):
-    """a reachable tailscale, currently on n1, and a settable redis"""
+    """returns (redis, the node ids switched to)"""
     redis = FakeRedis()
     switched = []
 
@@ -85,12 +76,7 @@ def wired(monkeypatch):
 
 
 class TestDisabled:
-    """nothing happens unless it was asked for"""
-
     def test_no_config_at_all_is_silent(self, monkeypatch):
-        """urlparser builds a YtWrap without one, and that path must not
-        need a redis either"""
-
         def explode():
             raise AssertionError("redis must not be reached when off")
 
@@ -110,8 +96,6 @@ class TestDisabled:
 
 
 class TestRotating:
-    """the normal path"""
-
     def test_switches_away_from_the_current_node(self, wired):
         redis, switched = wired
         message = exit_node.rotate_on_bot_block(config())
@@ -161,8 +145,7 @@ class TestRotating:
         assert switched == []
 
     def test_tailscale_failure_does_not_raise(self, monkeypatch, wired):
-        """the bot error is already on its way up, and it is the more
-        useful of the two"""
+        """the bot error on its way up is the more useful of the two"""
         redis, _ = wired
 
         def boom():
@@ -177,8 +160,9 @@ class TestRotating:
     def test_an_unexpected_error_does_not_raise_either(
         self, monkeypatch, wired
     ):
-        """the promise is that nothing in here replaces the bot error,
-        not that only TailscaleError is survivable"""
+        """nothing in here replaces the bot error, not just
+        TailscaleError
+        """
         redis, _ = wired
 
         def boom():
@@ -192,17 +176,10 @@ class TestRotating:
 
 
 class TestBudget:
-    """handing it back
-
-    clear_budget runs after every request that works, so what it costs
-    when rotation is switched off matters more than what it does when
-    switched on
-    """
+    """clear_budget runs after every request that works"""
 
     def test_disabled_never_reaches_redis(self, monkeypatch):
-        """the regression: this used to construct a RedisArchivist on
-        every successful extract, which needs a REDIS_CON to exist even
-        on an install that will never rotate anything"""
+        """an install that will never rotate must not need a REDIS_CON"""
 
         def explode():
             raise AssertionError("redis must not be reached when off")

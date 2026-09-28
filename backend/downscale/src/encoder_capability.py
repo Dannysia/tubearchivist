@@ -1,9 +1,3 @@
-"""
-functionality:
-- test whether each hardware encoder actually works on this machine, not
-  just whether ffmpeg knows the encoder name
-"""
-
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
@@ -21,11 +15,6 @@ TEST_SOURCE = "testsrc=duration=1:size=1280x720:rate=30"
 
 
 def _build_test_cmd(encoder_key: str, vaapi_device: str) -> list[str]:
-    """
-    build a minimal ffmpeg command to test if a hardware encoder actually
-    works on this machine, using a synthetic 1-second test pattern instead
-    of a real source file
-    """
     cmd = ["ffmpeg", "-hide_banner", "-vaapi_device", vaapi_device]
     cmd += ["-f", "lavfi", "-i", TEST_SOURCE]
     cmd += ["-vf", "format=nv12,hwupload"]
@@ -37,20 +26,13 @@ def _build_test_cmd(encoder_key: str, vaapi_device: str) -> list[str]:
 
 class EncoderCapabilityTest:
     """
-    run a small synthetic encode for each hardware encoder to check if it
-    actually works on this machine, not just whether ffmpeg knows the
-    encoder name - catches missing device passthrough, a driver that
-    isn't loaded, or a codec/hardware combo the GPU doesn't support
+    ffmpeg knowing an encoder name is not enough: this catches missing
+    device passthrough, an unloaded driver, or a codec the GPU lacks
     """
 
     HW_ENCODER_KEYS = [key for key in ENCODER_SETTINGS if is_hw_encoder(key)]
 
     def run(self) -> list[dict]:
-        """
-        test all hardware encoders, return one result dict per encoder.
-        Encoders are independent of each other, so they're tested
-        concurrently rather than one after another.
-        """
         vaapi_device = EnvironmentSettings.VAAPI_RENDER_DEVICE
         missing_message = missing_vaapi_device_message(vaapi_device)
         if missing_message:
@@ -68,7 +50,7 @@ class EncoderCapabilityTest:
             )
 
     def _test_one(self, encoder_key: str, vaapi_device: str) -> dict:
-        """test a single hardware encoder, assumes the device exists"""
+        """the caller must already have checked the device exists"""
         cmd = _build_test_cmd(encoder_key, vaapi_device)
         try:
             result = subprocess.run(

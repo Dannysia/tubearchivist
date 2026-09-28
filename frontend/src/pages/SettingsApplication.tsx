@@ -46,10 +46,8 @@ const PRESET_OPTIONS = [
 
 type PresetReferenceRow = { preset: string; time: string; size: string };
 
-// ballpark figures from commonly cited community encoder benchmarks, all
-// relative to that codec's own "medium" preset. Not measured on this
-// device - actual results depend heavily on source content, resolution
-// and hardware, so treat these as a rough sense of direction only.
+// ballpark community figures, relative to each codec's own "medium" preset and
+// not measured on this device: a sense of direction, not a measurement
 const PRESET_REFERENCE: Record<'h264' | 'h265' | 'av1' | 'h264_vaapi', PresetReferenceRow[]> = {
   h264: [
     { preset: 'ultrafast', time: '~0.3x (3x faster)', size: '~40-50% larger' },
@@ -87,10 +85,8 @@ const PRESET_REFERENCE: Record<'h264' | 'h265' | 'av1' | 'h264_vaapi', PresetRef
     { preset: 'veryslow', time: '~5-8x', size: '~10-16% smaller' },
     { preset: 'placebo', time: '~10-15x+', size: '~12-18% smaller' },
   ],
-  // Quick Sync's Target Usage knob covers a much narrower speed/quality
-  // range than software presets - this is much fuzzier community knowledge
-  // than the x264 numbers above, not a well-established benchmark chart.
-  // ultrafast/superfast share a Target Usage level, as do veryslow/placebo.
+  // Quick Sync's Target Usage covers a much narrower range than software
+  // presets, and ultrafast/superfast share a level, as do veryslow/placebo
   h264_vaapi: [
     { preset: 'ultrafast', time: '~0.5x', size: '~15-20% larger' },
     { preset: 'superfast', time: '~0.5x', size: '~15-20% larger' },

@@ -268,9 +268,8 @@ class ChannelVideoDeleteView(ApiBaseView):
         vid_type = validated["vid_type"]
         ignore = validated["ignore"]
 
-        # backgrounded, not inline: this is one es round trip per video
-        # plus its playlist entries, subtitles and comments, which on a
-        # channel with a few thousand of a type outlives the request
+        # backgrounded: one es round trip per video plus its playlist
+        # entries, subtitles and comments outlives the request
         task = delete_channel_videos.delay(channel_id, vid_type, ignore)
         message = {
             "message": f"deleting {vid_type} from {channel_id}",
@@ -319,7 +318,6 @@ class ChannelDownscaleView(ApiBaseView):
             current_height = max(heights) if heights else None
 
             if not current_height or target_height >= current_height:
-                # already at or below target, nothing to do
                 continue
 
             if DownscaleInteract.get_active_for_video(youtube_id):
@@ -342,9 +340,8 @@ class ChannelDownscaleView(ApiBaseView):
             queued.append(youtube_id)
 
         if queued:
-            # one dispatch pass after the whole batch, not one per video -
-            # dispatch_pending_downscales() already fills every free slot
-            # in a single call
+            # one pass for the batch: dispatch_pending_downscales
+            # fills every free slot in a single call
             dispatch_pending_downscales()
 
         serializer = ChannelDownscaleSerializer(
@@ -354,7 +351,6 @@ class ChannelDownscaleView(ApiBaseView):
 
     @staticmethod
     def _get_channel_videos(channel_id):
-        """get all fields needed to queue a downscale for all channel videos"""
         data = {
             "query": {"term": {"channel.channel_id": {"value": channel_id}}},
             "_source": QUEUE_DOC_SOURCE_FIELDS,

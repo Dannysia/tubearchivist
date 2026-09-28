@@ -1,5 +1,3 @@
-"""test channel aggregation building and parsing"""
-
 # pylint: disable=protected-access
 
 from channel.src.aggs import ChannelAggs
@@ -52,7 +50,6 @@ def no_bands(**overrides):
 
 
 def test_query_has_downscale_agg():
-    """downscale totals are filtered on new_height, like the video list"""
     aggs = ChannelAggs("UC1").build_query()["aggs"]
     assert aggs["downscale"]["filter"] == {
         "exists": {"field": "downscale.new_height"}
@@ -61,14 +58,11 @@ def test_query_has_downscale_agg():
         "original_size": {"sum": {"field": "downscale.original_size"}},
         "new_size": {"sum": {"field": "downscale.new_size"}},
         "by_transition": transition_agg(),
-        # the same bands the dashboard and the queue filter use, over
-        # the video doc's own size fields
         "by_saved": saved_percent_agg(VIDEO_SIZE_FIELDS),
     }
 
 
 def test_parse_downscale():
-    """parse the downscale filter bucket"""
     agg = {
         "doc_count": 3,
         "original_size": {"value": 3000.0},
@@ -115,7 +109,6 @@ def test_parse_downscale():
 
 
 def test_parse_downscale_nothing_downscaled():
-    """zeroed bucket, no videos matched the filter"""
     agg = {
         "doc_count": 0,
         "original_size": {"value": 0},
@@ -127,7 +120,6 @@ def test_parse_downscale_nothing_downscaled():
 
 
 def test_parse_downscale_grown():
-    """an encode that came out bigger reports negative savings"""
     agg = {
         "doc_count": 1,
         "original_size": {"value": 1000.0},
@@ -138,13 +130,11 @@ def test_parse_downscale_grown():
     parsed = ChannelAggs._parse_downscale(agg)
 
     assert parsed["saved"] == -500
-    # and the band payload says so too, in its own row rather than
-    # folded into the smallest saving band
+    # its own row, not folded into the smallest saving band
     assert parsed["by_saved"] == no_bands(grew=1)
 
 
 def test_empty_response_has_downscale():
-    """a channel without videos still serializes"""
     assert ChannelAggs("UC1")._empty()["downscale"] == {
         "doc_count": 0,
         "original_size": 0,
@@ -156,11 +146,9 @@ def test_empty_response_has_downscale():
 
 
 def test_query_has_resolution_agg():
-    """the about panel breaks the channel down by the downscale ladder"""
     aggs = ChannelAggs("UC1").build_query()["aggs"]
     assert aggs["by_resolution"] == resolution_agg()
 
 
 def test_empty_response_has_resolution():
-    """a channel without videos still serializes"""
     assert ChannelAggs("UC1")._empty()["by_resolution"] == empty_resolution()

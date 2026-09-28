@@ -1,8 +1,7 @@
 """test import upload file name validation
 
-validate_name is the only thing standing between an attacker controlled
-upload name and a write to disk, so these pin the guarantees it makes
-rather than just its happy path
+validate_name is the only thing between an attacker controlled upload
+name and a write to disk
 """
 
 import os
@@ -27,7 +26,6 @@ VIDEO_ID = "dQw4w9WgXcQ"
     ],
 )
 def test_accepts_every_supported_extension(file_name):
-    """the bare video id with any extension the scanner imports"""
     assert ImportFolderFiles.validate_name(file_name) == file_name
 
 
@@ -51,14 +49,12 @@ def test_accepts_yt_dlp_bracket_name():
 
 
 def test_accepts_uppercase_extension():
-    """extension matching is case insensitive"""
     assert (
         ImportFolderFiles.validate_name(f"{VIDEO_ID}.MP4") == f"{VIDEO_ID}.MP4"
     )
 
 
 def test_strips_surrounding_whitespace():
-    """a padded name is still the same file"""
     assert (
         ImportFolderFiles.validate_name(f"  {VIDEO_ID}.mp4  ")
         == f"{VIDEO_ID}.mp4"
@@ -75,10 +71,6 @@ def test_strips_surrounding_whitespace():
     ],
 )
 def test_strips_any_path_from_the_name(file_name):
-    """
-    a traversing name never escapes the import folder, the directory
-    part is dropped and only the file name survives
-    """
     clean_name = ImportFolderFiles.validate_name(file_name)
 
     assert clean_name == f"{VIDEO_ID}.mp4"
@@ -97,24 +89,20 @@ def test_strips_any_path_from_the_name(file_name):
     ],
 )
 def test_rejects_traversal_that_survives_basename(file_name):
-    """
-    a windows or encoded separator is not a path separator here, so the
-    name keeps its dots and slashes and has to fail the id rule instead
-    """
+    """a windows or encoded separator is not a path separator here, so
+    the name keeps its slashes and fails the id rule instead"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
 
 @pytest.mark.parametrize("file_name", ["", None, "   "])
 def test_rejects_an_empty_name(file_name):
-    """nothing to write"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
 
 @pytest.mark.parametrize("file_name", [".bashrc", ".env", f".{VIDEO_ID}.mp4"])
 def test_rejects_dotfiles(file_name):
-    """a hidden file is never a staged import"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
@@ -130,7 +118,6 @@ def test_rejects_dotfiles(file_name):
     ],
 )
 def test_rejects_unsupported_extensions(file_name):
-    """only the extensions the import scanner knows, and never none"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
@@ -147,11 +134,8 @@ def test_rejects_unsupported_extensions(file_name):
     ],
 )
 def test_rejects_names_that_are_not_an_unambiguous_video_id(file_name):
-    """
-    extract_video_id would take the trailing 11 characters of any name,
-    so mystery-clip.mp4 would import as ystery-clip. the upload path
-    insists on a name that cannot be misread
-    """
+    """extract_video_id would take the trailing 11 characters of any
+    name, so mystery-clip.mp4 would import as ystery-clip"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
@@ -173,34 +157,27 @@ def test_rejects_a_null_byte_in_the_name(file_name):
 
 
 class TestStagedFilePath:
-    """file_path backs both the download and the delete
-
-    The name comes off a url, so the basename rule is the only thing
-    between a caller and the rest of the filesystem
-    """
+    """the name comes off a url, so the basename rule is the only thing
+    between a caller and the rest of the filesystem"""
 
     @staticmethod
     @pytest.fixture
     def import_dir(tmp_path, monkeypatch):
-        """an import folder with one staged file"""
         monkeypatch.setattr(ImportFolderFiles, "IMPORT_DIR", str(tmp_path))
         (tmp_path / "staged.mp4").write_bytes(b"data")
 
         return tmp_path
 
     def test_resolves_a_staged_file(self, import_dir):
-        """the ordinary case"""
         assert ImportFolderFiles.file_path("staged.mp4") == str(
             import_dir / "staged.mp4"
         )
 
     def test_a_name_with_no_such_file_is_none_not_an_error(self, import_dir):
-        """the view turns this into a 404"""
         assert ImportFolderFiles.file_path("nothing.mp4") is None
 
     @pytest.mark.parametrize("file_name", ["", "   ", None, ".hidden"])
     def test_refuses_an_unusable_name(self, import_dir, file_name):
-        """empty, whitespace and dotfiles never name a staged file"""
         with pytest.raises(ValueError):
             ImportFolderFiles.file_path(file_name)
 
@@ -210,10 +187,8 @@ class TestStagedFilePath:
     def test_a_traversal_naming_nothing_staged_resolves_to_nothing(
         self, import_dir, file_name
     ):
-        """
-        basename first, so a traversal collapses to a plain name that is
-        looked for in the import folder and simply is not there
-        """
+        """basename first, so a traversal collapses to a plain name that
+        is looked for in the import folder and is not there"""
         assert ImportFolderFiles.file_path(file_name) is None
 
     @pytest.mark.parametrize(
@@ -222,11 +197,9 @@ class TestStagedFilePath:
     def test_a_path_can_never_resolve_outside_the_import_folder(
         self, import_dir, file_name
     ):
-        """
-        where the basename does name a staged file, it collapses onto
-        that file rather than following the path. Assert the directory
-        rather than a prefix, so this cannot pass by resolving to None
-        """
+        """the basename collapses onto the staged file rather than
+        following the path. Assert the directory rather than a prefix, so
+        this cannot pass by resolving to None"""
         resolved = ImportFolderFiles.file_path(file_name)
 
         assert resolved == str(import_dir / "staged.mp4")

@@ -6,10 +6,9 @@ import formatDate from '../functions/formatDates';
 const Footer = () => {
   const currentYear = new Date().getFullYear();
   const { auth } = useAuthStore();
-  // upstream's release number, which says what mainline base this is
+  // upstream's release number, not this fork's build
   const version = auth?.version;
-  // and which build of this fork is actually running, absent on an
-  // image built without the build args
+  // absent on an image built without the build args
   const buildSha = auth?.build_sha;
   const buildDate = auth?.build_date;
   const taUpdate = auth?.ta_update;
@@ -21,9 +20,8 @@ const Footer = () => {
         <span>TubeArchivist </span>
         <span>{version} </span>
         {buildSha && (
-          // the visible date is rendered in the viewer's timezone, the
-          // title keeps the canonical instant for comparing against
-          // docker or a build log, labelled so it cannot be read as local
+          // the visible date is in the viewer's timezone; the title keeps the
+          // canonical instant, labelled UTC so it cannot be read as local
           <span title={buildDate ? `built ${buildDate} (UTC)` : undefined}>
             · {buildSha}
             {buildDate && ` · ${formatDate(buildDate, true)}`}{' '}

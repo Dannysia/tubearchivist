@@ -388,13 +388,10 @@ class Downscale(AggBase):
     name = "downscale_stats"
     path = "ta_video/_search"
 
-    # how many encoder panels to break the savings down into. The set of
-    # distinct encoder strings is naturally small - six local encoders
-    # plus whatever remote workers report - and does not grow with the
-    # archive the way channels or days do, so this is a defensive bound
-    # rather than a real ceiling. Anything past it is folded into a
-    # single OTHER_ENCODER entry, so the panels always reconcile with
-    # the total instead of silently dropping savings.
+    # the distinct encoder set is small and does not grow with the
+    # archive, so this is a defensive bound rather than a real ceiling;
+    # anything past it is folded into one OTHER_ENCODER entry, so the
+    # panels still reconcile with the total
     ENCODER_LIMIT = 8
     OTHER_ENCODER = "other"
 
@@ -407,12 +404,11 @@ class Downscale(AggBase):
         "query": downscaled_filter(),
         "aggs": {
             **_size_aggs,
-            # AggBase.get() returns only the aggregations, so the hit
-            # total is not available - count here instead
+            # get() returns only the aggregations, not the hit total
             "video_count": {"value_count": {"field": "youtube_id"}},
             "by_encoder": {
-                # ordered by the data each encoder actually processed,
-                # so a truncated tail is the least significant one
+                # ordered by data processed, so a truncated tail is
+                # the least significant one
                 "terms": {
                     "field": "downscale.encoder",
                     "size": ENCODER_LIMIT,
@@ -426,7 +422,6 @@ class Downscale(AggBase):
     }
 
     def process(self):
-        """process aggregation"""
         aggregations = self.get()
         if not aggregations:
             return None
@@ -455,10 +450,9 @@ class Downscale(AggBase):
     @classmethod
     def _build_remainder(cls, total: dict, shown: list[dict]) -> dict | None:
         """
-        fold every encoder past ENCODER_LIMIT into one entry. Derived by
-        subtracting what is shown from the total rather than from the
-        dropped buckets themselves, which the terms agg never returns,
-        so it stays exact however many encoders were left out
+        the terms agg never returns the buckets it dropped, so the fold
+        is derived by subtracting what is shown from the total, which
+        stays exact however many encoders were left out
         """
         doc_count = total["doc_count"] - sum(i["doc_count"] for i in shown)
         if doc_count <= 0:
@@ -485,7 +479,6 @@ class Downscale(AggBase):
     def _build_totals(
         doc_count: int, agg: dict, encoder: str | None = None
     ) -> dict:
-        """build the savings numbers shared by the total and each encoder"""
         original_size = int(agg["original_size"]["value"])
         new_size = int(agg["new_size"]["value"])
         saved = original_size - new_size
@@ -495,8 +488,7 @@ class Downscale(AggBase):
             "original_size": original_size,
             "new_size": new_size,
             "saved": saved,
-            # of the original size, so a 76% saving means the archive
-            # now holds 24% of what these videos used to take
+            # of the original size: 76% saved leaves 24% on disk
             "saved_percent": (
                 round(saved / original_size * 100, 2) if original_size else 0
             ),
@@ -508,14 +500,11 @@ class Downscale(AggBase):
 
 
 class Resolution(AggBase):
-    """get videos, duration and media size per resolution tier"""
-
     name = "resolution_stats"
     path = "ta_video/_search"
     data = {"size": 0, "aggs": {"by_resolution": resolution_agg()}}
 
     def process(self):
-        """process aggregation"""
         aggregations = self.get()
         if not aggregations:
             return None

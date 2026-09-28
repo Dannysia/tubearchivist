@@ -1,10 +1,8 @@
 """
-remote downscale worker API, see docs/remote-downscale/ta-server.md.
-
-Every job-scoped endpoint identifies the calling worker from the request
-body (JSON endpoints) or an X-TA-Worker header (the raw-body/no-body
-endpoints), and returns 409 when the doc is no longer running or is held
-by a different worker - the signal for the worker to abandon the job.
+every job-scoped endpoint identifies the calling worker from the request
+body, or from an X-TA-Worker header where there is no JSON body, and
+returns 409 once the doc is no longer running or is held by a different
+worker - the signal for that worker to abandon the job.
 """
 
 from common.views_base import AdminOnly, ApiBaseView
@@ -23,11 +21,7 @@ from rest_framework.response import Response
 
 
 def _get_worker_name(request) -> str | None:
-    """
-    worker identity, from the X-TA-Worker header or a JSON body's
-    "worker" field - a raw-body upload (PUT result) has no JSON to read,
-    so it relies on the header alone
-    """
+    """a raw-body upload has no JSON to read, so it needs the header"""
     header = request.headers.get("X-TA-Worker")
     if header:
         return header

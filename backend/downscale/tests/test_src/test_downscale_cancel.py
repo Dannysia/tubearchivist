@@ -1,29 +1,3 @@
-"""
-tests for cancelling a queued/running downscale job.
-
-regression coverage for three live bugs found 2026-07-30:
-1. a queued job retrying on a concurrency limit calls TaskManager.init()
-   on every retry re-entry, which used to silently clobber a pending
-   STOP command before the task ever checked is_stopped() - see
-   test_task_manager.py for that fix.
-2. even once the STOP command survives, a queued job only notices it on
-   its own next retry (up to default_retry_delay=20s later), so a large
-   batch of cancelled-but-still-queued jobs could sit around for
-   minutes. Since a queued job has no process or tmp file yet, its doc
-   is now deleted immediately instead of waiting for the task to notice.
-3. after dispatch_pending_downscales() started deferring dispatch until
-   a slot is free, most of a large backlog sits with task_id="" (never
-   dispatched yet) rather than always having a real task_id - cancel()
-   was treating that the same as an unknown/stale task_id (a real
-   error) instead of "nothing to signal, just delete it".
-
-These tests cover DownscaleReview.cancel()'s guards (right status, task
-actually known to TaskManager before TaskCommand().stop() is called -
-TaskRedis.set_command raises KeyError on an unknown task_id) and the
-never-dispatched/queued-deletes-immediately/running-waits-for-the-task
-split.
-"""
-
 from unittest.mock import patch
 
 from downscale.src.downscale import DownscaleReview
@@ -49,7 +23,6 @@ REMOTE_RUNNING_JOB = {
 
 
 def test_cancel_job_not_found():
-    """cancelling a doc that no longer exists reports an error"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(None, 404)
     ), patch(
@@ -65,10 +38,6 @@ def test_cancel_job_not_found():
 
 
 def test_cancel_rejects_non_cancelable_status():
-    """
-    a job that's already pending_review/failed/cancelled has nothing
-    running to stop - reject it rather than silently no-op
-    """
     job = {**QUEUED_JOB, "status": "pending_review"}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)
@@ -85,14 +54,7 @@ def test_cancel_rejects_non_cancelable_status():
 
 
 def test_cancel_deletes_a_never_dispatched_queued_job():
-    """
-    regression test: with dispatch_pending_downscales(), a queued job
-    only gets a task_id once it's actually dispatched - most of a large
-    backlog sits with task_id="" waiting for a free slot. That must not
-    be treated the same as an unknown/stale task_id (which is a real
-    error) - there's simply no task yet to signal, so cancelling one of
-    these should just delete it directly, same as any other queued job
-    """
+    """task_id="" means never dispatched, not an unknown task"""
     job = {**QUEUED_JOB, "task_id": ""}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)
@@ -110,11 +72,7 @@ def test_cancel_deletes_a_never_dispatched_queued_job():
 
 
 def test_cancel_stops_and_immediately_deletes_a_queued_job():
-    """
-    a queued job with a known task sends the real STOP signal *and* its
-    doc is deleted right away - it has no process/tmp file yet, so
-    there's nothing to lose by not waiting for its own retry to notice
-    """
+    """a queued job has no process or tmp file yet, so it can just go"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
@@ -134,12 +92,7 @@ def test_cancel_stops_and_immediately_deletes_a_queued_job():
 
 
 def test_cancel_stops_a_running_job_without_deleting_its_doc():
-    """
-    a running job sends the real STOP signal but its doc is left alone -
-    ffmpeg is still writing to the tmp file, so only the task itself
-    (which actually owns that subprocess) can safely terminate it and
-    clean up, via its existing poll loop
-    """
+    """only the task owns the ffmpeg subprocess, so the doc stays"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
@@ -159,12 +112,7 @@ def test_cancel_stops_a_running_job_without_deleting_its_doc():
 
 
 def test_cancel_fails_gracefully_when_task_not_yet_known():
-    """
-    a task_id TaskManager has never heard of (not yet started, or a
-    stale/synthetic id) must not reach TaskCommand().stop() or delete
-    anything - TaskRedis.set_command raises a bare KeyError for an
-    unknown task_id, which would otherwise surface as an uncaught 500
-    """
+    """set_command raises a bare KeyError for an unknown task_id"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
@@ -182,12 +130,8 @@ def test_cancel_fails_gracefully_when_task_not_yet_known():
 
 
 def test_cancel_sets_stop_requested_for_a_remote_held_job():
-    """
-    a remote-held job has no celery task to signal - cancel() flips
-    stop_requested and leaves the doc in place instead of touching
-    TaskCommand/TaskManager or deleting anything. The worker notices on
-    its next heartbeat and acks by deleting the job itself
-    """
+    """no celery task to signal: the worker acks the flag on its next
+    heartbeat and deletes the job itself"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(REMOTE_RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch.object(
@@ -207,11 +151,8 @@ def test_cancel_sets_stop_requested_for_a_remote_held_job():
 
 
 def test_cancel_of_a_queued_never_claimed_job_ignores_the_worker_branch():
-    """
-    a queued job always carries worker="" until claimed - the remote
-    branch must only trigger for status=running, not merely "no
-    task_id", so a never-dispatched queued job still deletes immediately
-    """
+    """the remote branch keys off status=running, not a missing
+    task_id - a queued job carries worker="" until claimed"""
     job = {**QUEUED_JOB, "task_id": "", "worker": ""}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)

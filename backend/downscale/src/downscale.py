@@ -1,9 +1,3 @@
-"""
-functionality:
-- run ffmpeg to downscale an already downloaded video to a lower resolution
-- review (accept/reject) a finished downscale job
-"""
-
 import os
 import select
 import shlex
@@ -26,25 +20,18 @@ TERMINATE_TIMEOUT = 10
 DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
 DISPATCH_LOCK_TIMEOUT = 30
 DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
-# a concurrency-limited job has nothing to do until a running slot frees
-# up, and that only happens on encode completion - which takes at least
-# a minute in practice - so it doesn't need the same short retry cadence
-# as transient dispatch-lock contention (which keeps the task decorator's
-# own default_retry_delay=20)
+# nothing frees a slot but an encode completing, which takes at least a
+# minute in practice, so there is no point retrying on the 20s cadence
+# transient lock contention uses
 CONCURRENCY_RETRY_DELAY = 60
 
 
 def _release_lock(lock) -> None:
     """
-    release the shared dispatch lock, tolerating one whose TTL already
-    expired before we got here - redis-py raises LockError in that
-    case. By the time release() runs, the critical section is already
-    done; letting that exception propagate out of a `finally` block
-    would replace the caller's actual return value (or respond with an
-    uncaught 500 to an otherwise-successful request) purely because of
-    lock-cleanup bookkeeping, not because anything the caller did was
-    wrong. A pathologically long critical section (many candidates to
-    skip) is the realistic way to hit this - see worker.claim().
+    redis-py raises LockError when the lock's TTL expired before we got
+    here. The critical section is already done by then, so letting that
+    out of a `finally` would replace the caller's return value with a
+    failure that has nothing to do with the request.
     """
     try:
         lock.release()
@@ -52,9 +39,8 @@ def _release_lock(lock) -> None:
         print(f"downscale: lock {DISPATCH_LOCK_KEY} already expired")
 
 
-# hardware (VAAPI) encoder keys all carry a _vaapi suffix; hw vs software
-# is derived from the key rather than stored, so there's nothing to keep
-# in sync when adding an encoder
+# hardware (VAAPI) encoder keys all carry a _vaapi suffix; hw vs
+# software is derived from the key rather than stored
 ENCODER_SETTINGS = {
     "h264": {"codec": "libx264", "extra_args": []},
     "h264_vaapi": {"codec": "h264_vaapi", "extra_args": []},
@@ -71,10 +57,7 @@ ENCODER_SETTINGS = {
     "av1_vaapi": {"codec": "av1_vaapi", "extra_args": []},
 }
 
-# named speed presets exposed to the user, matching the libx264/libx265
-# scale. VAAPI encoders have no equivalent knob in ffmpeg - speed/quality
-# there is controlled by the driver, not a -preset flag - so PRESET_CHOICES
-# only applies to software encoders.
+# the libx264/libx265 named preset scale
 PRESET_CHOICES = [
     "ultrafast",
     "superfast",
@@ -88,9 +71,8 @@ PRESET_CHOICES = [
     "placebo",
 ]
 
-# libsvtav1 uses a numeric 0 (slowest/best quality) - 13 (fastest) scale
-# instead of named presets, so the chosen named preset is approximated onto
-# it here. "veryfast" maps to 8 to match the previously hardcoded default.
+# libsvtav1 takes a numeric 0 (slowest/best quality) - 13 (fastest)
+# scale instead of named presets, approximated onto it here
 AV1_PRESET_MAP = {
     "ultrafast": 12,
     "superfast": 10,
@@ -104,11 +86,9 @@ AV1_PRESET_MAP = {
     "placebo": 0,
 }
 
-# ffmpeg's h264_vaapi exposes a -quality option (higher is faster) that maps
-# to Intel's "Target Usage" on VAAPI/Quick Sync hardware, typically clamped
-# to a 1 (best quality, slowest) - 7 (fastest, worst quality) range by the
-# driver. hevc_vaapi and av1_vaapi expose no such option in ffmpeg - there
-# is nothing to map a preset onto for those two.
+# h264_vaapi's -quality (higher is faster) maps to Intel's "Target
+# Usage", clamped by the driver to 1 (best quality, slowest) - 7
+# (fastest, worst). hevc_vaapi and av1_vaapi expose no such option.
 H264_VAAPI_QUALITY_MAP = {
     "ultrafast": 7,
     "superfast": 7,
@@ -122,23 +102,16 @@ H264_VAAPI_QUALITY_MAP = {
     "placebo": 1,
 }
 
-# encoders that actually apply the preset setting - h265_vaapi and
-# av1_vaapi expose no such option, so a preset is never really "used" for
-# either of those, regardless of what's configured
+# h265_vaapi and av1_vaapi expose no preset option in ffmpeg, so
+# whatever is configured is never really used for those two
 PRESET_APPLIES = {"h264", "h265", "av1", "h264_vaapi"}
 
 
 def is_hw_encoder(encoder_key: str) -> bool:
-    """hardware (VAAPI) encoder keys all carry a _vaapi suffix"""
     return encoder_key.endswith("_vaapi")
 
 
 def _preset_args(encoder_key: str, preset: str | None) -> list[str]:
-    """
-    speed preset args for encoders that support one. h265_vaapi and
-    av1_vaapi expose no such option in ffmpeg, so this is a no-op for
-    those two.
-    """
     if not preset:
         return []
 
@@ -175,7 +148,6 @@ def _now() -> int:
 
 
 def _get_height(media_path: str) -> int | None:
-    """return the max video-stream height of a media file, if any"""
     streams = MediaStreamExtractor(media_path).extract_metadata()
     heights = [s["height"] for s in streams if s["type"] == "video"]
     return max(heights) if heights else None
@@ -184,10 +156,6 @@ def _get_height(media_path: str) -> int | None:
 def _encode_args(
     encoder_key: str, quality: int, preset: str | None = None
 ) -> list[str]:
-    """
-    build the -c:v/preset/quality portion of an ffmpeg command, shared
-    between a real downscale encode and a synthetic capability test encode
-    """
     encoder = ENCODER_SETTINGS.get(encoder_key, ENCODER_SETTINGS["h264"])
     args = [
         "-c:v",
@@ -197,9 +165,9 @@ def _encode_args(
     ]
 
     if encoder_key == "av1_vaapi":
-        # av1_vaapi doesn't expose -qp/CQP in ffmpeg like h264_vaapi and
-        # hevc_vaapi do - ICQ + -global_quality is the mode it actually
-        # supports for a constant-quality target
+        # av1_vaapi has no -qp/CQP in ffmpeg the way h264_vaapi and
+        # hevc_vaapi do - ICQ + -global_quality is its
+        # constant-quality mode
         args += ["-rc_mode", "ICQ", "-global_quality", str(quality)]
     elif is_hw_encoder(encoder_key):
         args += ["-rc_mode", "CQP", "-qp", str(quality)]
@@ -219,10 +187,9 @@ def _build_ffmpeg_cmd(
     vaapi_device: str,
 ) -> list[str]:
     """
-    build the ffmpeg argv for a downscale encode. For a hardware encoder,
-    decoding and scaling still happen in software (for compatibility with
-    arbitrary source codecs) and only the encode step runs on the GPU, fed
-    via hwupload after the scale filter.
+    for a hardware encoder, decoding and scaling still happen in
+    software - for compatibility with arbitrary source codecs - and only
+    the encode runs on the GPU, fed via hwupload after the scale filter.
     """
     is_hw = is_hw_encoder(encoder_key)
 
@@ -257,18 +224,9 @@ def _build_ffmpeg_cmd(
 
 def dispatch_pending_downscales() -> None:
     """
-    dispatch celery tasks for queued downscale jobs, filling any free
-    concurrency slots. Safe and cheap to call any time slot availability
-    may have changed - a job finishing (success/failure/cancel), a new
-    job being queued, or downscale_max_concurrent changing in settings -
-    so queued jobs don't need to poll on their own timer asking "is a
-    slot free yet?" the way they used to.
-
-    _reserve_slot() (unchanged) remains the actual source of truth for
-    claiming a slot, via the same DISPATCH_LOCK_KEY - this only decides
-    whether it's worth dispatching a task at all, so it's a hint, not a
-    guarantee. A task dispatched here can still legitimately retry once
-    if another dispatch or a race won first.
+    _reserve_slot() remains the source of truth for claiming a slot, via
+    the same lock, so free_slots here is a hint: a task dispatched on it
+    can still legitimately retry once if another dispatch won first.
     """
     lock = RedisBase().conn.lock(
         DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
@@ -276,8 +234,7 @@ def dispatch_pending_downscales() -> None:
     if not lock.acquire(
         blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
     ):
-        # another dispatch is already in progress - it'll cover
-        # whatever's actually free
+        # another dispatch is already covering whatever is free
         return
 
     try:
@@ -287,9 +244,8 @@ def dispatch_pending_downscales() -> None:
         if max_concurrent is None:
             free_slots = None
         elif max_concurrent == 0:
-            # 0 means local encoding is disabled outright (the
-            # remote-only mode) - distinct from None, which means
-            # unlimited
+            # 0 disables local encoding outright, distinct from None,
+            # which means unlimited
             return
         else:
             free_slots = max_concurrent - DownscaleInteract.count_running()
@@ -311,23 +267,20 @@ def dispatch_pending_downscales() -> None:
 
 
 class DownscaleRunner:
-    """run a single downscale job for a video, called from the celery task"""
-
     def __init__(self, task, youtube_id: str, target_height: int, doc_id: str):
         self.task = task
         self.youtube_id = youtube_id
         self.target_height = target_height
         self.doc_id: str = doc_id
         self.tmp_path: str | None = None
-        # populated by _encode with the settings actually used, so
-        # _finish_success can persist what really produced this file
+        # the settings _encode actually used, persisted on success
         self.encoder_key: str | None = None
         self.quality: int | None = None
         self.preset: str | None = None
         self.cmd: list[str] | None = None
 
     def run(self) -> None:
-        """entry point. self.doc_id already exists in status=queued"""
+        """self.doc_id already exists, in status=queued"""
         if self.task.is_stopped():
             DownscaleInteract(self.doc_id).delete_item()
             return
@@ -384,12 +337,7 @@ class DownscaleRunner:
             dispatch_pending_downscales()
 
     def _reserve_slot(self, current_height: int, original_path: str) -> bool:
-        """
-        atomically check for another active job on this video and the
-        concurrency limit, then transition this job's queued doc to
-        running. returns True if a slot was reserved, False if the
-        caller should bail out without encoding
-        """
+        """False means the caller should bail out without encoding"""
         lock = RedisBase().conn.lock(
             DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
         )
@@ -449,7 +397,6 @@ class DownscaleRunner:
             _release_lock(lock)
 
     def _encode(self, original_path: str, duration: float, title: str) -> None:
-        """run ffmpeg, polling for progress and a stop signal"""
         config = AppConfig().config["application"]
         encoder_key = config["downscale_encoder"]
 
@@ -518,11 +465,7 @@ class DownscaleRunner:
         title: str,
         stderr_lines: list[str],
     ) -> None:
-        """
-        drain ffmpeg's stdout/stderr so neither pipe fills up and blocks
-        the encode, parsing -progress output from stdout and collecting
-        stderr for the failure message
-        """
+        """drain both pipes so neither fills up and blocks the encode"""
         out_time_seconds = None
         readable = [
             stream
@@ -561,7 +504,6 @@ class DownscaleRunner:
             )
 
     def _finish_success(self) -> None:
-        """sanity-check the ffmpeg output and mark it ready for review"""
         new_height = _get_height(self.tmp_path)
         if not new_height:
             self._cleanup_tmp()
@@ -586,7 +528,6 @@ class DownscaleRunner:
         dispatch_pending_downscales()
 
     def _terminate(self, process: subprocess.Popen) -> None:
-        """stop the running ffmpeg process"""
         process.terminate()
         try:
             process.wait(timeout=TERMINATE_TIMEOUT)
@@ -595,23 +536,17 @@ class DownscaleRunner:
             process.wait()
 
     def _cleanup_tmp(self) -> None:
-        """remove a partial/leftover tmp output file"""
         if self.tmp_path and os.path.exists(self.tmp_path):
             os.remove(self.tmp_path)
 
 
 class DownscaleReview:
-    """accept or reject a finished downscale job"""
-
     def __init__(self, doc_id: str):
         self.doc_id = doc_id
         self.interact = DownscaleInteract(doc_id)
 
     def accept(self) -> str | None:
-        """
-        replace the original file with the downscaled candidate.
-        returns an error message on failure, None on success
-        """
+        """returns an error message on failure, None on success"""
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
             return "job not found"
@@ -666,17 +601,11 @@ class DownscaleReview:
         self, tmp_path: str, original_path: str, video: YoutubeVideo
     ) -> str:
         """
-        replace the original file with tmp_path, matching tmp_path's
-        actual container extension rather than assuming original_path's.
-        A downscaled candidate isn't always the same container as the
-        source - a remote worker may encode to .mkv for HDR10 static
-        metadata support that MP4 muxing doesn't reliably carry (see
-        docs/downscale-hdr/README.md). Returns the path the file
-        actually ended up at, and updates video.json_data["media_url"]
-        when the extension changed - everything downstream (the player,
-        future downscale submissions, cache paths) reads media_url from
-        ES rather than assuming a fixed extension, so this is the only
-        place that needs to know about a container swap.
+        matches tmp_path's container rather than assuming
+        original_path's: a remote worker may encode to .mkv for HDR10
+        static metadata that MP4 muxing does not reliably carry. Returns
+        the path the file ended up at, and rewrites
+        video.json_data["media_url"] when the extension changed.
         """
         tmp_ext = os.path.splitext(tmp_path)[1]
         original_ext = os.path.splitext(original_path)[1]
@@ -694,7 +623,7 @@ class DownscaleReview:
         return new_path
 
     def reject(self) -> str | None:
-        """discard the downscaled candidate, original stays untouched"""
+        """the original file stays untouched"""
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
             return "job not found"
@@ -707,11 +636,7 @@ class DownscaleReview:
         return None
 
     def retry(self) -> str | None:
-        """
-        user-requested re-queue of a failed job. Target height and
-        source file are re-validated by the worker when it actually
-        runs, same as any other queued job.
-        """
+        """target height and source file are re-validated at run time"""
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
             return "job not found"
@@ -724,14 +649,8 @@ class DownscaleReview:
 
     def requeue(self, job: dict) -> None:
         """
-        clean up any leftover tmp file and reset this job's doc to
-        status=queued with no task_id, ready for
-        dispatch_pending_downscales() to pick up once a slot is free.
-        Shared by a user-initiated retry() and ta_startup's auto-resume
-        of jobs interrupted by a restart - callers are responsible for
-        calling dispatch_pending_downscales() once after they're done
-        requeueing (a caller requeueing many jobs in a loop should only
-        dispatch once at the end, not once per job)
+        does not dispatch: a caller requeueing many jobs should call
+        dispatch_pending_downscales() once at the end, not once per job
         """
         tmp_path = job.get("tmp_file_path")
         if tmp_path and os.path.exists(tmp_path):
@@ -743,14 +662,10 @@ class DownscaleReview:
 
     def cancel(self) -> str | None:
         """
-        stop a still-queued or running job. A queued job has no process
-        or tmp file yet, so its doc is deleted immediately rather than
-        waiting for the task to notice on its own next retry (up to
-        default_retry_delay=20s later). A running job's ffmpeg process
-        can only be torn down from inside the task itself, so that one
-        still goes through the existing poll-and-notice cleanup path -
-        same one a hard restart's auto-resume uses to tell a leftover
-        job apart from one actually in flight
+        a queued job has no process or tmp file yet, so its doc goes
+        immediately rather than waiting up to a retry delay for the task
+        to notice. A running job's ffmpeg can only be torn down from
+        inside the task, so that one goes through poll-and-notice.
         """
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
@@ -760,28 +675,24 @@ class DownscaleReview:
             return f"job is not queued or running, status is {job['status']}"
 
         if job["status"] == "running" and job.get("worker"):
-            # remote-held job: there's no celery task to signal, only a
-            # worker polling on its own schedule. Flip the flag and
-            # leave the doc in place - the worker picks it up on its
-            # next heartbeat and acks by deleting the job itself. If
-            # the worker is already dead, the lease reaper's
-            # stop_requested branch cleans up once the lease goes stale
+            # remote-held: no celery task to signal, only a worker
+            # polling on its own schedule, so leave the doc in place -
+            # the worker acks by deleting the job on its next
+            # heartbeat. If it is already dead the lease reaper cleans
+            # up once the lease goes stale.
             self.interact.update(stop_requested=True)
             return None
 
         task_id = job["task_id"]
         if not task_id:
-            # queued and never dispatched (still waiting on
-            # dispatch_pending_downscales() for a free concurrency slot)
-            # - no celery task exists yet, so there's nothing to signal,
-            # just delete it directly
+            # queued but never dispatched, so no celery task exists to
+            # signal - delete it directly
             self.interact.delete_item()
             return None
 
         if not TaskManager().get_task(task_id):
-            # mirrors the guard TaskIDView.post already does before
-            # calling stop() - TaskRedis.set_command raises KeyError on
-            # an unknown task_id instead of failing gracefully
+            # TaskRedis.set_command raises KeyError on an unknown
+            # task_id instead of failing gracefully
             return "task not found, may not have started yet"
 
         TaskCommand().stop(task_id)
@@ -793,7 +704,7 @@ class DownscaleReview:
 
     @staticmethod
     def _move(src: str, dst: str) -> None:
-        """move src to dst, falling back to copy across devices"""
+        """falls back to a copy across devices"""
         try:
             os.replace(src, dst)
         except OSError:

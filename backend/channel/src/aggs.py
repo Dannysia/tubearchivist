@@ -1,5 +1,3 @@
-"""channel aggregations"""
-
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
 from downscale.src.constants import (
@@ -30,15 +28,12 @@ DATE_KEYS = [
 
 
 class ChannelAggs:
-    """get aggregations for a single channel"""
-
     path = "ta_video/_search"
 
     def __init__(self, channel_id: str):
         self.channel_id = channel_id
 
     def build_query(self) -> dict:
-        """build aggregation query"""
         sub_aggs = {
             "media_size": {"sum": {"field": "media_size"}},
             "duration": {"sum": {"field": "player.duration"}},
@@ -74,8 +69,8 @@ class ChannelAggs:
                         "by_saved": saved_percent_agg(VIDEO_SIZE_FIELDS),
                     },
                 },
-                # full timestamps, not yyyy-MM-dd: the frontend renders these
-                # in the viewer's timezone like every other date in the app
+                # full timestamps, not yyyy-MM-dd: these are rendered in
+                # the viewer's timezone
                 "published_first": {"min": {"field": "published", **DATE_FMT}},
                 "published_last": {"max": {"field": "published", **DATE_FMT}},
                 "downloaded_first": {
@@ -88,7 +83,6 @@ class ChannelAggs:
         }
 
     def process(self) -> dict:
-        """run query, build response"""
         response, _ = ElasticWrap(self.path).get(self.build_query())
         aggs = response.get("aggregations")
         if not aggs:
@@ -117,7 +111,6 @@ class ChannelAggs:
 
     @staticmethod
     def _parse_downscale(agg: dict) -> dict:
-        """parse the downscale filter bucket"""
         original_size = int(agg["original_size"]["value"])
         new_size = int(agg["new_size"]["value"])
 
@@ -132,7 +125,6 @@ class ChannelAggs:
 
     @staticmethod
     def _empty_downscale() -> dict:
-        """downscale bucket for a channel with nothing downscaled"""
         return {
             "doc_count": 0,
             "original_size": 0,
@@ -144,7 +136,6 @@ class ChannelAggs:
 
     @staticmethod
     def _build_bucket(bucket: dict) -> dict:
-        """parse a bucket sharing the media_size/duration sub aggs"""
         duration = int(bucket["duration"]["value"])
 
         return {
@@ -156,7 +147,6 @@ class ChannelAggs:
 
     @staticmethod
     def _empty_bucket() -> dict:
-        """zeroed bucket for a type with no videos"""
         return {
             "doc_count": 0,
             "media_size": 0,
@@ -165,7 +155,7 @@ class ChannelAggs:
         }
 
     def _parse_type(self, buckets: list[dict]) -> dict:
-        """parse vid_type buckets, keep every type so totals reconcile"""
+        """every type is kept, so the totals reconcile"""
         parsed = {i: self._empty_bucket() for i in VideoTypeEnum.values()}
         for bucket in buckets:
             parsed[bucket["key"]] = self._build_bucket(bucket)
@@ -173,7 +163,6 @@ class ChannelAggs:
         return parsed
 
     def _parse_watched(self, buckets: list[dict], all_duration: int) -> dict:
-        """parse watched buckets"""
         parsed = {
             "watched": self._empty_bucket(),
             "unwatched": self._empty_bucket(),
@@ -192,7 +181,6 @@ class ChannelAggs:
 
     @staticmethod
     def _parse_active(buckets: list[dict]) -> dict:
-        """parse active buckets"""
         parsed = {"active": 0, "inactive": 0}
         for bucket in buckets:
             key = "active" if bucket["key_as_string"] == "true" else "inactive"
@@ -201,7 +189,6 @@ class ChannelAggs:
         return parsed
 
     def _empty(self) -> dict:
-        """response shape for a channel without videos"""
         return {
             "total_items": {"value": 0},
             "total_size": {"value": 0},
@@ -222,21 +209,16 @@ class ChannelAggs:
 
 
 class ChannelListAggs:
-    """get per channel video stats for the channel list"""
-
     path = "ta_video/_search"
 
-    # channel count is orders of magnitude below the video count, this is
-    # sized to fit every channel of an archive into a single terms agg
+    # sized to fit every channel of an archive into one terms agg
     MAX_CHANNELS = 10000
 
     def __init__(self, channel_ids: list[str] | None = None):
-        # None aggregates every channel, needed to sort the whole list,
-        # a list limits the agg to the channels of a single page
+        # None aggregates every channel, needed to sort the whole list
         self.channel_ids = channel_ids
 
     def build_query(self) -> dict:
-        """build aggregation query"""
         if self.channel_ids is None:
             query = {"match_all": {}}
             size = self.MAX_CHANNELS
@@ -273,7 +255,6 @@ class ChannelListAggs:
         }
 
     def process(self) -> dict[str, dict]:
-        """run query, build a channel_id to stats lookup"""
         if self.channel_ids is not None and not self.channel_ids:
             return {}
 
@@ -289,7 +270,6 @@ class ChannelListAggs:
 
     @staticmethod
     def _build_stats(bucket: dict) -> dict:
-        """parse a single channel bucket"""
         duration = int(bucket["duration"]["value"])
         watched = int(bucket["watched_duration"]["duration"]["value"])
 
@@ -306,7 +286,6 @@ class ChannelListAggs:
 
     @staticmethod
     def empty_stats() -> dict:
-        """stats for a channel without indexed videos"""
         return {
             "doc_count": 0,
             "media_size": 0,

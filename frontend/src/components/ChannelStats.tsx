@@ -52,7 +52,6 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
         Duration: channelAggs.total_duration.value_str,
       },
     },
-    // channels rarely carry every video type, so only show what's populated
     ...VIDEO_TYPE_TITLES.filter(([key]) => by_type[key].doc_count > 0).map(([key, title]) => ({
       title,
       data: buildBucketCard(by_type[key], useSIUnits),
@@ -73,8 +72,6 @@ const ChannelStats = ({ channelAggs, useSIUnits }: ChannelStatsProps) => {
         Deactivated: formatNumbers(availability.inactive),
       },
     },
-    // nothing downscaled is the normal case, so only show the panel
-    // once this channel actually has something to report
     ...(downscale.doc_count > 0
       ? [
           {

@@ -41,8 +41,7 @@ class YtWrap:
     def __init__(self, obs_request, config=False, task=None):
         self.obs_request = obs_request
         self.config = config
-        # only used to keep the bot block wait interruptible, so call
-        # sites without a task in hand can leave it off
+        # only for the bot block wait, a call site with none can omit it
         self.task = task
         self.build_obs()
 
@@ -146,18 +145,13 @@ class YtWrap:
         return response, None
 
     def _on_bot_block(self, err):
-        """youtube called this a bot
-
-        rotates away from the address first when that is switched on,
-        then aborts exactly as it did before. the rotate only changes
-        what the next run goes out on, it does not retry this one.
+        """the rotate only changes what the next run goes out on, it
+        does not retry this one
 
         the wait is stepped through rather than slept: it runs up to
         1.5x the interval, and a bot block is the moment a user is most
-        likely to go and hit stop. countdown_sleep with no notify polls
-        without narrating, and falls back to a plain sleep where there
-        is no task. its refusal is dropped on purpose - this raises
-        either way.
+        likely to hit stop, so countdown_sleep polls without narrating.
+        its refusal is dropped on purpose - this raises either way.
         """
         print(self.BOT_ERROR_LOG)
         if message := rotate_on_bot_block(self.config):

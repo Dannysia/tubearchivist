@@ -1,10 +1,3 @@
-"""
-functionality:
-- track metadata changes of videos, channels and playlists over time
-- write one ta_history document per changed field
-- read back the recorded history for a single item or field
-"""
-
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,7 +21,7 @@ ACTIVE_KEYS: dict[str, str] = {
 
 
 class Missing:
-    """sentinel for a field that is not present in a document at all"""
+    """sentinel for an absent field, distinct from a null value"""
 
     _instance = None
 
@@ -46,7 +39,6 @@ MISSING = Missing()
 
 
 def _path_getter(dotted: str) -> Callable[[dict], Any]:
-    """build getter for a dotted path, MISSING if not found"""
     keys = dotted.split(".")
 
     def getter(doc: dict) -> Any:
@@ -63,7 +55,6 @@ def _path_getter(dotted: str) -> Callable[[dict], Any]:
 
 
 def _entry_count_getter(doc: dict) -> Any:
-    """derive playlist entry count"""
     entries = doc.get("playlist_entries", MISSING)
     if entries is MISSING or entries is None:
         return MISSING
@@ -72,7 +63,7 @@ def _entry_count_getter(doc: dict) -> Any:
 
 
 def _sorted_list(value: Any) -> Any:
-    """normalize list for comparison, reordering is not a change"""
+    """reordering is not a change"""
     if not isinstance(value, list):
         return value
 
@@ -81,13 +72,10 @@ def _sorted_list(value: Any) -> Any:
 
 def _published_date(value: Any) -> Any:
     """
-    normalize a published date for comparison. _build_published stores an
-    epoch int when yt-dlp hands over a `timestamp` and a YYYY-MM-DD
-    string when it only has `upload_date`, and which one YT serves for a
-    given video is not stable across yt-dlp versions. Comparing the raw
-    values would record a change every time the representation flips
-    without the publish date actually moving, so both sides are reduced
-    to a UTC calendar date.
+    yt-dlp gives an epoch int when it has `timestamp` and a YYYY-MM-DD
+    string when it only has `upload_date`, and which one YT serves is
+    not stable across versions, so both sides are reduced to a UTC
+    calendar date rather than recording the flip as a change.
     """
     if value is None or isinstance(value, bool):
         return value
@@ -98,7 +86,7 @@ def _published_date(value: Any) -> Any:
         try:
             stamp = float(value)
         except (TypeError, ValueError):
-            # already a date string, keep the date part only
+            # already a date string, keep the date part
             return value[:10]
     else:
         return value
@@ -113,10 +101,9 @@ def _published_date(value: Any) -> Any:
 
 def _stable_url(value: Any) -> Any:
     """
-    normalize an image url for comparison. YT rotates signing query
-    params (sqp, rs) on every extraction without the image itself
-    changing, so only host and path are compared. A new artwork gets a
-    new path, which is what should register as a change.
+    YT rotates signing query params (sqp, rs) on every extraction
+    without the image itself changing, so only host and path are
+    compared. New artwork gets a new path.
     """
     if not isinstance(value, str) or not value:
         return value
@@ -128,21 +115,18 @@ def _stable_url(value: Any) -> Any:
 
 @dataclass(frozen=True)
 class FieldSpec:
-    """describes a single tracked field"""
-
     name: str
     getter: Callable[[dict], Any]
     normalize: Callable[[Any], Any] | None = None
 
     def extract(self, doc: dict | None) -> Any:
-        """get raw value from document"""
         if not doc:
             return MISSING
 
         return self.getter(doc)
 
     def comparable(self, value: Any) -> Any:
-        """normalize raw value for equality check only"""
+        """normalized for the equality check only, never stored"""
         if value is MISSING or self.normalize is None:
             return value
 
@@ -153,17 +137,15 @@ def _spec(
     dotted: str,
     normalize: Callable[[Any], Any] | None = None,
 ) -> FieldSpec:
-    """build FieldSpec from a dotted path"""
     return FieldSpec(
         name=dotted, getter=_path_getter(dotted), normalize=normalize
     )
 
 
-# fields compared on every refresh, per item type.
-# note on omissions: video.comment_count is rebuilt only after the video
-# doc is written back, tracking it would record a bogus removal on every
-# single refresh. Same reasoning for anything else not produced by
-# build_json/process_youtube_meta.
+# video.comment_count is omitted on purpose: it is rebuilt only after
+# the video doc is written back, so tracking it would record a bogus
+# removal on every single refresh. Same for any other field the metadata
+# pass does not produce.
 TRACKED_FIELDS: dict[str, list[FieldSpec]] = {
     "video": [
         _spec("title"),
@@ -203,10 +185,7 @@ TRACKED_FIELDS: dict[str, list[FieldSpec]] = {
 
 
 def encode_value(value: Any) -> tuple[Any, ValueType, float | None]:
-    """
-    encode a python value for storage,
-    returns stored value, value_type and numeric representation
-    """
+    """returns (stored value, value_type, numeric form or None)"""
     if value is MISSING:
         return None, "missing", None
 
@@ -240,7 +219,6 @@ def decode_value(stored: Any, value_type: str | None) -> Any:
 
 
 def decode_change(source: dict) -> dict:
-    """decode a raw history document into python values"""
     decoded = source.copy()
     decoded["old_value"] = decode_value(
         source.get("old_value"), source.get("old_value_type")
@@ -253,8 +231,6 @@ def decode_change(source: dict) -> dict:
 
 
 class HistoryTracker:
-    """diff two states of a document and store the changed fields"""
-
     def __init__(
         self,
         item_type: ItemType,
@@ -269,7 +245,6 @@ class HistoryTracker:
         self.refresh_id = uuid4().hex
 
     def track(self, old: dict | None, new: dict | None) -> list[dict]:
-        """build and store changes, returns what got written"""
         changes = self.build_changes(old, new)
         if changes:
             self._upload(changes)
@@ -277,7 +252,7 @@ class HistoryTracker:
         return changes
 
     def build_changes(self, old: dict | None, new: dict | None) -> list[dict]:
-        """build change documents, does not touch es"""
+        """does not touch es"""
         specs = TRACKED_FIELDS.get(self.item_type)
         if specs is None:
             raise ValueError(f"unexpected item_type: {self.item_type}")
@@ -302,7 +277,7 @@ class HistoryTracker:
     def _get_channel_id(
         self, old: dict | None, new: dict | None
     ) -> str | None:
-        """denormalize channel id to filter history by channel later"""
+        """denormalized so history can be filtered by channel"""
         if self.item_type == "channel":
             return self.item_id
 
@@ -327,7 +302,6 @@ class HistoryTracker:
         new_value: Any,
         channel_id: str | None,
     ) -> dict:
-        """build a single change document"""
         old_stored, old_type, old_num = encode_value(old_value)
         new_stored, new_type, new_num = encode_value(new_value)
         doc = {
@@ -354,14 +328,10 @@ class HistoryTracker:
         return doc
 
     def _build_doc_id(self, field_name: str) -> str:
-        """
-        deterministic id, so replaying the same refresh is idempotent
-        rather than duplicating rows
-        """
+        """deterministic, so replaying a refresh cannot duplicate rows"""
         return f"{self.item_id}-{self.timestamp}-{field_name}"
 
     def _upload(self, changes: list[dict]) -> None:
-        """bulk index changes"""
         bulk_list = []
         for change in changes:
             action = {
@@ -373,7 +343,7 @@ class HistoryTracker:
             bulk_list.append(json.dumps(action))
             bulk_list.append(json.dumps(change))
 
-        # add last newline
+        # _bulk needs the trailing newline
         bulk_list.append("\n")
         data = "\n".join(bulk_list)
         response, status_code = ElasticWrap("_bulk").post(
@@ -400,10 +370,7 @@ def track_changes(
     new: dict | None,
     source: str = "reindex",
 ) -> list[dict]:
-    """
-    compare old and new state of a document and store changed fields.
-    Never raises, losing history must not fail an indexing run.
-    """
+    """never raises, losing history must not fail an indexing run"""
     # pylint: disable=broad-except
     try:
         tracker = HistoryTracker(item_type, item_id, source=source)
@@ -419,7 +386,6 @@ def track_deactivation(
     old: dict | None,
     source: str = "reindex",
 ) -> list[dict]:
-    """track an item going inactive, no new metadata available"""
     if not old:
         return []
 
@@ -430,8 +396,6 @@ def track_deactivation(
 
 
 class HistoryQuery:
-    """read tracked changes back from ta_history"""
-
     DEFAULT_SIZE = 100
 
     def __init__(
@@ -451,7 +415,6 @@ class HistoryQuery:
         self.until = until
 
     def build_query(self) -> dict:
-        """build the filter part shared by all reads"""
         must_list: list[dict] = []
         if self.item_id:
             must_list.append({"term": {"item_id": {"value": self.item_id}}})
@@ -469,9 +432,7 @@ class HistoryQuery:
         # the explicit format is required: es reads a bare numeric on a
         # date field as epoch *millis* regardless of the field's own
         # epoch_second format, so an int cutoff silently matches nothing
-        # rather than erroring. Declaring it here keeps the range correct
-        # whether an int or a string arrives, which str()-ing the values
-        # would not. Same fix as DownscaleInteract's last_heartbeat range.
+        # rather than erroring
         time_range: dict = {}
         if self.since:
             time_range["gte"] = self.since
@@ -489,7 +450,6 @@ class HistoryQuery:
     def get_changes(
         self, size: int | None = None, order: str = "desc"
     ) -> list[dict]:
-        """get matching changes, newest first by default"""
         data = {
             "size": size or self.DEFAULT_SIZE,
             "query": self.build_query(),
@@ -505,9 +465,8 @@ class HistoryQuery:
 
     def get_all_changes(self) -> list[dict]:
         """
-        paginate through all matching changes, oldest first. Loads
-        everything into memory, so filter to an item or a time range -
-        the index runs to millions of documents on a large library.
+        oldest first, and loads everything into memory - the index runs
+        to millions of documents, so filter to an item or a time range.
         """
         data = {
             "query": self.build_query(),
@@ -518,10 +477,6 @@ class HistoryQuery:
         return [decode_change(i) for i in all_results]
 
     def get_field_series(self, field: str) -> list[dict]:
-        """
-        get a numeric series for a single field, oldest first, e.g. to
-        plot view_count over time
-        """
         data = {
             "size": 10000,
             "query": {
@@ -542,7 +497,6 @@ class HistoryQuery:
         return [i["_source"] for i in hits]
 
     def get_tracked_fields(self) -> dict[str, int]:
-        """get which fields have recorded changes, with their count"""
         data = {
             "size": 0,
             "query": self.build_query(),
@@ -555,9 +509,8 @@ class HistoryQuery:
 
     def get_refresh_events(self, size: int | None = None) -> list[dict]:
         """
-        group changes by refresh, newest refresh first. Groups are built
-        from one `size` limited page, so the oldest event returned can be
-        partial - raise `size` if a complete tail matters.
+        groups are built from one `size` limited page, so the oldest
+        event returned can be partial
         """
         changes = self.get_changes(size=size, order="desc")
         events: dict[str, dict] = {}
@@ -579,7 +532,6 @@ class HistoryQuery:
         return list(events.values())
 
     def delete(self) -> None:
-        """delete all matching history, e.g. when an item gets removed"""
         data = {"query": self.build_query()}
         path = f"{INDEX_NAME}/_delete_by_query?refresh=true"
         response, status_code = ElasticWrap(path).post(data)

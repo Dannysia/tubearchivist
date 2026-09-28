@@ -151,12 +151,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
     es_path = False
     index_name = "ta_video"
     yt_base = "https://www.youtube.com/watch?v="
-    # the fields YT fills in for a video it still has. A removed one
-    # answers with a stub instead: the id echoed back, a generic
-    # "youtube video #<id>" title and every one of these null or empty
-    # (measured, not assumed - see REMOVED_STUB in the offline meta
-    # tests). Age gated and members only videos also come back with no
-    # formats, but with all of this intact, and they are still on YT
+    # what YT fills in for a video it still has: a removed one answers
+    # with a stub instead, with all of these null. Age gated and members
+    # only videos have no formats but all of this intact
     IDENTITY_FIELDS = (
         "fulltitle",
         "channel_id",
@@ -170,10 +167,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         self.channel_id = False
         self.video_type = video_type
         self.offline_import = False
-        # whether youtube's answer carried the video's real metadata, as
-        # opposed to the empty stub it returns for a removed one. Only
-        # a manual import with its own sidecar file can be indexed
-        # without it, so everything else defaults to true
+        # whether YT's answer carried real metadata rather than the stub
+        # it returns for a removed video; only a manual import with its
+        # own sidecar file can be indexed without one
         self.youtube_answered = True
 
     def build_json(
@@ -182,12 +178,11 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         media_path=False,
         from_file=False,
     ):
-        """build json dict of video, from_file for manual import"""
         obs_overwrite = None
         if from_file:
-            # the media is already on disk, so metadata is worth having even
-            # when YT serves no streams for it, e.g. age gated or members
-            # only. without this yt-dlp aborts the whole extraction
+            # the media is already on disk, so metadata is worth having
+            # even when YT serves no streams; without this yt-dlp aborts
+            # the whole extraction
             obs_overwrite = {"ignore_no_formats_error": True}
 
         self.get_from_youtube(obs_overwrite)
@@ -195,22 +190,16 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             return
 
         if not self.youtube_meta:
-            # nothing came back at all. That is a failed lookup - a
-            # network error, a rate limit, a stale cookie - not a
-            # removed video, which answers with a stub and takes the
-            # branch below. youtube_answered stays true: there is no
-            # reindex path back from a wrongly deactivated import
+            # nothing at all is a failed lookup, not a removed video,
+            # which answers with a stub and takes the branch below. A
+            # wrongly deactivated import has no reindex path back
             self.youtube_meta = youtube_meta_overwrite
             self.offline_import = True
         elif from_file and not self.youtube_meta.get("formats"):
-            # metadata came through but YT has no streams to offer, so the
-            # file came from elsewhere: treat local sidecar files as
-            # authoritative like any other offline import
+            # metadata but no streams: the file came from elsewhere
             self.offline_import = True
-            # a removed video lands here too, not in the branch above:
-            # YT answers for it with a stub rather than with nothing.
-            # Read before the merge, which fills the stub's gaps from
-            # the file and would make every import look answered
+            # read before the merge: it fills the stub's gaps from the
+            # file and would make every import look answered
             self.youtube_answered = self._youtube_answered(self.youtube_meta)
             self.youtube_meta = self._merge_offline_meta(
                 self.youtube_meta, youtube_meta_overwrite
@@ -232,29 +221,18 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     @classmethod
     def _youtube_answered(cls, youtube_meta: dict) -> bool:
-        """whether YT returned the video's metadata or only a stub
-
-        Any one field is enough. This decides whether to index a video
-        as gone, so the benefit of the doubt goes to it still being
-        there: a partial answer counts as answered.
+        """any one field is enough: this decides whether a video is
+        indexed as gone, so a partial answer counts as answered
         """
         return any(youtube_meta.get(field) for field in cls.IDENTITY_FIELDS)
 
     @staticmethod
     def _merge_offline_meta(youtube_meta: dict, overwrite) -> dict:
         """
-        let a local info.json fill in what YT could not serve.
-
-        A video removed by YT still answers, with a stub: the real id and
-        thumbnail, a "youtube video #<id>" placeholder title, and null
-        for everything else. That is truthy, so without this the whole
-        sidecar file is discarded and the import dies on the null
-        upload_date - for exactly the videos a hand written info.json
-        exists to rescue.
-
-        Only set values from the file win, so a blank field in it does
-        not clobber something real from the stub, e.g. the thumbnail url
-        YT still serves for a removed video.
+        a removed video still answers, with a truthy stub: real id and
+        thumbnail, placeholder title, null for the rest. Only set values
+        from the file win, so a blank field in it does not clobber
+        something real from the stub, e.g. that thumbnail url.
         """
         if not overwrite:
             return youtube_meta
@@ -289,15 +267,9 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         self.channel_id = self.youtube_meta["channel_id"]
         last_refresh = int(datetime.now().timestamp())
         self.json_data = {
-            # a video YT no longer serves is indexed inactive straight
-            # away. Before this it went in active and stayed that way
-            # until a reindex pass happened to pick it up and call
-            # deactivate - see appsettings.src.reindex.
-            #
-            # This is close to one way: reindex only queues active
-            # videos, so nothing reconsiders the decision on its own.
-            # That is why _youtube_answered takes any one identifying
-            # field as proof the video is still there
+            # close to one way: reindex only queues active videos, so
+            # nothing reconsiders this on its own, which is why
+            # _youtube_answered takes any one field as proof
             "active": self.youtube_answered,
             "category": self.youtube_meta.get("categories", []),
             "date_downloaded": last_refresh,

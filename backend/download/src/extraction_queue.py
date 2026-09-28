@@ -1,10 +1,3 @@
-"""
-Functionality:
-- handle extraction queue
-- resolve videos/channels/playlists into the download queue
-- linked with ta_extraction index
-"""
-
 import json
 from datetime import datetime
 
@@ -16,8 +9,6 @@ from video.src.constants import VideoTypeEnum
 
 
 class ExtractionQueue:
-    """manage the extraction queue"""
-
     def __init__(self, task=None):
         self.task = task
 
@@ -29,7 +20,7 @@ class ExtractionQueue:
         force: bool = False,
         target_status: str = "pending",
     ) -> int:
-        """bulk add entries to the extraction queue"""
+        """returns how many were added, 0 when the bulk failed"""
         if not entries:
             return 0
 
@@ -73,13 +64,11 @@ class ExtractionQueue:
 
     @staticmethod
     def _build_id(item_type: str, youtube_id: str, vid_type) -> str:
-        """build deterministic composite id, avoid collisions on multi-tab
-        channel scans reusing the same channel_id"""
+        """deterministic: multi-tab channel scans reuse one channel_id"""
         return f"{item_type}_{youtube_id}_{vid_type or 'na'}"
 
     def run_queue(self) -> tuple[int, int, bool]:
-        """resolve all pending/extracting entries, returns
-        (resolved, failed, any_auto_start)"""
+        """returns (resolved, failed, any_auto_start)"""
         warm = PendingList(youtube_ids=[], task=self.task)
         warm.get_download()
         warm.get_indexed()
@@ -138,7 +127,6 @@ class ExtractionQueue:
 
     @staticmethod
     def _get_next() -> tuple[str | None, dict | None]:
-        """get next pending/extracting item in the extraction queue"""
         data = {
             "size": 1,
             "query": {"terms": {"status": ["pending", "extracting"]}},

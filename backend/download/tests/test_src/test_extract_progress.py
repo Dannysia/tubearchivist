@@ -1,16 +1,10 @@
-"""the progress lines the url extraction loop sends
-
-the loop paces itself between urls. without the countdown underneath,
-the url counter sat frozen for the whole interval.
-"""
-
 from types import SimpleNamespace
 
 from download.src.queue import PendingList
 
 
 def capture():
-    """capture what reaches the task"""
+    """returns (what reached the task, the task)"""
     captured = []
 
     def send_progress(message_lines, progress=False):
@@ -20,8 +14,6 @@ def capture():
 
 
 class TestPendingListNotify:
-    """PendingList._notify"""
-
     def test_plain_line_while_working(self):
         captured, task = capture()
         PendingList._notify(SimpleNamespace(task=task), 8, 60)
