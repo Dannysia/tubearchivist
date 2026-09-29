@@ -51,10 +51,12 @@ class PendingIndex:
 
         self.all_pending = []
         self.all_ignored = []
-        self.to_skip = []
+        self.to_skip = self.to_skip or []
+        known = set(self.to_skip)
 
         for result in all_results:
-            self.to_skip.append(result["youtube_id"])
+            if result["youtube_id"] not in known:
+                self.to_skip.append(result["youtube_id"])
             if result["status"] == "pending":
                 self.all_pending.append(result)
             elif result["status"] == "ignore":

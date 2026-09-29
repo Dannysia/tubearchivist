@@ -130,6 +130,8 @@ class ExtractionQueue:
                     if entry_doc["auto_start"]:
                         any_auto_start = True
                     self._write_state(interact.delete_item)
+
+                warm.get_download()
         except _StopRun:
             pass
 

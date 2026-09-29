@@ -152,6 +152,48 @@ Fix: catch what the helpers raise. `manual.py:263` already uses
 `(ValueError, CalledProcessError, OSError)` - filesystem.py should match,
 plus `KeyError`, and the `None` return needs handling at the call site.
 
+### T1.6 `download/src/extraction_queue.py:72` - a shared queue snapshot goes stale
+
+**Fixed.** `run_queue` warmed one `PendingList` and copied `all_pending`,
+`all_ignored`, `to_skip`, `all_videos` and `all_channels` into every
+per-entry handler, so a 200-channel run decided what to skip from a read
+taken before the first channel was extracted. Entries are paced by
+`countdown_sleep` and each one extracts over the network, so that read
+was hours old by the end of a long queue.
+
+The damaging effect was not a video being skipped but one being added
+back. `_parse_channel_video` (`queue.py:288`) and the playlist path
+(`:329`) skip a video already in `to_skip`. Ignoring a video writes it to
+`ta_download` with `status: ignore`, so before the ignore it was not in
+`ta_download` at all and so not in the warm read. Ignore a video part way
+through a run and the entry covering its channel re-added it as
+`pending` - `add_to_pending` indexes with `_id` = the video id, so the
+ignore row was overwritten. The ignore silently reverted.
+
+Fix: `run_queue` calls `get_download` again after each entry, and a repeat
+call only adds to `to_skip`, so a video a concurrent `download_pending`
+finished mid run - gone from the queue, not yet in the start-of-run
+`ta_video` read - stays skipped. `ta_video` is never re-read - that is the
+expensive one (105k documents on the prod instance) and the reason the
+warm exists at all. Cost is one paginated read of `ta_download` per entry,
+against an entry that makes hundreds of yt-dlp calls.
+
+Two related effects were left alone. Overlapping entries (two playlists
+sharing videos) still re-extract the overlap, because `add_to_pending`
+posts `_bulk` without `refresh=true`, so this run's own additions are not
+reliably visible to the next entry's read. And `_add_video`'s `auto_start`
+branch can still drop a video whose queue row was deleted between the read
+and the entry; the write failure that causes is handled (T1.3), and
+the common case - the row went away because `download_pending` finished
+it - is correct to do nothing about.
+
+Still open: "Delete and Ignore" on the video page (`Video.tsx:442`) during
+a run. It deletes the video and queues an `ignore-force` entry; the run
+processes that entry against the start-of-run `ta_video` read, which still
+holds the video, so `_add_video` skips it as already indexed and no ignore
+row is written. The video comes back on the next run. Outside a run the
+next run's read is fresh and it works.
+
 ## Tier 2 - features that silently do not work
 
 ### T2.1 `channel/views.py:302-353` - batch channel downscale times out and reports "Queued 0"
