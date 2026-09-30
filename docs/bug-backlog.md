@@ -334,7 +334,8 @@ serializer, no frontend. The write side runs on every reindex and
 covers `ta_log` only), so it grows forever. Live footgun: `build_query`
 returns `{"match_all": {}}` with no filters (line 485), so
 `HistoryQuery().delete()` wipes the index.
-Decide: wire it up, or delete the read side and stop writing.
+**Decided** (2026-09-30): keep writing history; reading it is a separate UX
+project, not part of the bug bash.
 
 ### T3.2 `downscale` container escape hatch is unreachable and destructive
 **Fixed** (container handling removed - MKV never leaves the worker).
