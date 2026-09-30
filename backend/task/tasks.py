@@ -171,8 +171,6 @@ def download_pending(self, auto_only=False):
     name="process_extraction_queue",
     bind=True,
     base=BaseTask,
-    max_retries=3,
-    default_retry_delay=10,
 )
 def process_extraction_queue(self):
     manager = TaskManager()
@@ -185,13 +183,14 @@ def process_extraction_queue(self):
     resolver = ExtractionQueue(task=self)
     resolved, failed, any_auto_start = resolver.run_queue()
 
-    if failed:
-        print(f"[task][{self.name}] Extractions failed, retry.")
-        self.send_progress(["Extractions failed, retry."])
-        raise self.retry()
-
     if any_auto_start:
         download_pending.delay(auto_only=True)
+
+    if failed:
+        return (
+            f"resolved {resolved} extraction item(s), {failed} failed: "
+            "retry them from the extraction queue."
+        )
 
     if resolved:
         return f"resolved {resolved} extraction item(s)."

@@ -490,7 +490,7 @@ but a superseded answer is dropped.
   name with `"auto"` raises `KeyError` -> 500 instead of 404; a known but
   unschedulable task (`manual_import`) gets a real periodic task that beat
   then calls without its required args every interval.
-- `task/tasks.py:206-209` - `process_extraction_queue`'s retry cannot retry:
+- **Fixed.** `task/tasks.py:206-209` - `process_extraction_queue`'s retry cannot retry:
   `mark_failed` writes `status: failed` while `_get_next` queries only
   `pending|extracting`. Also missing the `and not self.is_stopped()` guard
   its sibling has.
