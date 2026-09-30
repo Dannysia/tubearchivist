@@ -419,6 +419,8 @@ the only new settings without `allow_null=True`, so both always 400 with
 `downscale_preset` - is nullable.
 
 ### T4.3 `frontend/src/pages/SettingsActions.tsx:64-69` - import refresh fires ~1s in, never at completion
+**Fixed.** The import refresh and the Start button wait for `isDone`.
+
 Reported. The handler declares no parameter and sits inside an upstream
 callback that fires on every notification tick, so the first tick clears
 `processingImports` (making "Start import" clickable mid-run) and refreshes

@@ -57,13 +57,13 @@ const SettingsActions = () => {
             isRestoringBackup ||
             reScanningFileSystem
           }
-          setShouldRefresh={() => {
+          setShouldRefresh={isDone => {
             setDeleteIgnored(false);
             setDeletePending(false);
-            if (processingImports) {
+            if (isDone && processingImports) {
               setImportFilesRefresh(current => current + 1);
+              setProcessingImports(false);
             }
-            setProcessingImports(false);
             setReSyncMeta(false);
             setBackupStarted(false);
             setIsRestoringBackup(false);
