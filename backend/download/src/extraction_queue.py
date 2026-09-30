@@ -14,6 +14,8 @@ class _StopRun(Exception):
 
 
 class ExtractionQueue:
+    ACTIVE_STATUSES = ["pending", "extracting"]
+
     def __init__(self, task=None):
         self.task = task
 
@@ -149,11 +151,18 @@ class ExtractionQueue:
 
         return True
 
-    @staticmethod
-    def _get_next() -> tuple[str | None, dict | None]:
+    @classmethod
+    def has_work(cls) -> bool:
+        data = {"size": 0, "query": {"terms": {"status": cls.ACTIVE_STATUSES}}}
+        response, _ = ElasticWrap("ta_extraction/_search").get(data=data)
+        total = response.get("hits", {}).get("total", {})
+        return bool(total.get("value"))
+
+    @classmethod
+    def _get_next(cls) -> tuple[str | None, dict | None]:
         data = {
             "size": 1,
-            "query": {"terms": {"status": ["pending", "extracting"]}},
+            "query": {"terms": {"status": cls.ACTIVE_STATUSES}},
             "sort": [
                 {"auto_start": {"order": "desc"}},
                 {"timestamp": {"order": "asc"}},

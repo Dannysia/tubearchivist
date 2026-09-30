@@ -22,13 +22,14 @@ from django_celery_beat.models import (
     IntervalSchedule,
     PeriodicTasks,
 )
+from download.src.extraction_queue import ExtractionQueue
 from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from task.models import CustomPeriodicTask
 from task.src.config_schedule import ScheduleBuilder, orphaned_schedules
 from task.src.task_config import TASK_CONFIG
 from task.src.task_manager import TaskManager
-from task.tasks import version_check
+from task.tasks import process_extraction_queue, version_check
 
 TOPIC = """
 
@@ -52,6 +53,7 @@ class Command(BaseCommand):
         self._version_check()
         self._index_setup()
         self._clear_downscale_leftovers()
+        self._resume_extraction_queue()
         self._snapshot_check()
         self._create_default_schedules()
         self._update_schedule_tz()
@@ -171,6 +173,15 @@ class Command(BaseCommand):
             )
         else:
             self.stdout.write(self.style.SUCCESS("    no files found"))
+
+    def _resume_extraction_queue(self):
+        self.stdout.write("[4c] resume the extraction queue")
+        if not ExtractionQueue.has_work():
+            self.stdout.write(self.style.SUCCESS("    nothing waiting"))
+            return
+
+        process_extraction_queue.delay()
+        self.stdout.write(self.style.SUCCESS("    ✓ dispatched"))
 
     def _backfill_downscale_worker_fields(self) -> None:
         self._run_migration(

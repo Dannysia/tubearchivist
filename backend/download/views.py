@@ -27,7 +27,11 @@ from download.src.extraction_interact import ExtractionInteract
 from download.src.queue_interact import PendingInteract
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.response import Response
-from task.tasks import download_pending, extrac_dl
+from task.tasks import (
+    download_pending,
+    extrac_dl,
+    process_extraction_queue,
+)
 
 
 class DownloadApiListView(ApiBaseView):
@@ -455,6 +459,7 @@ class ExtractionApiListView(ApiBaseView):
             new_status=validated_data["status"],
             error=validated_query.get("error"),
         )
+        process_extraction_queue.delay()
 
         return Response(status=204)
 

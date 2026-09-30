@@ -215,6 +215,10 @@ identical fan-out correctly: `delete_channel_videos.delay(...)` + 202 +
 task_id. Fix: background it the same way.
 
 ### T2.2 `download/views.py:441-459` - "Retry Failed" on the extraction queue retries nothing
+**Fixed.** The PATCH dispatches `process_extraction_queue`, and startup
+dispatches it when `ExtractionQueue.has_work()` finds pending or
+extracting entries.
+
 Verified. The PATCH sets docs to `pending`, returns 204 and dispatches
 nothing. `process_extraction_queue` has `api_start: False`, no beat
 schedule, and is dispatched only from `tasks.py:144` and `:246`, so retried
