@@ -1,9 +1,9 @@
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
+from common.src.search_errors import SearchUnavailable
 from downscale.src.constants import (
     VIDEO_SIZE_FIELDS,
     downscaled_filter,
-    empty_transitions,
     parse_saved_bands,
     parse_transitions,
     saved_percent_agg,
@@ -11,7 +11,6 @@ from downscale.src.constants import (
 )
 from video.src.constants import VideoTypeEnum
 from video.src.resolution import (
-    empty_resolution,
     parse_resolution,
     resolution_agg,
 )
@@ -81,10 +80,13 @@ class ChannelAggs:
         }
 
     def process(self) -> dict:
-        response, _ = ElasticWrap(self.path).get(self.build_query())
-        aggs = response.get("aggregations")
-        if not aggs:
-            return self._empty()
+        response, status_code = ElasticWrap(self.path).get(self.build_query())
+        if status_code != 200:
+            raise SearchUnavailable(
+                f"channel aggregation failed, es answered {status_code}"
+            )
+
+        aggs = response["aggregations"]
 
         total_duration = int(aggs["total_duration"]["value"])
 
@@ -119,17 +121,6 @@ class ChannelAggs:
             "saved": original_size - new_size,
             "by_transition": parse_transitions(agg["by_transition"]),
             "by_saved": parse_saved_bands(agg["by_saved"], agg["doc_count"]),
-        }
-
-    @staticmethod
-    def _empty_downscale() -> dict:
-        return {
-            "doc_count": 0,
-            "original_size": 0,
-            "new_size": 0,
-            "saved": 0,
-            "by_transition": empty_transitions(),
-            "by_saved": parse_saved_bands({}, 0),
         }
 
     @staticmethod
@@ -185,25 +176,6 @@ class ChannelAggs:
 
         return parsed
 
-    def _empty(self) -> dict:
-        return {
-            "total_items": {"value": 0},
-            "total_size": {"value": 0},
-            "total_duration": {"value": 0, "value_str": get_duration_str(0)},
-            "by_type": {
-                i: self._empty_bucket() for i in VideoTypeEnum.values()
-            },
-            "by_resolution": empty_resolution(),
-            "watch_progress": {
-                "watched": self._empty_bucket(),
-                "unwatched": self._empty_bucket(),
-                "progress": 0,
-            },
-            "availability": {"active": 0, "inactive": 0},
-            "downscale": self._empty_downscale(),
-            "date_range": {key: None for key in DATE_KEYS},
-        }
-
 
 class ChannelListAggs:
     path = "ta_video/_search"
@@ -253,10 +225,13 @@ class ChannelListAggs:
         if self.channel_ids is not None and not self.channel_ids:
             return {}
 
-        response, _ = ElasticWrap(self.path).get(self.build_query())
-        aggs = response.get("aggregations")
-        if not aggs:
-            return {}
+        response, status_code = ElasticWrap(self.path).get(self.build_query())
+        if status_code != 200:
+            raise SearchUnavailable(
+                f"channel stats aggregation failed, es answered {status_code}"
+            )
+
+        aggs = response["aggregations"]
 
         return {
             bucket["key"]: self._build_stats(bucket)

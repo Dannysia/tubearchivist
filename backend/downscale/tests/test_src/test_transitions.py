@@ -1,6 +1,5 @@
 from downscale.src.constants import (
     TRANSITION_LIMIT,
-    empty_transitions,
     parse_transitions,
     transition_agg,
 )
@@ -78,8 +77,3 @@ class TestParseTransitions:
         parsed = parse_transitions({"buckets": []})
 
         assert parsed["other_count"] == 0
-
-
-class TestEmptyTransitions:
-    def test_matches_what_parsing_an_empty_agg_gives(self):
-        assert empty_transitions() == parse_transitions(a_response())

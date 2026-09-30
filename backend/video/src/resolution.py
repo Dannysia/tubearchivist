@@ -68,13 +68,3 @@ def parse_resolution(agg: dict) -> list[dict]:
     buckets = agg["buckets"]
 
     return [_build_tier(key, buckets[key]) for key in RESOLUTION_KEYS]
-
-
-def empty_resolution() -> list[dict]:
-    zeroed = {
-        "doc_count": 0,
-        "media_size": {"value": 0},
-        "duration": {"value": 0},
-    }
-
-    return [_build_tier(key, zeroed) for key in RESOLUTION_KEYS]

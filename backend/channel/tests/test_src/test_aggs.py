@@ -1,13 +1,16 @@
 # pylint: disable=protected-access
 
+import pytest
+from channel.src import aggs as channel_aggs
 from channel.src.aggs import ChannelAggs
+from common.src.search_errors import SearchUnavailable
 from downscale.src.constants import (
     SAVED_BUCKET_EDGES,
     VIDEO_SIZE_FIELDS,
     saved_percent_agg,
     transition_agg,
 )
-from video.src.resolution import empty_resolution, resolution_agg
+from video.src.resolution import resolution_agg
 
 
 def a_transition_agg(buckets=None, other=0):
@@ -113,7 +116,14 @@ def test_parse_downscale_nothing_downscaled():
         "by_transition": a_transition_agg(),
         "by_saved": a_saved_agg(),
     }
-    assert ChannelAggs._parse_downscale(agg) == ChannelAggs._empty_downscale()
+    assert ChannelAggs._parse_downscale(agg) == {
+        "doc_count": 0,
+        "original_size": 0,
+        "new_size": 0,
+        "saved": 0,
+        "by_transition": {"transitions": [], "other_count": 0},
+        "by_saved": no_bands(),
+    }
 
 
 def test_parse_downscale_grown():
@@ -130,21 +140,20 @@ def test_parse_downscale_grown():
     assert parsed["by_saved"] == no_bands(grew=1)
 
 
-def test_empty_response_has_downscale():
-    assert ChannelAggs("UC1")._empty()["downscale"] == {
-        "doc_count": 0,
-        "original_size": 0,
-        "new_size": 0,
-        "saved": 0,
-        "by_transition": {"transitions": [], "other_count": 0},
-        "by_saved": no_bands(),
-    }
-
-
 def test_query_has_resolution_agg():
     aggs = ChannelAggs("UC1").build_query()["aggs"]
     assert aggs["by_resolution"] == resolution_agg()
 
 
-def test_empty_response_has_resolution():
-    assert ChannelAggs("UC1")._empty()["by_resolution"] == empty_resolution()
+def test_a_failed_search_is_an_error_not_zeros(monkeypatch):
+    class Wrap:
+        def __init__(self, path):
+            pass
+
+        def get(self, data=None):
+            return {"error": {"type": "index_closed_exception"}}, 400
+
+    monkeypatch.setattr(channel_aggs, "ElasticWrap", Wrap)
+
+    with pytest.raises(SearchUnavailable):
+        ChannelAggs("UC1").process()

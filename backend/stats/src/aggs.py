@@ -3,6 +3,7 @@
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_duration_str
+from common.src.search_errors import SearchUnavailable
 from django.conf import settings
 from downscale.src.constants import (
     VIDEO_SIZE_FIELDS,
@@ -24,7 +25,12 @@ class AggBase:
 
     def get(self):
         """make get call"""
-        response, _ = ElasticWrap(self.path).get(self.data)
+        response, status_code = ElasticWrap(self.path).get(self.data)
+        if status_code != 200:
+            raise SearchUnavailable(
+                f"{self.name} aggregation failed, es answered {status_code}"
+            )
+
         if settings.DEBUG:
             print(
                 f"[agg][{self.name}] took {response.get('took')} ms to process"
@@ -414,8 +420,6 @@ class Downscale(AggBase):
 
     def process(self):
         aggregations = self.get()
-        if not aggregations:
-            return None
 
         response = self._build_totals(
             int(aggregations["video_count"]["value"]), aggregations
@@ -491,7 +495,5 @@ class Resolution(AggBase):
 
     def process(self):
         aggregations = self.get()
-        if not aggregations:
-            return None
 
         return parse_resolution(aggregations["by_resolution"])

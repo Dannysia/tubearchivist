@@ -177,7 +177,3 @@ def parse_transitions(agg: dict) -> dict:
         ],
         "other_count": agg.get("sum_other_doc_count", 0),
     }
-
-
-def empty_transitions() -> dict:
-    return {"transitions": [], "other_count": 0}

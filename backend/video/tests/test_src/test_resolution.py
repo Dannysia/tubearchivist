@@ -4,7 +4,6 @@ from video.src.resolution import (
     HEIGHT_FIELD,
     RESOLUTION_KEYS,
     UNKNOWN_KEY,
-    empty_resolution,
     parse_resolution,
     resolution_agg,
     resolution_filters,
@@ -98,8 +97,3 @@ def test_tiers_reconcile_with_the_video_count():
     counts = {"2160": 4, "1080": 9, BELOW_KEY: 1, UNKNOWN_KEY: 6}
     parsed = parse_resolution(build_response(counts))
     assert sum(i["doc_count"] for i in parsed) == sum(counts.values())
-
-
-def test_empty_matches_the_parsed_shape():
-    parsed = parse_resolution(build_response({}))
-    assert empty_resolution() == parsed

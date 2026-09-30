@@ -359,7 +359,13 @@ Verified. `_reserve_slot` has no zero case, unlike
 it. A test pins this as intended without noticing the wait cannot end.
 
 ### T3.4 Aggregations turn an ES error into a 200 of zeros
-Reported. `channel/src/aggs.py:94,282` and `stats/src/aggs.py:431,520` all
+**Fixed.** `AggBase.get()` and both channel aggregations raise
+`SearchUnavailable` on a failed search, which DRF answers as a 503 with an
+`error` body. The empty fallbacks in the fork's classes are gone, and with
+them `empty_resolution`/`empty_transitions`, which only fed them. Upstream's
+own `if not aggregations` checks are left in place, now unreachable.
+
+Verified. `channel/src/aggs.py:94,282` and `stats/src/aggs.py:431,520` all
 do `response, _ = ...` and then `if not aggs: return self._empty()`. ES
 always returns `aggregations` for a successful `size: 0` search, so that
 branch is reachable only on an error body - the helper is named for the case
@@ -421,6 +427,12 @@ a folder nothing has consumed. `Channels.tsx:171`, `Download.tsx:181` and
   failure, so a DRF-shaped 404/405/throttle is stored as data and the page
   says "Nothing logged yet".
 - `loadExtractionQueue.ts:18` double-encodes `q` and nothing sets it.
+
+### Tier 3 and 4 open follow-ups
+- T3.4: a stats panel whose search fails now gets a 503 instead of zeros,
+  but the dashboard and the channel page render any failed panel as
+  "Loading..." indefinitely - the same as upstream's panels on any failed
+  fetch. A real "could not load" state is UI work across those components.
 
 ## Tier 5 - other in-scope bugs
 
