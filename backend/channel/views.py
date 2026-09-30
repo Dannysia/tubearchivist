@@ -2,7 +2,6 @@
 
 from channel.serializers import (
     ChannelAggSerializer,
-    ChannelDownscaleSerializer,
     ChannelListQuerySerializer,
     ChannelListSerializer,
     ChannelNavSerializer,
@@ -20,13 +19,9 @@ from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
 )
-from common.src.es_connect import IndexPaginate
 from common.src.index_generic import Pagination
 from common.src.urlparser import Parser
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
-from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
-from downscale.src.downscale import dispatch_pending_downscales
-from downscale.src.queue_interact import DownscaleInteract
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiResponse,
@@ -35,6 +30,7 @@ from drf_spectacular.utils import (
 from rest_framework.response import Response
 from task.tasks import (
     delete_channel_videos,
+    downscale_channel,
     index_channel_playlists,
     subscribe_to,
 )
@@ -290,7 +286,7 @@ class ChannelDownscaleView(ApiBaseView):
     @extend_schema(
         request=VideoDownscaleSerializer(),
         responses={
-            200: OpenApiResponse(ChannelDownscaleSerializer()),
+            202: OpenApiResponse(AsyncTaskResponseSerializer()),
             404: OpenApiResponse(
                 ErrorResponseSerializer(), description="channel not found"
             ),
@@ -307,51 +303,14 @@ class ChannelDownscaleView(ApiBaseView):
         data_serializer.is_valid(raise_exception=True)
         target_height = data_serializer.validated_data["target_height"]
 
-        queued = []
-        skipped = []
-        for video in self._get_channel_videos(channel_id):
-            youtube_id = video["youtube_id"]
-            streams = video.get("streams") or []
-            heights = [s["height"] for s in streams if s["type"] == "video"]
-            current_height = max(heights) if heights else None
-
-            if not current_height or target_height >= current_height:
-                continue
-
-            if DownscaleInteract.get_active_for_video(youtube_id):
-                skipped.append(
-                    {
-                        "id": youtube_id,
-                        "error": "a downscale job is already in progress",
-                    }
-                )
-                continue
-
-            DownscaleInteract().create(
-                DownscaleInteract.build_queued_doc(
-                    youtube_id=youtube_id,
-                    video_json_data=video,
-                    current_height=current_height,
-                    target_height=target_height,
-                )
-            )
-            queued.append(youtube_id)
-
-        if queued:
-            dispatch_pending_downscales()
-
-        serializer = ChannelDownscaleSerializer(
-            {"queued": queued, "skipped": skipped}
-        )
-        return Response(serializer.data)
-
-    @staticmethod
-    def _get_channel_videos(channel_id):
-        data = {
-            "query": {"term": {"channel.channel_id": {"value": channel_id}}},
-            "_source": QUEUE_DOC_SOURCE_FIELDS,
+        task = downscale_channel.delay(channel_id, target_height)
+        message = {
+            "message": f"queueing downscale for {channel_id}",
+            "task_id": task.id,
         }
-        return IndexPaginate("ta_video", data).get_results()
+        serializer = AsyncTaskResponseSerializer(message)
+
+        return Response(serializer.data, status=202)
 
 
 class ChannelApiSearchView(ApiBaseView):

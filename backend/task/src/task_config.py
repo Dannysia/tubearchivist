@@ -110,6 +110,13 @@ DELETE_CHANNEL_VIDEOS: TaskItemConfig = {
     "api_stop": True,
 }
 
+DOWNSCALE_CHANNEL: TaskItemConfig = {
+    "title": "Downscale Channel",
+    "group": "channel:downscale",
+    "api_start": False,
+    "api_stop": True,
+}
+
 DOWNSCALE_VIDEO: TaskItemConfig = {
     "title": "Downscale Video",
     "group": "downscale:run",
@@ -159,6 +166,7 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "resync_metadata": RESYNC_METADATA,
     "index_playlists": INDEX_PLAYLISTS,
     "delete_channel_videos": DELETE_CHANNEL_VIDEOS,
+    "downscale_channel": DOWNSCALE_CHANNEL,
     "subscribe_to": SUBSCRIBE_TO,
     "version_check": VERSION_CHECK,
     "downscale_video": DOWNSCALE_VIDEO,

@@ -22,6 +22,7 @@ from download.src.extraction_queue import ExtractionQueue
 from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import VideoDownloader
+from downscale.src.channel_batch import ChannelDownscale
 from downscale.src.downscale import DownscaleRunner
 from downscale.src.worker import reap_stale_leases
 from task.src.notify import Notifications
@@ -401,6 +402,24 @@ def delete_channel_videos(
     if handler.failed:
         message += (
             f" {len(handler.failed)} could not be deleted, see the logs."
+        )
+
+    return message
+
+
+@shared_task(bind=True, name="downscale_channel", base=BaseTask)
+def downscale_channel(self, channel_id: str, target_height: int):
+    TaskManager().init(self)
+    handler = ChannelDownscale(channel_id, target_height, task=self)
+    handler.run()
+
+    message = (
+        f"Queued {len(handler.queued)} videos from {channel_id} "
+        f"for downscale to {target_height}p."
+    )
+    if handler.skipped:
+        message += (
+            f" {len(handler.skipped)} already had a job and were skipped."
         )
 
     return message

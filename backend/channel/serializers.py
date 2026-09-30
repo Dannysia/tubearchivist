@@ -9,7 +9,6 @@ from common.serializers import (
     ValidateUnknownFieldsMixin,
 )
 from downscale.serializers import (
-    DownscaleBulkResultItemSerializer,
     DownscaleSavedBandsSerializer,
     DownscaleTransitionSerializer,
 )
@@ -200,13 +199,6 @@ class ChannelSearchQuerySerializer(serializers.Serializer):
     """serialize query parameters for searching"""
 
     q = serializers.CharField()
-
-
-class ChannelDownscaleSerializer(serializers.Serializer):
-    """serialize channel batch downscale response"""
-
-    queued = serializers.ListField(child=serializers.CharField())
-    skipped = DownscaleBulkResultItemSerializer(many=True)
 
 
 class ChannelVideoDeleteQuerySerializer(serializers.Serializer):

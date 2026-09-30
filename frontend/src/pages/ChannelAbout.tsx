@@ -16,9 +16,7 @@ import InputConfig from '../components/InputConfig';
 import ToggleConfig from '../components/ToggleConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import { ApiResponseType } from '../functions/APIClient';
-import startChannelDownscale, {
-  ChannelDownscaleResponseType,
-} from '../api/actions/startChannelDownscale';
+import startChannelDownscale from '../api/actions/startChannelDownscale';
 import loadChannelAggs, { ChannelAggsType } from '../api/loader/loadChannelAggs';
 import ChannelStats from '../components/ChannelStats';
 import humanFileSize from '../functions/humanFileSize';
@@ -63,7 +61,7 @@ const ChannelAbout = () => {
   const [refresh, setRefresh] = useState(true);
   const [showDownscaleForm, setShowDownscaleForm] = useState(false);
   const [downscaleTargetHeight, setDownscaleTargetHeight] = useState(DOWNSCALE_LADDER[0]);
-  const [downscaleResult, setDownscaleResult] = useState<ChannelDownscaleResponseType | null>(null);
+  const [downscaleNotice, setDownscaleNotice] = useState<string | null>(null);
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
   const [channelAggsResponse, setChannelAggsResponse] =
@@ -311,7 +309,7 @@ const ChannelAbout = () => {
                   )}
                   <br></br>
                   <div id="batch-downscale-button" className="button-box">
-                    {!showDownscaleForm && !downscaleResult && (
+                    {!showDownscaleForm && !downscaleNotice && (
                       <Button
                         label="Batch Downscale"
                         title={`Downscale all videos of ${channel.channel_name}`}
@@ -337,25 +335,33 @@ const ChannelAbout = () => {
                         <Button
                           label="Start"
                           onClick={async () => {
-                            const response = await startChannelDownscale(
-                              channelId,
-                              downscaleTargetHeight,
-                            );
-                            setDownscaleResult(response.data ?? { queued: [], skipped: [] });
+                            let started = false;
+                            try {
+                              const response = await startChannelDownscale(
+                                channelId,
+                                downscaleTargetHeight,
+                              );
+                              started = !!response.data?.task_id;
+                            } catch {
+                              started = false;
+                            }
                             setShowDownscaleForm(false);
-                            setTimeout(() => setDownscaleResult(null), 6000);
+                            setDownscaleNotice(
+                              started
+                                ? 'Queueing downscale jobs, progress is shown above.'
+                                : 'The batch downscale could not be started.',
+                            );
+                            if (started) setStartNotification(true);
+                            setTimeout(() => setDownscaleNotice(null), 6000);
                           }}
                         />
                         <Button label="Cancel" onClick={() => setShowDownscaleForm(false)} />
                       </div>
                     )}
 
-                    {downscaleResult && (
+                    {downscaleNotice && (
                       <p>
-                        Queued {downscaleResult.queued.length} video(s) for downscale.
-                        {downscaleResult.skipped.length > 0 && (
-                          <> {downscaleResult.skipped.length} already in progress, skipped.</>
-                        )}{' '}
+                        {downscaleNotice}{' '}
                         <Button
                           label="View Downscale Queue"
                           onClick={() => navigate(Routes.Downscale)}

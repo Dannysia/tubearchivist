@@ -197,6 +197,10 @@ next run's read is fresh and it works.
 ## Tier 2 - features that silently do not work
 
 ### T2.1 `channel/views.py:302-353` - batch channel downscale times out and reports "Queued 0"
+**Fixed.** The batch runs as the `downscale_channel` task
+(`downscale/src/channel_batch.py`), the view answers 202 with a task id,
+and the page follows it in the channel notifications.
+
 Verified. The POST materialises every video of the channel and per video
 does one `ta_downscale/_search` plus one `_doc` PUT with `refresh=true` (a
 forced Lucene refresh per document), inline in the request. `nginx.conf:56`

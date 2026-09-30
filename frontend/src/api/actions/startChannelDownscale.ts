@@ -1,8 +1,8 @@
 import APIClient from '../../functions/APIClient';
 
 export type ChannelDownscaleResponseType = {
-  queued: string[];
-  skipped: { id: string; error: string }[];
+  message: string;
+  task_id: string;
 };
 
 const startChannelDownscale = async (channelId: string, targetHeight: number) => {
