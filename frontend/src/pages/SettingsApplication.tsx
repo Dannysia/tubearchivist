@@ -1045,8 +1045,8 @@ const SettingsApplication = () => {
                       </ul>
                     </li>
                     <li>
-                      Downscale encoder, quality (CRF) and speed preset apply to all future
-                      downscale jobs.
+                      Downscale encoder, quality (CRF) and speed preset apply to future jobs encoded
+                      on this server. A remote worker uses the encoder settings in its own config.
                       <ul>
                         <li>H.264 is the most compatible, AV1 compresses best but is slowest.</li>
                         <li>Lower CRF means higher quality and larger files.</li>

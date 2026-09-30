@@ -69,16 +69,16 @@ Windows, it would expose Redis on the LAN, and cross-host path mapping is
 brittle.
 
 **The worker owns its encoder configuration.** TA owns the *intent* of a job
-(which video, target height, a rough quality number). The worker knows its
-own hardware and maps that intent onto its configured encoder
+(which video, target height). The worker knows its own hardware and encodes
+with the encoder and quality in its own config
 (`HandBrakeCLI -e nvenc_av1 -q …` on the 5090 — note HandBrake prefixes
 its NVENC names where ffmpeg suffixes them, so the recorded encoder
 string is `nvenc_av1`, not ffmpeg's `av1_nvenc`). Quality numbers are
 not portable between
 encoder families anyway — CRF for libsvtav1, ICQ for VAAPI, and CQ for
-NVENC are different scales — so pretending TA can centrally pick exact
-settings for arbitrary hardware would be a lie. What the worker *actually
-ran* is reported back and recorded on the job.
+NVENC are different scales — so TA sends no quality at all rather than
+pretend it can pick settings for arbitrary hardware. What the worker
+*actually ran* is reported back and recorded on the job.
 
 **Record the full ffmpeg argv.** Both local and remote encodes persist the
 exact ffmpeg command line on the job doc, and `accept()` copies it into the

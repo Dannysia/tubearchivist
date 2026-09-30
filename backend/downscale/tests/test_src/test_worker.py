@@ -97,14 +97,9 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
         "downscale.src.worker._get_height", return_value=1080
     ), patch(
         "downscale.src.worker.MediaStreamExtractor"
-    ) as mock_extractor, patch(
-        "downscale.src.worker.AppConfig"
-    ) as mock_app_config:
+    ) as mock_extractor:
         mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
         mock_extractor.return_value.get_file_size.return_value = 5000
-        mock_app_config.return_value.config = {
-            "application": {"downscale_crf": 30}
-        }
 
         result = worker.claim(WORKER)
 
@@ -115,7 +110,6 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
         "youtube_id": "video-good",
         "title": "good",
         "target_height": 480,
-        "quality_hint": 30,
         "source_url": "/youtube/video-good.mp4",
     }
 
@@ -218,49 +212,6 @@ def test_claim_deletes_candidate_with_another_active_job_for_the_video():
 
     assert result is None
     mock_delete.assert_called_once()
-
-
-def test_claim_defaults_quality_hint_when_unset():
-    job = {
-        "id": "doc1",
-        "youtube_id": "video1",
-        "target_height": 480,
-        "title": "t",
-        "tmp_file_path": "/cache/downscale/video1_480p.mp4",
-    }
-    video = MagicMock()
-    video.json_data = {"media_url": "video1.mp4"}
-
-    with patch(
-        "downscale.src.worker.RedisBase"
-    ) as mock_redis_base, patch.object(
-        DownscaleInteract, "get_next_queued", return_value=[job]
-    ), patch.object(
-        DownscaleInteract, "update"
-    ), patch.object(
-        DownscaleInteract, "get_active_for_video", return_value=None
-    ), patch(
-        "downscale.src.worker.YoutubeVideo", return_value=video
-    ), patch(
-        "downscale.src.worker.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.worker.os.makedirs"
-    ), patch(
-        "downscale.src.worker._get_height", return_value=1080
-    ), patch(
-        "downscale.src.worker.MediaStreamExtractor"
-    ) as mock_extractor, patch(
-        "downscale.src.worker.AppConfig"
-    ) as mock_app_config:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
-        mock_extractor.return_value.get_file_size.return_value = 5000
-        mock_app_config.return_value.config = {
-            "application": {"downscale_crf": None}
-        }
-
-        result = worker.claim(WORKER)
-
-    assert result["quality_hint"] == 23
 
 
 def test_own_job_not_found():

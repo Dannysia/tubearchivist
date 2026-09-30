@@ -265,7 +265,13 @@ address" - a conclusion drawn from rotations that never changed the address.
 against current and report no-rotation honestly.
 
 ### T2.6 `downscale/src/worker.py:161-170` - downscale_crf is dead for remote jobs
-Reported. `downscale_crf` is read, defaulted, declared in
+**Fixed.** The worker ignoring it is by design
+(`docs/remote-downscale/worker.md`); the defects were the unread `quality_hint` the claim sent,
+`ta-server.md` saying the worker mapped it, and the settings page saying
+quality applies to all future jobs. The field is gone, both docs agree,
+and the page says the settings apply to jobs encoded on the server.
+
+Verified. `downscale_crf` is read, defaulted, declared in
 `WorkerClaimResponseSerializer` and sent on every claim, but
 `ta_downscale_worker.py` uses `config["encode"]["quality"]` from its own
 toml. The server-side CRF setting does nothing for remote jobs, and the

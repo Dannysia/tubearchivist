@@ -1,7 +1,6 @@
 import os
 import shutil
 
-from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.queue_interact import QueueWriteError
 from common.src.ta_redis import RedisBase
@@ -128,16 +127,11 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
         updated=_now(),
     )
 
-    quality_hint = AppConfig().config["application"]["downscale_crf"]
-    if quality_hint is None:
-        quality_hint = 23
-
     return {
         "id": doc_id,
         "youtube_id": youtube_id,
         "title": job["title"],
         "target_height": target_height,
-        "quality_hint": quality_hint,
         # nginx's /youtube/ alias, not a django endpoint
         "source_url": f"/youtube/{video.json_data['media_url']}",
     }

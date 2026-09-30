@@ -85,14 +85,13 @@ Response `200`:
   "youtube_id": "abc123",
   "title": "…",
   "target_height": 720,
-  "quality_hint": 23,
   "source_url": "/youtube/<channel_id>/<youtube_id>.mp4"
 }
 ```
 
-`quality_hint` is TA's configured `downscale_crf`, passed as intent only —
-the worker maps quality onto its own encoder (see README "Key decisions").
-Response `204` when nothing is claimable.
+No quality is sent: the worker encodes with the settings in its own config
+(see README "Key decisions"), and TA's `downscale_crf` applies only to jobs
+encoded on the server. Response `204` when nothing is claimable.
 
 `source_url` is TA's plain nginx-served static path (the same one a normal
 browser download uses), not a job-scoped API endpoint - a real earlier

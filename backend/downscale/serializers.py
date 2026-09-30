@@ -152,7 +152,6 @@ class WorkerClaimResponseSerializer(serializers.Serializer):
     youtube_id = serializers.CharField()
     title = serializers.CharField()
     target_height = serializers.IntegerField()
-    quality_hint = serializers.IntegerField()
     source_url = serializers.CharField()
 
 

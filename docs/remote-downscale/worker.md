@@ -160,12 +160,9 @@ full download-and-encode — then get requeued and re-encoded on the same
 bad value. The worker refuses to start instead.
 
 The worker deliberately owns its encoder settings (see README); the
-configured `quality` always wins. TA's `quality_hint` from the claim
-response is ignored outright — the script doesn't read it (nor `title`),
-it just isn't a meaningful input when the scales differ this much
-between encoders. If a mapping from TA's CRF-ish hint ever seems
-desirable it can be added later; an explicit local setting is more
-honest in the meantime.
+configured `quality` is the only one used. TA sends no quality in the
+claim response - its `downscale_crf` is on a different scale per encoder
+and applies only to jobs encoded on the server.
 
 **Not verified against a live HandBrakeCLI install** while writing this
 (no real GPU/binary available in the environment this was scoped from):
