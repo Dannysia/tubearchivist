@@ -23,6 +23,7 @@ import {
 } from '../configuration/constants/DownscaleSizeChange';
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
+  DownscaleBulkResultType,
 } from '../api/actions/updateDownscaleQueueByIds';
 import updateDownscaleQueueByFilter from '../api/actions/updateDownscaleQueueByFilter';
 import loadNotifications from '../api/loader/loadNotifications';
@@ -46,6 +47,7 @@ export type DownscaleJob = {
   timestamp: number;
   updated: number;
   message?: string;
+  progress?: number | null;
 };
 
 export type DownscaleResponseType = {
@@ -77,6 +79,7 @@ const Downscale = () => {
   const [downscaleSavedAggsResponse, setDownscaleSavedAggsResponse] =
     useState<ApiResponseType<DownscaleSavedAggsType>>();
   const [progressByTaskId, setProgressByTaskId] = useState<Record<string, number>>({});
+  const [actionFailures, setActionFailures] = useState<DownscaleBulkResultType['failed']>([]);
 
   const { data: downscaleResponseData } = downscaleResponse ?? {};
   const { data: downscaleAggsResponseData } = downscaleAggsResponse ?? {};
@@ -92,6 +95,8 @@ const Downscale = () => {
 
   const hasActiveJob =
     jobList?.some(job => job.status === 'running' || job.status === 'queued') ?? false;
+  const hasRemoteRunningJob =
+    jobList?.some(job => job.status === 'running' && !job.task_id) ?? false;
 
   const selectableIds = jobList?.map(job => job.id);
   const allSelected = !!selectableIds?.length && selectableIds.every(id => selectedIds.has(id));
@@ -176,6 +181,15 @@ const Downscale = () => {
     return () => clearInterval(intervalId);
   }, [hasActiveJob]);
 
+  useEffect(() => {
+    if (!hasRemoteRunningJob) {
+      return;
+    }
+
+    const intervalId = setInterval(refreshQueue, 5000);
+    return () => clearInterval(intervalId);
+  }, [hasRemoteRunningJob]);
+
   const handleSetPage = (page: number) => {
     setSelectedIds(new Set());
     setShowBulkRejectConfirm(false);
@@ -202,31 +216,76 @@ const Downscale = () => {
     }
   };
 
-  const handleBulkAction = async (action: DownscaleBulkAction) => {
-    await updateDownscaleQueueByIds(reviewableSelectedIds, action);
+  const clearSelection = () => {
     setSelectedIds(new Set());
     setShowBulkRejectConfirm(false);
+  };
+
+  const setFilterParam = (key: string, value: string) => {
+    const params = searchParams;
+    if (value !== 'all') {
+      params.set(key, value);
+    } else {
+      params.delete(key);
+    }
+    params.delete('page');
+    setSearchParams(params);
+    clearSelection();
+  };
+
+  const setSearch = (value: string) => {
+    setSearchInput(value);
+    clearSelection();
+    if (currentPage !== 0) {
+      setCurrentPage(0);
+    }
+  };
+
+  const recordResult = async (request: Promise<ApiResponseType<DownscaleBulkResultType>>) => {
+    try {
+      const response = await request;
+      if (response.data) {
+        setActionFailures(response.data.failed);
+        return;
+      }
+
+      setActionFailures([{ id: '', error: `request failed with status ${response.status}` }]);
+    } catch (error) {
+      const message = (error as { message?: string })?.message ?? 'request failed';
+      setActionFailures([{ id: '', error: message }]);
+    }
+  };
+
+  const runAction = async (ids: string[], action: DownscaleBulkAction) => {
+    await recordResult(updateDownscaleQueueByIds(ids, action));
     refreshQueue();
   };
 
+  const handleBulkAction = async (action: DownscaleBulkAction) => {
+    await runAction(reviewableSelectedIds, action);
+    setSelectedIds(new Set());
+    setShowBulkRejectConfirm(false);
+  };
+
   const handleBulkCancel = async () => {
-    await updateDownscaleQueueByIds(
+    await runAction(
       cancelableSelectedJobs.map(job => job.id),
       'cancel',
     );
     setSelectedIds(new Set());
     setShowBulkRejectConfirm(false);
-    refreshQueue();
   };
 
   const handleFilterAction = async (action: DownscaleBulkAction) => {
-    await updateDownscaleQueueByFilter(
-      action,
-      statusFilterFromUrl,
-      channelFilterFromUrl,
-      searchInput,
-      sizeChangeFilterFromUrl,
-      encoderFilterFromUrl,
+    await recordResult(
+      updateDownscaleQueueByFilter(
+        action,
+        statusFilterFromUrl,
+        channelFilterFromUrl,
+        searchInput,
+        sizeChangeFilterFromUrl,
+        encoderFilterFromUrl,
+      ),
     );
     setFilterActionPending(null);
     setSelectedIds(new Set());
@@ -272,18 +331,7 @@ const Downscale = () => {
             name="status_filter"
             id="status_filter"
             value={statusFilterFromUrl || 'all'}
-            onChange={event => {
-              const value = event.currentTarget.value;
-              const params = searchParams;
-              if (value !== 'all') {
-                params.set('status', value);
-              } else {
-                params.delete('status');
-              }
-              setSearchParams(params);
-              setSelectedIds(new Set());
-              setShowBulkRejectConfirm(false);
-            }}
+            onChange={event => setFilterParam('status', event.currentTarget.value)}
           >
             <option value="all">all statuses</option>
             <option value="queued">queued</option>
@@ -297,18 +345,7 @@ const Downscale = () => {
               name="channel_filter"
               id="channel_filter"
               value={channelFilterFromUrl || 'all'}
-              onChange={event => {
-                const value = event.currentTarget.value;
-                const params = searchParams;
-                if (value !== 'all') {
-                  params.set('channel', value);
-                } else {
-                  params.delete('channel');
-                }
-                setSearchParams(params);
-                setSelectedIds(new Set());
-                setShowBulkRejectConfirm(false);
-              }}
+              onChange={event => setFilterParam('channel', event.currentTarget.value)}
             >
               <option value="all">all channels</option>
               {channelAggsList.map(channel => {
@@ -327,29 +364,14 @@ const Downscale = () => {
             type="text"
             placeholder="Search..."
             value={searchInput}
-            onChange={event => {
-              setSearchInput(event.target.value);
-              setSelectedIds(new Set());
-              setShowBulkRejectConfirm(false);
-            }}
+            onChange={event => setSearch(event.target.value)}
           />
-          {searchInput && <Button onClick={() => setSearchInput('')}>Clear</Button>}
+          {searchInput && <Button onClick={() => setSearch('')}>Clear</Button>}
           <select
             name="size_change_filter"
             id="size_change_filter"
             value={sizeChangeFilterFromUrl || 'all'}
-            onChange={event => {
-              const value = event.currentTarget.value;
-              const params = searchParams;
-              if (value !== 'all') {
-                params.set('size_change', value);
-              } else {
-                params.delete('size_change');
-              }
-              setSearchParams(params);
-              setSelectedIds(new Set());
-              setShowBulkRejectConfirm(false);
-            }}
+            onChange={event => setFilterParam('size_change', event.currentTarget.value)}
           >
             <option value="all">any size change</option>
             {DOWNSCALE_SIZE_CHANGES.map(({ value, label }) => {
@@ -368,18 +390,7 @@ const Downscale = () => {
               name="encoder_filter"
               id="encoder_filter"
               value={encoderFilterFromUrl || 'all'}
-              onChange={event => {
-                const value = event.currentTarget.value;
-                const params = searchParams;
-                if (value !== 'all') {
-                  params.set('encoder', value);
-                } else {
-                  params.delete('encoder');
-                }
-                setSearchParams(params);
-                setSelectedIds(new Set());
-                setShowBulkRejectConfirm(false);
-              }}
+              onChange={event => setFilterParam('encoder', event.currentTarget.value)}
             >
               <option value="all">all encoders</option>
               {encoderAggsList.map(encoderBucket => (
@@ -505,6 +516,25 @@ const Downscale = () => {
           </div>
         )}
 
+        {actionFailures.length > 0 && (
+          <div className="settings-current">
+            <p>
+              {actionFailures.some(failure => !failure.id)
+                ? 'The action failed:'
+                : `${actionFailures.length} job(s) could not be updated:`}
+            </p>
+            <ul>
+              {actionFailures.map(failure => (
+                <li key={failure.id || failure.error}>
+                  {failure.id && `${failure.id}: `}
+                  {failure.error}
+                </li>
+              ))}
+            </ul>
+            <Button label="Dismiss" onClick={() => setActionFailures([])} />
+          </div>
+        )}
+
         {jobList?.length === 0 && <p>No downscale jobs.</p>}
       </div>
 
@@ -517,8 +547,12 @@ const Downscale = () => {
                   job={job}
                   isSelected={selectedIds.has(job.id)}
                   onToggle={toggleSelected}
-                  setRefresh={refreshQueue}
-                  progress={progressByTaskId[job.task_id]}
+                  onAction={runAction}
+                  progress={
+                    (job.task_id ? progressByTaskId[job.task_id] : undefined) ??
+                    job.progress ??
+                    undefined
+                  }
                 />
               </Fragment>
             );

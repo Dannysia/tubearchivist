@@ -4,7 +4,7 @@ import Routes from '../configuration/routes/RouteList';
 import Button from './Button';
 import VideoThumbnail from './VideoThumbail';
 import humanFileSize from '../functions/humanFileSize';
-import updateDownscaleQueueByIds from '../api/actions/updateDownscaleQueueByIds';
+import { DownscaleBulkAction } from '../api/actions/updateDownscaleQueueByIds';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import { DownscaleJob } from '../pages/Downscale';
@@ -17,7 +17,7 @@ type DownscaleListItemProps = {
   job: DownscaleJob;
   isSelected: boolean;
   onToggle: (id: string) => void;
-  setRefresh: () => void;
+  onAction: (ids: string[], action: DownscaleBulkAction) => Promise<void>;
   progress?: number;
 };
 
@@ -25,7 +25,7 @@ const DownscaleListItem = ({
   job,
   isSelected,
   onToggle,
-  setRefresh,
+  onAction,
   progress,
 }: DownscaleListItemProps) => {
   const { userConfig } = useUserConfigStore();
@@ -142,8 +142,7 @@ const DownscaleListItem = ({
                 <Button
                   label="Accept"
                   onClick={async () => {
-                    await updateDownscaleQueueByIds([job.id], 'accept');
-                    setRefresh();
+                    await onAction([job.id], 'accept');
                   }}
                 />
               </div>
@@ -152,8 +151,7 @@ const DownscaleListItem = ({
                   label="Reject"
                   className="danger-button"
                   onClick={async () => {
-                    await updateDownscaleQueueByIds([job.id], 'reject');
-                    setRefresh();
+                    await onAction([job.id], 'reject');
                   }}
                 />
               </div>
@@ -165,8 +163,7 @@ const DownscaleListItem = ({
               <Button
                 label="Retry"
                 onClick={async () => {
-                  await updateDownscaleQueueByIds([job.id], 'retry');
-                  setRefresh();
+                  await onAction([job.id], 'retry');
                 }}
               />
             </div>
@@ -178,8 +175,7 @@ const DownscaleListItem = ({
                 label="Dismiss"
                 className="danger-button"
                 onClick={async () => {
-                  await updateDownscaleQueueByIds([job.id], 'reject');
-                  setRefresh();
+                  await onAction([job.id], 'reject');
                 }}
               />
             </div>
@@ -191,8 +187,7 @@ const DownscaleListItem = ({
                 label="Cancel"
                 className="danger-button"
                 onClick={async () => {
-                  await updateDownscaleQueueByIds([job.id], 'cancel');
-                  setRefresh();
+                  await onAction([job.id], 'cancel');
                 }}
               />
             </div>

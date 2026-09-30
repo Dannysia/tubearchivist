@@ -288,6 +288,13 @@ yields `(True, "notification sent to 2 url(s)")`, which the task log then
 records as a `notified` event. `test()` checks the same return value.
 
 ### T2.8 `frontend/src/pages/Downscale.tsx` - three separate silent failures
+**Fixed.** (a) every action, per item, selected or by filter, goes
+through one path that shows the per id failures in a dismissible notice;
+(b) progress falls back to the job's own `progress`, the map is only read
+for a real task id, and the list refreshes every 5s while a remote job
+runs; (c) changing a filter or the search resets to the first page, on
+the extraction queue too.
+
 Verified. (a) `:209-239` and `DownscaleListItem.tsx:144-197` never assign
 the return of `updateDownscaleQueueByIds`/`ByFilter`;
 `DownscaleBulkResultType.failed` has no reader anywhere in `frontend/src`,

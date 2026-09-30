@@ -93,6 +93,7 @@ const Extraction = () => {
     } else {
       params.delete(key);
     }
+    params.delete('page');
     setSearchParams(params);
   };
 
