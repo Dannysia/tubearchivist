@@ -161,7 +161,7 @@ class ImportFolderScanner:
             else:
                 current_video[key] = file_path
 
-        if current_video.get("media"):
+        if last_base:
             print(f"manual import: {current_video}")
             self.to_import.append(current_video)
 

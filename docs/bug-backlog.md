@@ -468,7 +468,7 @@ but a superseded answer is dropped.
   extensions (a test blesses `.MP4`), but `_convert_video` compares
   `ext == ".mp4"` case-sensitively, so a correct mp4 is fully re-encoded and
   the original deleted. `.MKV` misses `_dump_thumb`'s branch.
-- `appsettings/src/manual.py:231-239` - the orphan-sidecar report misses the
+- **Fixed.** `appsettings/src/manual.py:231-239` - the orphan-sidecar report misses the
   last group: groups finished inside the loop are appended unconditionally,
   the final one only `if current_video.get("media")`. Staging a lone
   `.info.json` yields a "successful" run that imported nothing.
