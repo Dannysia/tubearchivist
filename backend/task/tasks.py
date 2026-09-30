@@ -15,7 +15,7 @@ from appsettings.src.reindex import Reindex, ReindexManual, ReindexPopulate
 from celery import Task, shared_task
 from celery.exceptions import Retry
 from channel.src.index import ChannelVideoTypeDelete, YoutubeChannel
-from common.src.log import prune_logs
+from common.src.log import FALLBACK_RETENTION_DAYS, prune_logs
 from common.src.ta_redis import RedisArchivist
 from common.src.urlparser import ParsedURLType, Parser
 from download.src.extraction_queue import ExtractionQueue
@@ -451,7 +451,10 @@ def downscale_reap_leases():
 
 @shared_task(name="log_cleanup", bind=True, base=BaseTask)
 def log_cleanup(self):
-    days = AppConfig().config["application"]["log_retention_days"]
+    days = (
+        AppConfig().config["application"]["log_retention_days"]
+        or FALLBACK_RETENTION_DAYS
+    )
     deleted = prune_logs(days)
     if deleted:
         return f"Pruned {deleted} log entries older than {days} days."

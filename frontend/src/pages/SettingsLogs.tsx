@@ -89,7 +89,7 @@ const SettingsLogs = () => {
   const taskOptions = logData?.tasks ?? [];
 
   const retentionNote = appSettingsConfig
-    ? `Entries older than ${appSettingsConfig.application.log_retention_days} days are pruned once a day.`
+    ? `Entries older than ${appSettingsConfig.application.log_retention_days ?? 7} days are pruned once a day.`
     : null;
 
   return (

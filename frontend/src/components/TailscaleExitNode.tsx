@@ -38,7 +38,7 @@ const errorMessage = (err: unknown, fallback: string) => (err as ApiError)?.mess
 
 type TailscaleExitNodeProps = {
   autoRotate: boolean;
-  maxRotates: number;
+  maxRotates: number | null;
   updateCallback: (name: string, value: string | boolean | number | null) => void;
 };
 

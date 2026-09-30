@@ -48,7 +48,7 @@ class DownloadsConfigType(TypedDict):
     integrate_ryd: bool
     integrate_sponsorblock: bool
     auto_rotate_exit_node: bool
-    max_exit_node_rotates: int
+    max_exit_node_rotates: int | None
 
 
 class ApplicationConfigType(TypedDict):
@@ -67,7 +67,7 @@ class ApplicationConfigType(TypedDict):
     ]
     downscale_crf: int | None
     downscale_preset: str | None
-    log_retention_days: int
+    log_retention_days: int | None
 
 
 class AppConfigType(TypedDict):

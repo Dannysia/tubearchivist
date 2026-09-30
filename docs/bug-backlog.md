@@ -407,6 +407,9 @@ any 403 as a dead session: `logOut(); window.location.href = Routes.Login`.
 `ChannelOverview.tsx:162` wraps the identical pair in `isAdmin &&`.
 
 ### T4.2 Reset on two settings can only ever fail
+**Fixed.** Both accept null, which their readers already treat as the
+default; the log cleanup reports the retention it actually used.
+
 Verified. Upstream `InputConfig.tsx:120` offers reset whenever the value is
 not null and posts `null`. `log_retention_days`
 (`appsettings/serializers.py:116`) and `max_exit_node_rotates` (`:71`) are

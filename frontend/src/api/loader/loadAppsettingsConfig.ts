@@ -29,7 +29,7 @@ export type AppSettingsConfigType = {
     integrate_ryd: boolean;
     integrate_sponsorblock: boolean;
     auto_rotate_exit_node: boolean;
-    max_exit_node_rotates: number;
+    max_exit_node_rotates: number | null;
   };
   application: {
     enable_snapshot: boolean;
@@ -38,7 +38,7 @@ export type AppSettingsConfigType = {
     downscale_encoder: 'h264' | 'h264_vaapi' | 'h265' | 'h265_vaapi' | 'av1' | 'av1_vaapi';
     downscale_crf: number;
     downscale_preset: string | null;
-    log_retention_days: number;
+    log_retention_days: number | null;
   };
 };
 

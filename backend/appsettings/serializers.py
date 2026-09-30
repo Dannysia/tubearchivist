@@ -68,7 +68,9 @@ class AppConfigDownloadsSerializer(
     integrate_ryd = serializers.BooleanField()
     integrate_sponsorblock = serializers.BooleanField()
     auto_rotate_exit_node = serializers.BooleanField()
-    max_exit_node_rotates = serializers.IntegerField(min_value=1, max_value=25)
+    max_exit_node_rotates = serializers.IntegerField(
+        min_value=1, max_value=25, allow_null=True
+    )
 
     def validate_sleep_interval(self, value):
         """0 and null both mean off"""
@@ -107,7 +109,9 @@ class AppConfigAppSerializer(
     downscale_preset = serializers.ChoiceField(
         choices=PRESET_CHOICES, allow_null=True
     )
-    log_retention_days = serializers.IntegerField(min_value=1, max_value=365)
+    log_retention_days = serializers.IntegerField(
+        min_value=1, max_value=365, allow_null=True
+    )
 
 
 class AppConfigSerializer(ValidateUnknownFieldsMixin, serializers.Serializer):
