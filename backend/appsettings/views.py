@@ -465,9 +465,18 @@ class ImportFileView(ApiBaseView):
             error = ErrorResponseSerializer({"error": message})
             return Response(error.data, status=409)
 
+        already_staged = {
+            name for name in names if ImportFolderFiles.file_path(name)
+        }
+        written: list[dict] = []
         try:
-            written = [ImportFolderFiles.save(upload) for upload in uploads]
-        except ValueError as err:
+            for upload in uploads:
+                written.append(ImportFolderFiles.save(upload))
+        except (ValueError, OSError) as err:
+            for staged in written:
+                if staged["filename"] not in already_staged:
+                    ImportFolderFiles.delete_file(staged["filename"])
+
             print(f"import upload failed: {err}")
             error = ErrorResponseSerializer({"error": str(err)})
             return Response(error.data, status=400)

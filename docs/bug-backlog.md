@@ -472,7 +472,7 @@ but a superseded answer is dropped.
   last group: groups finished inside the loop are appended unconditionally,
   the final one only `if current_video.get("media")`. Staging a lone
   `.info.json` yields a "successful" run that imported nothing.
-- `appsettings/views.py:478-484` - a disk-full multi-file upload raises
+- **Fixed.** `appsettings/views.py:478-484` - a disk-full multi-file upload raises
   `OSError`, the view catches only `ValueError` -> 500 and a half-staged
   batch. The sibling metadata endpoint catches `(ValueError, OSError)`.
 - `download/src/queue.py:240-242` - the new `extraction_failed` tracking
