@@ -499,7 +499,7 @@ but a superseded answer is dropped.
   discarded. Low severity at current scale.
 - **Fixed** (with T1.6's per-entry re-read). `download/src/extraction_queue.py:116` - `to_skip` is re-copied per entry,
   so a video reachable from two entries is fully re-extracted.
-- `task/tasks.py:145-147` - "Found N channels/playlists" counts one entry
+- **Fixed** (worded as entries). `task/tasks.py:145-147` - "Found N channels/playlists" counts one entry
   per channel per tab.
 - **Fixed.** `download/src/extraction_queue.py` `run_queue` warms three full-index
   scans, including all of `ta_video` with no `_source` filter, before

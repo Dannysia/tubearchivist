@@ -127,7 +127,8 @@ def update_subscribed(self):
     if added:
         process_extraction_queue.delay()
         return (
-            f"Found {added} channels/playlists to add to the extraction queue."
+            f"Added {added} extraction queue entries for subscribed channel "
+            "tabs and playlists."
         )
 
     return None
