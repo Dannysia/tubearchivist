@@ -128,7 +128,10 @@ class PendingList(PendingIndex):
         self.missing_videos: list[dict] = []
         self.added = 0
         self.extraction_failed = False
+        self.extraction_error: str | None = None
+        self.videos_attempted = 0
         self.videos_failed_count = 0
+        self.failed_videos: list[dict] = []
 
     def parse_url_list(self, status="pending") -> int:
         """extract youtube ids from list"""
@@ -143,7 +146,9 @@ class PendingList(PendingIndex):
             if self.task:
                 self._notify(idx, total)
 
+            attempted, failed = self.videos_attempted, self.videos_failed_count
             self._process_entry(entry, idx, total)
+            self._log_video_failures(attempted, failed)
 
             if self.missing_videos:
                 self.added += self.add_to_pending(status)
@@ -156,6 +161,12 @@ class PendingList(PendingIndex):
                 break
 
         return self.added
+
+    def _log_video_failures(self, attempted_before, failed_before) -> None:
+        attempted = self.videos_attempted - attempted_before
+        failed = self.videos_failed_count - failed_before
+        if failed:
+            print(f"{failed} of {attempted} videos could not be extracted")
 
     def _wait_for_next(self, idx: int, total: int) -> bool:
         if not self.task or idx == total:
@@ -372,41 +383,40 @@ class PendingList(PendingIndex):
         finally:
             self._pace(notify)
 
+    def _video_failed(self, url, vid_type, error: str, track_failure) -> None:
+        self.videos_failed_count += 1
+        if track_failure:
+            self.extraction_failed = True
+            self.extraction_error = error
+        else:
+            self.failed_videos.append(
+                {"url": url, "vid_type": vid_type, "error": error}
+            )
+
+        if self.task:
+            self.task.send_progress(
+                message_lines=["Video extraction failed.", error],
+                level="error",
+            )
+
     def _extract_video(
         self, url: str, vid_type, track_failure: bool = True
     ) -> dict | None:
+        self.videos_attempted += 1
         video = YoutubeVideo(youtube_id=url)
         video.get_from_youtube()
 
         if not video.youtube_meta:
             print(f"{url}: video metadata extraction failed, skipping")
-            self.videos_failed_count += 1
-            if track_failure:
-                self.extraction_failed = True
-            if self.task:
-                self.task.send_progress(
-                    message_lines=[
-                        "Video extraction failed.",
-                        f"{video.error}",
-                    ],
-                    level="error",
-                )
+            error = str(video.error or "metadata extraction failed")
+            self._video_failed(url, vid_type, error, track_failure)
             return None
 
         expected_keys = {"id", "title", "channel", "channel_id"}
         if not set(video.youtube_meta.keys()).issuperset(expected_keys):
             print(f"{url}: video metadata extraction incomplete, skipping")
-            self.videos_failed_count += 1
-            if track_failure:
-                self.extraction_failed = True
-            if self.task:
-                self.task.send_progress(
-                    message_lines=[
-                        "Video extraction failed.",
-                        "Metadata extraction incomplete.",
-                    ],
-                    level="error",
-                )
+            error = "Metadata extraction incomplete."
+            self._video_failed(url, vid_type, error, track_failure)
             return None
 
         video.youtube_meta["vid_type"] = vid_type
@@ -571,7 +581,12 @@ class PendingList(PendingIndex):
         if status_code not in [200, 201]:
             print(response)
             self._notify_fail(status_code)
-        elif response.get("errors", False):
+        elif not response.get("errors", False):
+            self._notify_done(total)
+            self._clear_failed_extractions(
+                [i["youtube_id"] for i in self.missing_videos]
+            )
+        else:
             failed_video_ids = []
             for item in response.get("items", []):
                 action, result = next(iter(item.items()))
@@ -580,10 +595,26 @@ class PendingList(PendingIndex):
 
             failed_video_ids_str = ",".join(failed_video_ids)
             self._notify_fail(status_code, failed_video_ids_str)
-        else:
-            self._notify_done(total)
 
         return len(self.missing_videos)
+
+    @staticmethod
+    def _clear_failed_extractions(youtube_ids: list[str]) -> None:
+        data = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"item_type": {"value": "video"}}},
+                        {"term": {"status": {"value": "failed"}}},
+                        {"terms": {"youtube_id": youtube_ids}},
+                    ]
+                }
+            }
+        }
+        path = "ta_extraction/_delete_by_query?refresh=true"
+        _, status_code = ElasticWrap(path).post(data)
+        if status_code != 200:
+            print(f"failed extraction entries not cleared, es: {status_code}")
 
     def _notify_add(
         self,

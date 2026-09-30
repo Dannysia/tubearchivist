@@ -31,10 +31,10 @@ def run(monkeypatch):
         lambda **kwargs: started.append(kwargs),
     )
 
-    def with_result(result):
+    def with_result(result, videos_failed=0):
         class Queue:
             def __init__(self, task=None):
-                pass
+                self.videos_failed = videos_failed
 
             def run_queue(self):
                 return result
@@ -57,3 +57,12 @@ def test_a_clean_run_reports_what_it_resolved(run):
 
     assert started == []
     assert message == "resolved 3 extraction item(s)."
+
+
+def test_videos_that_could_not_be_extracted_are_reported(run):
+    message, _ = run((1, 0, False), videos_failed=3)
+
+    assert message == (
+        "resolved 1 extraction item(s), 3 videos could not be extracted, "
+        "listed as failed in the extraction queue."
+    )

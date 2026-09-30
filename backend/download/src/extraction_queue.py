@@ -18,6 +18,7 @@ class ExtractionQueue:
 
     def __init__(self, task=None):
         self.task = task
+        self.videos_failed = 0
 
     def add_to_queue(
         self,
@@ -31,26 +32,71 @@ class ExtractionQueue:
         if not entries:
             return 0
 
-        bulk_list = []
-        for entry in entries:
-            vid_type = entry.get("vid_type")
-            if isinstance(vid_type, VideoTypeEnum):
-                vid_type = vid_type.value
+        docs = [
+            self._build_doc(entry, auto_start, flat, force, target_status)
+            for entry in entries
+        ]
+        self._write(docs)
 
-            doc = {
-                "youtube_id": entry["url"],
-                "item_type": entry["type"],
-                "vid_type": vid_type,
-                "limit": entry.get("limit"),
-                "status": "pending",
-                "target_status": target_status,
-                "auto_start": auto_start,
-                "flat": flat,
-                "force": force,
-                "timestamp": int(datetime.now().timestamp()),
-            }
+        return len(entries)
+
+    def record_failed_videos(self, failed: list[dict], parent: dict) -> int:
+        if not failed:
+            return 0
+
+        docs = [
+            self._build_doc(
+                {"type": "video", "url": i["url"], "vid_type": i["vid_type"]},
+                parent["auto_start"],
+                parent["flat"],
+                parent["force"],
+                parent.get("target_status", "pending"),
+                status="failed",
+                message=i["error"],
+            )
+            for i in failed
+        ]
+        try:
+            self._write(docs)
+        except QueueWriteError as err:
+            print(f"[extraction] failed videos not recorded, {err}")
+            return 0
+
+        return len(docs)
+
+    def _build_doc(
+        self,
+        entry,
+        auto_start,
+        flat,
+        force,
+        target_status,
+        status="pending",
+        message=None,
+    ) -> dict:
+        vid_type = entry.get("vid_type")
+        if isinstance(vid_type, VideoTypeEnum):
+            vid_type = vid_type.value
+
+        return {
+            "youtube_id": entry["url"],
+            "item_type": entry["type"],
+            "vid_type": vid_type,
+            "limit": entry.get("limit"),
+            "status": status,
+            "message": message,
+            "target_status": target_status,
+            "auto_start": auto_start,
+            "flat": flat,
+            "force": force,
+            "timestamp": int(datetime.now().timestamp()),
+        }
+
+    def _write(self, docs: list[dict]) -> None:
+        bulk_list = []
+        for doc in docs:
             extraction_id = self._build_id(
-                entry["type"], entry["url"], vid_type
+                doc["item_type"], doc["youtube_id"], doc["vid_type"]
             )
             action = {
                 "index": {"_index": "ta_extraction", "_id": extraction_id}
@@ -65,11 +111,9 @@ class ExtractionQueue:
         )
         if status_code not in [200, 201] or response.get("errors"):
             raise QueueWriteError(
-                f"ta_extraction: adding {len(entries)} entries failed, "
+                f"ta_extraction: adding {len(docs)} entries failed, "
                 f"es answered {status_code}"
             )
-
-        return len(entries)
 
     @staticmethod
     def _build_id(item_type: str, youtube_id: str, vid_type) -> str:
@@ -123,6 +167,9 @@ class ExtractionQueue:
                 handler.parse_url_list(
                     status=entry_doc.get("target_status", "pending")
                 )
+                self.videos_failed += self.record_failed_videos(
+                    handler.failed_videos, entry_doc
+                )
                 if self._stopped():
                     self._write_state(interact.mark_pending)
                     break
@@ -130,7 +177,9 @@ class ExtractionQueue:
                 if handler.extraction_failed:
                     failed += 1
                     self._write_state(
-                        interact.mark_failed, "extraction failed, see logs"
+                        interact.mark_failed,
+                        handler.extraction_error
+                        or "extraction failed, see logs",
                     )
                 else:
                     resolved += 1

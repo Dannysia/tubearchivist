@@ -40,6 +40,9 @@ class FakePaginate:
 
 class FakePending(PendingIndex):
     extraction_failed = False
+    extraction_error = None
+    videos_failed_count = 0
+    failed_videos: list = []
     seen: list = []
     on_parse = None
 

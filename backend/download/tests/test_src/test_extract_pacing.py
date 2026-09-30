@@ -115,6 +115,9 @@ class TestParseUrlListTail:
             added=0,
             _notify=lambda *a, **kw: None,
             _process_entry=lambda *a: None,
+            videos_attempted=0,
+            videos_failed_count=0,
+            _log_video_failures=lambda *a: None,
         )
         handler._wait_for_next = lambda *a: PendingList._wait_for_next(
             handler, *a

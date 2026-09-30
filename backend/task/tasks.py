@@ -187,16 +187,20 @@ def process_extraction_queue(self):
     if any_auto_start:
         download_pending.delay(auto_only=True)
 
+    notes = []
     if failed:
-        return (
-            f"resolved {resolved} extraction item(s), {failed} failed: "
-            "retry them from the extraction queue."
+        notes.append(f"{failed} failed: retry them from the extraction queue")
+    if resolver.videos_failed:
+        notes.append(
+            f"{resolver.videos_failed} videos could not be extracted, listed "
+            "as failed in the extraction queue"
         )
 
-    if resolved:
-        return f"resolved {resolved} extraction item(s)."
+    if not resolved and not notes:
+        return None
 
-    return None
+    notes_str = "".join(f", {note}" for note in notes)
+    return f"resolved {resolved} extraction item(s){notes_str}."
 
 
 @shared_task(name="extract_download", bind=True, base=BaseTask)

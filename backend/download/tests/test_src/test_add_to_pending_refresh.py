@@ -24,6 +24,7 @@ def test_the_bulk_write_refreshes(monkeypatch):
         _notify_start=lambda total: None,
         _notify_done=lambda total: None,
         _notify_fail=lambda *a: None,
+        _clear_failed_extractions=lambda ids: None,
     )
 
     PendingList.add_to_pending(handler)

@@ -483,7 +483,7 @@ but a superseded answer is dropped.
   whenever `_bulk` answers 200, even when individual bulk items errored, so
   the reported add count can overstate what was indexed. Same T1 family as
   T1.4b - a `_bulk` 200 is not an all-items-succeeded signal.
-- `download/src/queue.py:128,385,401` - `videos_failed_count` is incremented
+- **Fixed.** `download/src/queue.py:128,385,401` - `videos_failed_count` is incremented
   and never read; with `track_failure=False` for channel/playlist videos it
   is the only record, so 50/50 videos failing still reports "resolved 1".
 - **Fixed.** `task/src/config_schedule.py:66-67` - no task-name validation. An unknown

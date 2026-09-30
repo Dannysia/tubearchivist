@@ -508,10 +508,15 @@ class TestFailedRequestsStillPace:
         handler = SimpleNamespace(
             config=CONFIG,
             task=task,
+            videos_attempted=0,
             videos_failed_count=0,
             extraction_failed=False,
+            failed_videos=[],
         )
         handler._pace = lambda notify: PendingList._pace(handler, notify)
+        handler._video_failed = lambda *a: PendingList._video_failed(
+            handler, *a
+        )
         handler._extract_video = lambda *a: PendingList._extract_video(
             handler, *a
         )
