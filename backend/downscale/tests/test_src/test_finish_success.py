@@ -1,8 +1,3 @@
-"""
-the ffmpeg argv is the only unambiguous provenance record once encodes
-can come from different encoders on different hosts
-"""
-
 from unittest.mock import patch
 
 from downscale.src.downscale import DownscaleRunner

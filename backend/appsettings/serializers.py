@@ -71,12 +71,7 @@ class AppConfigDownloadsSerializer(
     max_exit_node_rotates = serializers.IntegerField(min_value=1, max_value=25)
 
     def validate_sleep_interval(self, value):
-        """0 and null both mean off, and both stay allowed
-
-        Anything between is not a real setting: at 1 the randomised
-        window collapses to zero, and 2 to 4 are too narrow to be worth
-        the option. Rejecting 0 would break stored configs using it.
-        """
+        """0 and null both mean off"""
         if value and value < MIN_SLEEP_INTERVAL:
             raise serializers.ValidationError(
                 f"use 0 or leave empty to disable pacing, "
@@ -168,15 +163,9 @@ class ImportFileUploadSerializer(serializers.Serializer):
 
 
 class ImportMetadataSerializer(serializers.Serializer):
-    """serialize a hand written info.json for manual import
-
-    the fields the import path actually reads - YoutubeVideo
-    .process_youtube_meta and YoutubeChannel._video_fallback - not the
-    whole yt-dlp schema
-    """
+    """serialize a hand written info.json for manual import"""
 
     video_id = serializers.RegexField(f"^{VIDEO_ID_PATTERN}$")
-    # becomes a directory name, so the pattern is strict
     channel_id = serializers.RegexField(f"^{CHANNEL_ID_PATTERN}$")
     channel_name = serializers.CharField(max_length=255)
     title = serializers.CharField(max_length=500)
@@ -190,26 +179,12 @@ class ImportMetadataSerializer(serializers.Serializer):
 
 
 class ArchiveMetadataSerializer(serializers.Serializer):
-    """serialize metadata recovered from the Internet Archive
-
-    the same field names ImportMetadataSerializer takes, so a lookup
-    drops straight into the form that posts back to it. Everything but
-    the title is blank or null when no capture carried it - the wayback
-    machine rarely has the whole picture.
-
-    An unknown count is null here and never manual.UNKNOWN_COUNT: that
-    sentinel belongs to the written info.json and the index, and this
-    is json, which has a real null. Posting one back is not possible
-    either way - ImportMetadataSerializer takes no null and no negative,
-    and the form turns a null into an omitted field, which is what
-    build_info_json writes as UNKNOWN_COUNT
-    """
+    """serialize metadata recovered from the Internet Archive"""
 
     video_id = serializers.CharField()
     title = serializers.CharField()
     channel_id = serializers.CharField(allow_blank=True)
     channel_name = serializers.CharField(allow_blank=True)
-    # iso, or blank. not a DateField: blank is a valid answer here
     upload_date = serializers.CharField(allow_blank=True)
     description = serializers.CharField(allow_blank=True)
     thumbnail = serializers.CharField(allow_blank=True)
@@ -268,11 +243,7 @@ class TailscaleNodeSerializer(serializers.Serializer):
 
 
 class TailscaleStateSerializer(serializers.Serializer):
-    """serialize exit node state
-
-    available false is the whole when-present story: there is no
-    tailscaled socket in this container, so the panel hides itself
-    """
+    """serialize exit node state"""
 
     available = serializers.BooleanField()
     routes_all_traffic = serializers.BooleanField()
@@ -281,21 +252,14 @@ class TailscaleStateSerializer(serializers.Serializer):
 
 
 class TailscaleUpdateSerializer(serializers.Serializer):
-    """serialize an exit node change
-
-    node_id belongs to set, rotate and clear take nothing
-    """
+    """serialize an exit node change"""
 
     action = serializers.ChoiceField(choices=["set", "rotate", "clear"])
     node_id = serializers.CharField(required=False)
 
 
 class TailscaleEgressSerializer(serializers.Serializer):
-    """serialize the address the outside world sees
-
-    is_mullvad null means the check fell back to a plain ip echo, which
-    cannot tell whether the traffic left through an exit node
-    """
+    """serialize the address the outside world sees"""
 
     ip = serializers.CharField(allow_null=True)
     country = serializers.CharField(allow_null=True)

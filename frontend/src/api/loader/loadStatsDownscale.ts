@@ -16,22 +16,19 @@ export type DownscaleTransitionType = {
 
 export type DownscaleTransitionsType = {
   transitions: DownscaleTransitionType[];
-  // downscaled videos outside the top N pairs
   other_count: number;
 };
 
 export type DownscaleSavedBandType = {
   from: number;
-  // null on the open topped band, which has no ceiling to render
+  // null on the top band, which has no ceiling
   to: number | null;
   doc_count: number;
 };
 
 export type DownscaleSavedBandsType = {
   bands: DownscaleSavedBandType[];
-  // downscaled videos whose encode came out larger
   grew: number;
-  // downscaled videos no band could place, e.g. a missing original size
   unknown: number;
 };
 

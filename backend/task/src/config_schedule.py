@@ -15,15 +15,6 @@ from task.src.task_config import TASK_CONFIG
 def orphaned_schedules(
     scheduled: Iterable[str], known: Iterable[str]
 ) -> list[str]:
-    """
-    schedule names with nothing behind them any more
-
-    Compared against TASK_CONFIG rather than celery's own task registry:
-    that registry is populated as a side effect of importing task.tasks
-    and reads as empty until something does, so a caller that imported it
-    only indirectly would see every task as unregistered. An empty known
-    set is refused below rather than taken as licence to delete.
-    """
     known_names = set(known)
     if not known_names:
         return []
@@ -44,10 +35,6 @@ class ScheduleBuilder:
         "downscale_reap_leases": 1,
         "log_cleanup": 24,
     }
-    # tasks not listed here default to hourly. update_subscribed only
-    # checks which subscriptions are due, so it is safe far more often
-    # than a full rescan; downscale_reap_leases has to beat the 60s lease
-    # or a dead worker's job hangs in running for up to an hour.
     UNITS = {
         "update_subscribed": IntervalSchedule.MINUTES,
         "downscale_reap_leases": IntervalSchedule.MINUTES,

@@ -17,9 +17,7 @@ export const ENCODER_LABELS: Record<string, string> = {
   av1_vaapi: 'AV1 (Hardware - VAAPI)',
 };
 
-// same downscale_crf value drives a different ffmpeg mechanism per encoder:
-// real CRF for software, CQP's -qp for h264/h265 hardware, ICQ's
-// -global_quality for AV1 hardware (av1_vaapi has no -qp support)
+// downscale_crf is CRF, CQP's -qp or ICQ's -global_quality per encoder
 export const QUALITY_LABELS: Record<string, string> = {
   h264: 'CRF',
   h265: 'CRF',
@@ -29,11 +27,8 @@ export const QUALITY_LABELS: Record<string, string> = {
   av1_vaapi: 'ICQ',
 };
 
-// remote workers only: a worker reports its own encoder string, never TA's
-// internal aliases, and both naming conventions appear because the string
-// depends on the tool - ffmpeg suffixes it (av1_nvenc, and "hevc" rather than
-// "h265"), HandBrake prefixes it (nvenc_av1). Kept out of ENCODER_LABELS so
-// they are never offered as local options: the TA host has no NVENC hardware.
+// remote workers report their own encoder string: ffmpeg suffixes it
+// (av1_nvenc), HandBrake prefixes it (nvenc_av1)
 export const NVENC_ENCODER_LABELS: Record<string, string> = {
   h264_nvenc: 'H.264 (Hardware - NVENC)',
   hevc_nvenc: 'H.265 (Hardware - NVENC)',

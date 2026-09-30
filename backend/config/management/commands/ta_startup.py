@@ -133,12 +133,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("    no files found"))
 
     def _clear_downscale_leftovers(self):
-        """
-        the celery worker for this container is not started until after
-        this command finishes, so a job still queued or running now can
-        only be a leftover, never one in progress. Jobs already marked
-        failed are left alone for manual review/retry.
-        """
         self.stdout.write("[4b] resume interrupted downscale jobs")
         self._backfill_downscale_worker_fields()
 
@@ -179,14 +173,6 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("    no files found"))
 
     def _backfill_downscale_worker_fields(self) -> None:
-        """
-        add the remote-worker fields to any downscale queue doc that
-        predates them. get_interrupted/requeue_interrupted and
-        count_running all key off worker=="" to tell a local job from a
-        remote one, so a doc missing the field entirely is invisible to
-        the startup sweep and to the concurrency counter, and the lease
-        reaper only looks at worker != "". Has to run before the sweep.
-        """
         self._run_migration(
             index_name="ta_downscale",
             desc="add remote-worker fields to downscale queue docs",
@@ -271,16 +257,6 @@ class Command(BaseCommand):
         )
 
     def _clear_orphaned_schedules(self) -> None:
-        """delete schedules whose task no longer exists
-
-        The db lives on the cache volume, so a CustomPeriodicTask row
-        outlives the code that registered it and beat keeps dispatching
-        something no worker can run - discarded, but with a traceback at
-        ERROR every time the schedule comes round. Deleted rather than
-        disabled because nothing else in TA reads `enabled`, so a
-        disabled row would linger in the scheduling page never running
-        with no way to tell why.
-        """
         scheduled = CustomPeriodicTask.objects.values_list("name", flat=True)
         orphaned = orphaned_schedules(scheduled, TASK_CONFIG)
         if not orphaned:
@@ -297,12 +273,9 @@ class Command(BaseCommand):
     def _mig_update_subscribed_to_minutes(
         self, builder: ScheduleBuilder
     ) -> None:
-        """an hours-based schedule is reset to the default cadence, since
-        the old number does not mean the same thing in minutes"""
         task_name = "update_subscribed"
         existing = CustomPeriodicTask.objects.filter(name=task_name).first()
         if not existing:
-            # opt-in schedule, nothing to migrate until the user sets one
             return
 
         if (

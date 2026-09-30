@@ -9,7 +9,6 @@ from downscale.src.queue_interact import DownscaleInteract
 
 
 def a_video(youtube_id, channel_id, height):
-    """shaped like a _get_downscale_candidates hit"""
     return {
         "youtube_id": youtube_id,
         "title": f"title of {youtube_id}",
@@ -37,7 +36,6 @@ def fake_interact(active=()):
         def build_queued_doc(
             youtube_id, video_json_data, current_height, target_height
         ):
-            """only the fields the assertions care about"""
             return {
                 "youtube_id": youtube_id,
                 "title": video_json_data["title"],
@@ -119,7 +117,6 @@ class TestAutoDownscale:
         assert dispatched == []
 
     def test_queues_anything_above_target_however_close(self, monkeypatch):
-        """1440 -> 1080 counts, there is no margin rule"""
         interact, created = fake_interact()
         patch_env(monkeypatch, interact)
         handler, _ = make_handler(
@@ -158,7 +155,6 @@ class TestAutoDownscale:
         assert created == []
 
     def test_dispatches_once_for_a_whole_batch(self, monkeypatch):
-        """dispatch already fills every free slot in one call"""
         interact, created = fake_interact()
         dispatched = patch_env(
             monkeypatch, interact, video_ids=("a", "b", "c")
@@ -194,7 +190,6 @@ class TestAutoDownscale:
         assert by_id == {"a": 1080, "b": 480}
 
     def test_does_nothing_when_no_channel_has_a_target(self, monkeypatch):
-        """don't even hit es"""
         interact, created = fake_interact()
         dispatched = patch_env(monkeypatch, interact)
         handler, seen = make_handler(
@@ -209,7 +204,6 @@ class TestAutoDownscale:
         assert seen == {}
 
     def test_ignores_a_channel_whose_target_is_cleared(self, monkeypatch):
-        """unsetting the field in the ui writes null, not a missing key"""
         interact, created = fake_interact()
         handler, seen = make_handler(
             {"chan1": {"downscale_target_height": None}},
@@ -275,9 +269,6 @@ class TestCandidateQuery:
         assert {"terms": {"channel.channel_id": ["chan1", "chan2"]}} in must
 
     def test_asks_for_every_field_build_queued_doc_reads(self, monkeypatch):
-        """a field build_queued_doc reads and the query does not fetch
-        holes the job doc rather than failing loudly
-        """
         captured = {}
 
         class FakePaginate:
@@ -295,7 +286,6 @@ class TestCandidateQuery:
 
         assert fetched == QUEUE_DOC_SOURCE_FIELDS
 
-        # the real builder, fed only what the query actually fetches
         full = a_video("a", "c1", 2160)
         doc = DownscaleInteract.build_queued_doc(
             youtube_id="a",

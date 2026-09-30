@@ -2,7 +2,6 @@ import formatNumbers from './formatNumbers';
 import humanFileSize from './humanFileSize';
 import { ResolutionBucketType, ResolutionStatsType } from '../api/loader/loadStatsResolution';
 
-// the two tiers that are not a rung of the downscale ladder
 const BELOW_KEY = 'below';
 const UNKNOWN_KEY = 'unknown';
 
@@ -33,7 +32,6 @@ const PANELS: {
   },
 ];
 
-// also covers the endpoint returning no tiers at all
 const ZERO_TIER: ResolutionBucketType = {
   key: '',
   doc_count: 0,
@@ -49,7 +47,6 @@ const tierLabel = (bucket: ResolutionBucketType, smallestTier?: string) => {
   return TIER_NAMES[bucket.key] ?? `${bucket.key}p`;
 };
 
-/** every video is on exactly one line: a 1200p video counts as 1080p */
 const buildResolutionPanels = (buckets: ResolutionStatsType, useSIUnits: boolean) => {
   const smallestTier = buckets.filter(bucket => !isNaN(Number(bucket.key))).at(-1)?.key;
   const populated = buckets.filter(bucket => bucket.doc_count > 0);

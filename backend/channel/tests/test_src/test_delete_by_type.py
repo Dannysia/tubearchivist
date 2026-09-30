@@ -18,7 +18,6 @@ from common.src.index_generic import IndexWriteError
 
 class TestDeleteQuerySerializer:
     def test_type_is_required(self):
-        """no vid_type must fail, never mean 'all'"""
         serializer = ChannelVideoDeleteQuerySerializer(data={})
         assert not serializer.is_valid()
         assert "vid_type" in serializer.errors
@@ -33,7 +32,6 @@ class TestDeleteQuerySerializer:
 
     @pytest.mark.parametrize("vid_type", ["", "all", "unknown", "Shorts"])
     def test_anything_else_fails(self, vid_type):
-        """'unknown' is a real vid_type but not one to bulk delete on"""
         serializer = ChannelVideoDeleteQuerySerializer(
             data={"vid_type": vid_type}
         )
@@ -61,7 +59,6 @@ class TestGetVideoIds:
         must = captured["data"]["query"]["bool"]["must"]
         assert {"term": {"channel.channel_id": {"value": "UC1"}}} in must
         assert {"term": {"vid_type": {"value": "shorts"}}} in must
-        # both terms, or the delete widens to the whole channel
         assert len(must) == 2
 
 
@@ -89,7 +86,6 @@ class TestDelete:
         assert deleted == ["a", "b", "c"]
 
     def test_missing_video_does_not_abort_the_rest(self, monkeypatch):
-        """a video dropped from the index between query and delete"""
         deleted = []
 
         def deleter(youtube_id):
@@ -106,7 +102,6 @@ class TestDelete:
         assert deleted == ["a", "c"]
 
     def test_stop_halts_the_delete(self, monkeypatch):
-        """a partial delete is fine, carrying on after stop is not"""
         deleted = []
 
         def deleter(youtube_id):
@@ -167,8 +162,6 @@ class TestBuildIgnoreDoc:
         assert doc["channel_name"] == "Some Channel"
         assert doc["channel_indexed"] is True
         assert doc["duration"] == "42s"
-        # equality, not presence: a CharField in the serializer's copy
-        # would have turned the epoch into a string
         assert doc["published"] == 1717607899
         assert doc["title"] == "Some Short"
         assert doc["vid_type"] == "shorts"
@@ -183,19 +176,12 @@ class TestBuildIgnoreDoc:
         assert serializer.is_valid(), serializer.errors
 
     def test_a_partial_video_document_is_refused(self):
-        """it writes to ta_download without going through PendingList,
-        so it repeats PendingList's own check: a video with no channel
-        would put an entry in the queue that nothing can render
-        """
         doc = ChannelVideoTypeDelete._build_ignore_doc(
             {**VIDEO_DOC, "channel": {}}
         )
         assert doc is None
 
     def test_a_blank_thumb_url_is_not_a_refusal(self):
-        """the field takes a null but not a blank, and older docs have
-        a blank where they have no thumb
-        """
         doc = ChannelVideoTypeDelete._build_ignore_doc(
             {**VIDEO_DOC, "vid_thumb_url": ""}
         )
@@ -203,7 +189,6 @@ class TestBuildIgnoreDoc:
         assert doc["vid_thumb_url"] is None
 
     def test_missing_duration_does_not_break_it(self):
-        """older docs predate player.duration_str"""
         doc = ChannelVideoTypeDelete._build_ignore_doc(
             {**VIDEO_DOC, "player": {}}
         )
@@ -233,10 +218,6 @@ class TestDeleteWithIgnore:
         monkeypatch.setattr(video_index, "YoutubeVideo", deleter)
 
     def test_a_refused_doc_is_reported_not_just_dropped(self, monkeypatch):
-        """without an ignore entry a subscribed channel downloads it
-        again, and a progress line would not survive to be read - the
-        next loop pass overwrites the one redis key they share
-        """
         broken = {**VIDEO_DOC, "youtube_id": "def", "channel": {}}
         self._patch(monkeypatch, [VIDEO_DOC, broken])
         written = []
@@ -291,7 +272,6 @@ class TestDeleteWithIgnore:
         assert written == []
 
     def test_stopped_run_still_ignores_what_it_deleted(self, monkeypatch):
-        """otherwise a stop leaves videos deleted but downloadable again"""
         written = []
         docs = [
             VIDEO_DOC,
@@ -319,7 +299,6 @@ class TestDeleteWithIgnore:
 
 class TestWriteIgnore:
     def test_bulk_body_keys_on_youtube_id(self, monkeypatch):
-        """same _id as the download queue, so it is an upsert not a dupe"""
         captured = {}
 
         class FakeWrap:

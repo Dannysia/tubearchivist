@@ -24,10 +24,6 @@ class ChannelOverwriteSerializer(
     """serialize channel overwrites"""
 
     download_format = serializers.CharField(required=False, allow_null=True)
-    # youtube encodes each ladder rung separately and starves the low
-    # ones, so a 2160p rung downscaled beats the 1080p rung it ships -
-    # only worth pairing with a download_format that fetches the high
-    # rung. Jobs land in pending_review, never auto-accepted
     downscale_target_height = serializers.ChoiceField(
         choices=DOWNSCALE_LADDER, required=False, allow_null=True
     )
@@ -216,10 +212,7 @@ class ChannelDownscaleSerializer(serializers.Serializer):
 class ChannelVideoDeleteQuerySerializer(serializers.Serializer):
     """serialize query parameters for deleting videos by type"""
 
-    # no default on purpose: a missing or misspelled type has to fail
-    # rather than fall back to deleting everything
     vid_type = serializers.ChoiceField(
         choices=VideoTypeEnum.values_known(), required=True
     )
-    # so a subscribed channel does not download them again on the next scan
     ignore = serializers.BooleanField(required=False, default=False)

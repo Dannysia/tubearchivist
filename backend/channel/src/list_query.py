@@ -5,12 +5,6 @@ from common.src.search_processor import SearchProcess
 
 
 class ChannelListQuery:
-    """get a sorted page of channels with their video stats
-
-    the stat sorts have no field on the channel doc: they come from the
-    video index and are sorted and paginated here, the rest by ES
-    """
-
     path = "ta_channel/_search"
 
     def __init__(
@@ -40,7 +34,6 @@ class ChannelListQuery:
         return {"bool": {"must": must_list}}
 
     def get_page(self, page_from: int, page_size: int) -> tuple[list, int]:
-        """get channels of the page and the total hits"""
         if self.sort_by.is_stat:
             return self._by_stat(page_from, page_size)
 
@@ -66,11 +59,8 @@ class ChannelListQuery:
         return channels, total_hits
 
     def _by_stat(self, page_from: int, page_size: int) -> tuple[list, int]:
-        """sort on the video aggregation, paginate here"""
         all_ids = self._get_all_ids()
         stats = ChannelListAggs().process()
-        # the ids come in name order and sort is stable, so channels
-        # sharing a value, zero included, stay alphabetical
         all_ids.sort(key=self._build_sort_key(stats), reverse=self._reverse)
 
         page_to = page_from + page_size
@@ -85,7 +75,6 @@ class ChannelListQuery:
         return self.order == "desc"
 
     def _get_all_ids(self) -> list[str]:
-        """get every matching channel id, in name order"""
         data = {
             "query": self.query,
             "sort": [{ChannelSortEnum.NAME.value: {"order": "asc"}}],
@@ -104,13 +93,12 @@ class ChannelListQuery:
 
         def sort_key(channel_id: str):
             value = stats.get(channel_id, empty)[field]
-            # dates are null until a channel has videos, sort them lowest
+            # null until the channel has videos
             return "" if value is None else value
 
         return sort_key
 
     def _get_by_ids(self, channel_ids: list[str]) -> list:
-        """get channel docs, restore the requested order"""
         if not channel_ids:
             return []
 

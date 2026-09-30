@@ -25,7 +25,6 @@ function require_compose {
 
 
 function build_id {
-    # -uno so an untracked file does not pin every build to dirty
     local sha dirty
     sha="$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
     dirty=""
@@ -40,7 +39,6 @@ function build_id {
 function build {
     local sha date
     sha="$(build_id)"
-    # build time, not commit time: the sha already pins the code
     date="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
     echo "==> building $IMAGE from $REPO_DIR ($sha, $date)"
@@ -52,7 +50,6 @@ function build {
 
 
 function tag_rollback {
-    # skipped on a first run, when nothing is deployed yet
     if docker image inspect "$IMAGE" >/dev/null 2>&1; then
         echo "==> tagging current $IMAGE as $ROLLBACK"
         docker tag "$IMAGE" "$ROLLBACK"
@@ -63,8 +60,7 @@ function tag_rollback {
 function deploy {
     require_compose
     echo "==> deploying $SERVICE"
-    # --no-deps: otherwise compose notices config drift on elasticsearch
-    # and redis and recreates them alongside the app
+    # --no-deps leaves elasticsearch and redis alone
     docker compose -f "$COMPOSE_DIR/docker-compose.yml" \
         up -d --no-deps "$SERVICE"
 }

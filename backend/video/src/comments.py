@@ -22,7 +22,6 @@ class Comments:
         self.es_path = f"ta_comment/_doc/{youtube_id}"
         self.json_data = False
         self.config = config
-        # only reaches YtWrap, to keep the bot block wait interruptible
         self.task = task
         self.is_activated = False
         self.comments_format = False
@@ -209,7 +208,6 @@ class CommentList:
         RedisQueue(self.COMMENT_QUEUE).add_list(video_ids)
 
     def index(self) -> bool:
-        """run comment index, False when a stop cut it short"""
         queue = RedisQueue(self.COMMENT_QUEUE)
         while True:
             total = queue.max_score()
@@ -231,11 +229,6 @@ class CommentList:
         return True
 
     def _wait_for_next(self, queue, idx: int, total: int) -> bool:
-        """False when the wait was interrupted - stop the loop
-
-        A drained queue has no next video to name, but the wait still
-        happens and still has to be stoppable.
-        """
         if not self.task or not queue.length():
             return countdown_sleep(self.config, self.task)
 

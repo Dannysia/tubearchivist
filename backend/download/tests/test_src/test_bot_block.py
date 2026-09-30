@@ -7,7 +7,6 @@ from download.src import yt_dlp_base
 
 
 def fake_wrap(config=None):
-    """enough of a YtWrap for the unbound method"""
     return SimpleNamespace(
         config=config if config is not None else {"downloads": {}},
         task=None,
@@ -17,7 +16,6 @@ def fake_wrap(config=None):
 
 @pytest.fixture
 def no_sleep(monkeypatch):
-    """the real one waits out a randomised interval"""
     monkeypatch.setattr(
         yt_dlp_base, "countdown_sleep", lambda config, task: True
     )
@@ -39,9 +37,6 @@ class TestOnBotBlock:
         assert seen == [{"downloads": {"auto_rotate_exit_node": True}}]
 
     def test_the_wait_can_see_a_stop_request(self, monkeypatch):
-        """a bot block is the moment a user hits stop, and the wait
-        behind it runs up to 1.5x the interval
-        """
         seen = []
         monkeypatch.setattr(
             yt_dlp_base, "rotate_on_bot_block", lambda config: None
@@ -60,7 +55,6 @@ class TestOnBotBlock:
         assert seen == ["the running task"]
 
     def test_aborts_the_same_when_rotation_is_off(self, monkeypatch, no_sleep):
-        """the silent path, which is every install without tailscale"""
         monkeypatch.setattr(
             yt_dlp_base, "rotate_on_bot_block", lambda config: None
         )
@@ -71,7 +65,6 @@ class TestOnBotBlock:
     def test_keeps_the_original_error_as_the_cause(
         self, monkeypatch, no_sleep
     ):
-        """so the yt-dlp message is not lost behind the rotate"""
         monkeypatch.setattr(
             yt_dlp_base, "rotate_on_bot_block", lambda config: "rotated"
         )
@@ -93,7 +86,5 @@ class TestBotMessages:
         assert any(m in message for m in yt_dlp_base.YtWrap.BOT_MESSAGES)
 
     def test_an_ordinary_failure_is_not_a_bot_block(self):
-        """rotating on every download error would burn the budget on
-        videos that are simply gone"""
         message = "ERROR: [youtube] abc: Video unavailable"
         assert not any(m in message for m in yt_dlp_base.YtWrap.BOT_MESSAGES)

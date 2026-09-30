@@ -49,7 +49,6 @@ class BaseQueueInteract:
         self._check(response, status_code, f"delete {self.doc_id}")
 
     def update(self, **fields) -> None:
-        """partial update, not a replace"""
         path = f"{self.INDEX_NAME}/_update/{self.doc_id}?refresh=true"
         response, status_code = ElasticWrap(path).post({"doc": fields})
         if status_code == 404:
@@ -60,7 +59,6 @@ class BaseQueueInteract:
         self._check(response, status_code, f"update {self.doc_id}")
 
     def _delete_by_query(self, must_list: list[dict]) -> None:
-        """validate must_list before calling"""
         data = {"query": {"bool": {"must": must_list}}}
         path = f"{self.INDEX_NAME}/_delete_by_query?refresh=true"
         response, status_code = ElasticWrap(path).post(data=data)
@@ -72,7 +70,6 @@ class BaseQueueInteract:
         must_not_list: list[dict],
         script_source: str,
     ) -> None:
-        """validate the query before calling"""
         data = {
             "query": {"bool": {"must": must_list, "must_not": must_not_list}},
             "script": {"source": script_source, "lang": "painless"},

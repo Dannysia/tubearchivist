@@ -15,9 +15,6 @@ class TaskItemConfig(TypedDict):
     group: str
     api_start: bool
     api_stop: bool
-    # optional, defaults to api_stop; set it only to split the two: stop
-    # asks the loop to finish the item it is on and leave, kill
-    # terminates the worker wherever it happens to be
     api_kill: NotRequired[bool]
 
 
@@ -53,14 +50,7 @@ CHECK_REINDEX: TaskItemConfig = {
     "title": "Reindex Documents",
     "group": "reindex:run",
     "api_start": False,
-    # stoppable: the run only checks between items, after the current
-    # one is fully indexed and cleared, so a stop never leaves a half
-    # written document, and whatever is queued stays queued in redis
     "api_stop": True,
-    # not killable: the id has already been popped off the queue, and
-    # reindex_single_video deletes the old subtitle files before it
-    # writes the new document, so a kill in that window loses the queue
-    # entry and leaves ES advertising subtitles that are gone from disk
     "api_kill": False,
 }
 
@@ -68,8 +58,6 @@ MANUAL_IMPORT: TaskItemConfig = {
     "title": "Manual video import",
     "group": "setting:import",
     "api_start": False,
-    # process_videos checks between videos, and paced imports are long
-    # enough that being unable to stop one is a real problem
     "api_stop": True,
 }
 
@@ -119,8 +107,6 @@ DELETE_CHANNEL_VIDEOS: TaskItemConfig = {
     "title": "Delete Channel Videos",
     "group": "channel:deletevideos",
     "api_start": False,
-    # deleting a few thousand shorts is one es round trip per video, so
-    # long enough that being unable to stop it is a real problem
     "api_stop": True,
 }
 
@@ -182,10 +168,4 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
 
 
 def get_task_config(task_name: str) -> TaskItemConfig | dict:
-    """the config for a task, empty when nothing registered one
-
-    A task with no entry here is a bug rather than a state to design
-    around, but every read goes through here so a missing entry degrades
-    instead of raising inside a celery callback.
-    """
     return TASK_CONFIG.get(task_name) or {}

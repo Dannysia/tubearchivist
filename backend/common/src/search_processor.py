@@ -19,7 +19,6 @@ class SearchProcess:
         self.response = response
         self.processed = False
         self.position_index = self.get_user_progress(match_video_user_progress)
-        # first match wins: no prefix in here is a prefix of another
         self.processors = (
             ("ta_video", lambda hit: self._process_video(hit["_source"])),
             ("ta_channel", lambda hit: self._process_channel(hit["_source"])),

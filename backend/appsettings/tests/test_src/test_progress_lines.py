@@ -1,8 +1,4 @@
-"""the progress lines the paced loops in appsettings send
-
-countdown_sleep hands back only the countdown line; each loop appends
-it below what it is working on rather than replacing it.
-"""
+"""the progress lines the paced loops in appsettings send"""
 
 # flake8: noqa: E402
 
@@ -98,8 +94,6 @@ class TestManualImportNotify:
 
 
 class TestReindexStopPropagates:
-    """a stop has to leave reindex_all: the next type would hit youtube"""
-
     def test_reindex_type_reports_the_stop(self, monkeypatch):
         from appsettings.src import reindex as reindex_mod
 
@@ -121,8 +115,6 @@ class TestReindexStopPropagates:
         )
 
     def test_reindex_type_stops_popping_the_queue(self, monkeypatch):
-        """a queue of one ends the loop by itself, so it cannot show
-        the break is there; this one never drains"""
         from appsettings.src import reindex as reindex_mod
 
         popped = []
@@ -165,7 +157,6 @@ class TestReindexStopPropagates:
 
         instance = _reindex_instance()
         instance.cookie_is_valid = lambda: True
-        # every type has a full queue, so only the refusal stops it
         instance.reindex_type = (
             lambda name, index_config: started.append(name) or False
         )
@@ -175,11 +166,6 @@ class TestReindexStopPropagates:
 
 
 def _queue_of_one(length=1):
-    """a queue holding one item, then empty
-
-    length is what is left after the item comes off, which decides
-    whether the wait gets counted down.
-    """
     items = iter([("abc", 1), (None, None)])
     return SimpleNamespace(
         key="q",
@@ -190,9 +176,7 @@ def _queue_of_one(length=1):
 
 
 def _reindex_instance():
-    """enough of a Reindex for the loop, no ES or redis"""
     instance = SimpleNamespace(
-        # a task, so the loop takes its narrated path
         task=SimpleNamespace(is_stopped=lambda: False),
         config={"downloads": {"sleep_interval": 10}},
         REINDEX_CONFIG={
@@ -206,7 +190,6 @@ def _reindex_instance():
         reindex_single_video=lambda vid: None,
         _reindex_video_related=lambda video: None,
     )
-    # the real one, so the tests see how the loop actually waits
     instance._wait_for_next = lambda *a: Reindex._wait_for_next(instance, *a)
 
     return instance
@@ -214,11 +197,6 @@ def _reindex_instance():
 
 class TestReindexTrailingWait:
     def test_drained_queue_waits_without_narrating(self, monkeypatch):
-        """otherwise it says 'before next video' with none left
-
-        Still through countdown_sleep with no notify: the wait paces the
-        next index type and has to stay stoppable.
-        """
         from appsettings.src import reindex as reindex_mod
 
         waits = []
@@ -244,7 +222,6 @@ class TestReindexTrailingWait:
     def test_a_stop_in_the_drained_wait_leaves_the_whole_run(
         self, monkeypatch
     ):
-        """the next index type would start its own youtube requests"""
         from appsettings.src import reindex as reindex_mod
 
         monkeypatch.setattr(

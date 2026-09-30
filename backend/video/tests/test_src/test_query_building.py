@@ -74,7 +74,6 @@ def test_parse_downscale():
 
 
 def test_parse_downscale_encoder():
-    """encoder query building, any string the index holds"""
     qb = QueryBuilder(user_id=1, downscale_encoder="h265")
     assert qb.parse_downscale_encoder("h265") == {
         "term": {"downscale.encoder": {"value": "h265"}}
@@ -85,7 +84,6 @@ def test_parse_downscale_encoder():
 
 
 def test_build_query_downscale_false_is_not_skipped():
-    """downscale=false filters, it is not the same as unset"""
     qb = QueryBuilder(user_id=1, downscale=False)
     must_list = qb.build_query()["bool"]["must"]
     assert must_list == [

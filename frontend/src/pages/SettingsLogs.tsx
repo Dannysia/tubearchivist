@@ -86,7 +86,6 @@ const SettingsLogs = () => {
     refresh();
   };
 
-  // aggregated over the whole log, not the visible page
   const taskOptions = logData?.tasks ?? [];
 
   const retentionNote = appSettingsConfig
@@ -185,7 +184,6 @@ const SettingsLogs = () => {
                 />{' '}
                 <Button type="button" label="Refresh" onClick={refresh} />{' '}
                 {showClearConfirm ? (
-                  /* clears the whole log, not only what the filter has in view */
                   <>
                     <Button
                       type="button"

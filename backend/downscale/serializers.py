@@ -17,7 +17,6 @@ class DownscaleTransitionSerializer(serializers.Serializer):
     """serialize the downscale count breakdown"""
 
     transitions = DownscaleTransitionItemSerializer(many=True)
-    # downscaled videos outside the top N pairs
     other_count = serializers.IntegerField()
 
 
@@ -91,11 +90,7 @@ class DownscaleListQuerySerializer(serializers.Serializer):
 
 
 class DownscaleBulkActionSerializer(serializers.Serializer):
-    """
-    serialize bulk accept/reject/retry/cancel request. ids is optional -
-    when omitted, the action applies to everything matching the query
-    filter instead (see DownscaleListQuerySerializer)
-    """
+    """serialize bulk accept/reject/retry/cancel request"""
 
     ids = serializers.ListField(child=serializers.CharField(), required=False)
     action = serializers.ChoiceField(
@@ -201,10 +196,7 @@ class WorkerErrorSerializer(serializers.Serializer):
 
 
 class DownscaleAggBucketSerializer(serializers.Serializer):
-    """
-    serialize a channel bucket - key is a (channel_name, channel_id) pair,
-    the shape multi_terms always returns
-    """
+    """serialize a channel bucket keyed by (channel_name, channel_id)"""
 
     key = serializers.ListField(child=serializers.CharField())
     key_as_string = serializers.CharField()
@@ -220,11 +212,7 @@ class DownscaleAggsSerializer(serializers.Serializer):
 
 
 class DownscaleEncoderAggBucketSerializer(serializers.Serializer):
-    """
-    serialize an encoder bucket - a plain single-field terms agg, so key
-    is just the encoder string itself, unlike the channel bucket's
-    multi_terms pair
-    """
+    """serialize an encoder bucket - a plain single-field terms agg, so key"""
 
     key = serializers.CharField()
     doc_count = serializers.IntegerField()
@@ -239,30 +227,14 @@ class DownscaleEncoderAggsSerializer(serializers.Serializer):
 
 
 class DownscaleSavedAggBucketSerializer(serializers.Serializer):
-    """
-    serialize one savings band - a range agg bucket, keyed by the band
-    name ("larger", or the band's lower edge as a string). The numeric
-    from/to edges ES returns alongside are deliberately not serialized:
-    the frontend matches on key, and `from` cannot be declared as a
-    serializer field name anyway
-    """
+    """serialize one savings band - a range agg bucket, keyed by the band"""
 
     key = serializers.CharField()
     doc_count = serializers.IntegerField()
 
 
 class DownscaleSavedBandSerializer(serializers.Serializer):
-    """
-    serialize one savings band, as from/to percentages and a count. `to`
-    is null on the top band, which has no ceiling - the panels decide
-    how to word that, this only says there is none.
-
-    No declared fields, unusually: `from` is a python keyword, so it
-    cannot be written as a serializer attribute at all. Shaping the
-    output by hand is the way to keep the key named `from` in the API
-    rather than renaming it to something the panels then have to
-    translate back.
-    """
+    """serialize one savings band, as from/to percentages and a count. `to`"""
 
     def to_representation(self, instance):
         return {
@@ -273,33 +245,14 @@ class DownscaleSavedBandSerializer(serializers.Serializer):
 
 
 class DownscaleSavedBandsSerializer(serializers.Serializer):
-    """
-    serialize the savings distribution panel, as the dashboard and the
-    channel about page show it.
-
-    Not to be confused with DownscaleSavedAggsSerializer below, which
-    serves the same bands raw to the queue's size filter dropdown - that
-    one sums them into its overlapping rungs, this one is already the
-    rows to render.
-    """
+    """serialize the savings distribution panel"""
 
     bands = DownscaleSavedBandSerializer(many=True)
-    # downscaled videos whose encode came out larger
     grew = serializers.IntegerField()
-    # downscaled videos no band could place, e.g. an original_size of 0
-    # where media_size was never indexed; reported rather than dropped
-    # so the rows reconcile with the downscaled total
     unknown = serializers.IntegerField()
 
 
 class DownscaleSavedAggsSerializer(serializers.Serializer):
-    """
-    serialize the raw savings band aggregation for the queue's size
-    filter dropdown. Bands are disjoint; the dropdown's rungs overlap,
-    so the frontend sums these rather than reading one band per rung.
-
-    DownscaleSavedBandsSerializer above is the parsed, ready-to-render
-    form of the same bands, used by the savings panels.
-    """
+    """serialize the raw savings band aggregation for the queue's size"""
 
     buckets = DownscaleSavedAggBucketSerializer(many=True)

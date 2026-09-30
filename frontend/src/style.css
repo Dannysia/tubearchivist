@@ -150,7 +150,6 @@ button:disabled:hover {
   cursor: pointer;
   background-color: var(--accent-font-dark);
   color: #ffffff;
-  /* button carries no font rule here, so match the browser default it renders in */
   font-family: Arial, Helvetica, sans-serif;
   font-size: 13.3333px;
 }
@@ -977,7 +976,6 @@ video:-webkit-full-screen {
   width: 100%;
 }
 
-/* direct child only: a nested h3 must stay inline */
 .info-box-item > h3 {
   width: 100%;
 }
@@ -1463,14 +1461,12 @@ video:-webkit-full-screen {
 
 .import-file-list {
   padding: 10px 0;
-  /* 200 videos is 400+ rows, keep the rest of the page reachable */
   max-height: 400px;
   overflow-y: auto;
 }
 
 .import-file-row {
   display: grid;
-  /* right third reserved for the video id, then the row's buttons */
   grid-template-columns: 1fr 100px 33% min-content;
   align-items: center;
   gap: 10px;
@@ -1501,7 +1497,6 @@ video:-webkit-full-screen {
   padding: 20px;
   width: 600px;
   max-width: 100%;
-  /* the form is taller than a short viewport, keep the buttons reachable */
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -1558,7 +1553,6 @@ video:-webkit-full-screen {
   flex-direction: column;
   align-items: flex-start;
   gap: 5px;
-  /* a common name can match a lot of channels */
   max-height: 150px;
   overflow-y: auto;
 }
@@ -1765,7 +1759,6 @@ video:-webkit-full-screen {
     padding: 5px 0;
   }
   .import-file-row {
-    /* no room for a third column on narrow screens */
     display: block;
     padding: 10px 0;
   }

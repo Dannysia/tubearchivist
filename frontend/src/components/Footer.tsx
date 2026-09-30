@@ -20,8 +20,6 @@ const Footer = () => {
         <span>TubeArchivist </span>
         <span>{version} </span>
         {buildSha && (
-          // the visible date is in the viewer's timezone; the title keeps the
-          // canonical instant, labelled UTC so it cannot be read as local
           <span title={buildDate ? `built ${buildDate} (UTC)` : undefined}>
             · {buildSha}
             {buildDate && ` · ${formatDate(buildDate, true)}`}{' '}

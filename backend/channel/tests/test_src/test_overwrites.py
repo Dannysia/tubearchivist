@@ -1,9 +1,4 @@
-"""per channel overwrite keys
-
-When the serializer's key list and set_overwrites' disagree, an update
-validates cleanly and then raises deep in the writer - a 500 with an
-empty body, not a 400 naming the bad key.
-"""
+"""per channel overwrite keys"""
 
 # flake8: noqa: E402
 
@@ -22,7 +17,6 @@ from channel.src.index import YoutubeChannel
 
 
 def a_channel(overwrites=None):
-    """a channel stand in carrying just the json set_overwrites touches"""
     json_data = {"channel_id": "chan1"}
     if overwrites is not None:
         json_data["channel_overwrites"] = overwrites
@@ -95,7 +89,6 @@ class TestDownscaleTarget:
         assert serializer.is_valid(), serializer.errors
 
     def test_rejects_a_height_off_the_ladder(self):
-        """the downscale queue only knows the ladder heights"""
         serializer = ChannelOverwriteSerializer(
             data={"downscale_target_height": 900}
         )

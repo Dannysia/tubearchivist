@@ -31,7 +31,6 @@ class YouTubeItem:
         self.youtube_id = youtube_id
         self.es_path = f"{self.index_name}/_doc/{youtube_id}"
         self.config = AppConfig().config
-        # None is what YtWrap reads as "no task, just sleep"
         self.task = None
         self.error = None
         self.youtube_meta = False

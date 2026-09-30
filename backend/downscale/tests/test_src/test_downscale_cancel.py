@@ -54,7 +54,6 @@ def test_cancel_rejects_non_cancelable_status():
 
 
 def test_cancel_deletes_a_never_dispatched_queued_job():
-    """task_id="" means never dispatched, not an unknown task"""
     job = {**QUEUED_JOB, "task_id": ""}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)
@@ -72,7 +71,6 @@ def test_cancel_deletes_a_never_dispatched_queued_job():
 
 
 def test_cancel_stops_and_immediately_deletes_a_queued_job():
-    """a queued job has no process or tmp file yet, so it can just go"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
@@ -92,7 +90,6 @@ def test_cancel_stops_and_immediately_deletes_a_queued_job():
 
 
 def test_cancel_stops_a_running_job_without_deleting_its_doc():
-    """only the task owns the ffmpeg subprocess, so the doc stays"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
@@ -112,7 +109,6 @@ def test_cancel_stops_a_running_job_without_deleting_its_doc():
 
 
 def test_cancel_fails_gracefully_when_task_not_yet_known():
-    """set_command raises a bare KeyError for an unknown task_id"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
@@ -130,8 +126,6 @@ def test_cancel_fails_gracefully_when_task_not_yet_known():
 
 
 def test_cancel_sets_stop_requested_for_a_remote_held_job():
-    """no celery task to signal: the worker acks the flag on its next
-    heartbeat and deletes the job itself"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(REMOTE_RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch.object(
@@ -151,8 +145,6 @@ def test_cancel_sets_stop_requested_for_a_remote_held_job():
 
 
 def test_cancel_of_a_queued_never_claimed_job_ignores_the_worker_branch():
-    """the remote branch keys off status=running, not a missing
-    task_id - a queued job carries worker="" until claimed"""
     job = {**QUEUED_JOB, "task_id": "", "worker": ""}
     with patch.object(
         DownscaleInteract, "get_item", return_value=(job, 200)

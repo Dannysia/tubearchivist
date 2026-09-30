@@ -61,8 +61,7 @@ RUN apt-get clean && apt-get -y update && apt-get -y install --no-install-recomm
 
 ARG TARGETARCH
 
-# install Intel VAAPI hardware encode runtime, amd64 only: no such driver
-# package exists for arm64, and there's no Intel iGPU to target there anyway
+# Intel VAAPI encode runtime, amd64 only: there is no arm64 package
 RUN if [ "$TARGETARCH" = "amd64" ]; then \
     sed -i 's/^Components: main$/Components: main non-free non-free-firmware/' /etc/apt/sources.list.d/debian.sources && \
     apt-get -y update && apt-get -y install --no-install-recommends \
@@ -92,10 +91,7 @@ COPY ./docker_assets/beat_auto_spawn.sh /app
 
 COPY --from=node-builder ./frontend/dist /app/static
 
-# which build this image is, read back by settings.TA_BUILD_*. Last,
-# after every COPY, so changing it never invalidates a cached layer.
-# Empty when built without these args, e.g. a plain docker build - the
-# footer then shows the version on its own.
+# build stamp, read back by settings.TA_BUILD_*, empty without the args
 ARG TA_BUILD_SHA=""
 ARG TA_BUILD_DATE=""
 ENV TA_BUILD_SHA=$TA_BUILD_SHA

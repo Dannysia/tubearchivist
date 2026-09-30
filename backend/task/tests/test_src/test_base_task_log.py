@@ -1,8 +1,4 @@
-"""test which task outcomes reach the log
-
-BaseTask fires its callbacks on every run of every task, so what it
-chooses to record is what decides whether the log is readable.
-"""
+"""test which task outcomes reach the log"""
 
 # flake8: noqa: E402
 
@@ -23,8 +19,6 @@ class FakeRequest:
 
 
 class StubTask(tasks.BaseTask):
-    """a BaseTask with the name and request celery would give it"""
-
     name = "download_pending"
 
     def __init__(self, task_id="abc-123"):
@@ -36,8 +30,6 @@ class StubTask(tasks.BaseTask):
 
 
 class FakeRedis:
-    """the toast writer, which is not what these tests are about"""
-
     def set_message(self, key, message, expire=False, save=False):
         return None
 
@@ -67,8 +59,6 @@ class TestOnSuccess:
         assert logged == [("completed", "downloaded 3 video(s).")]
 
     def test_nothing_to_do_is_not_logged(self, logged):
-        # update_subscribed ticks every five minutes and returns None
-        # when it finds nothing; logging those buries every real event
         StubTask().on_success(None, "abc-123", (), {})
         assert logged == []
 
@@ -92,8 +82,6 @@ class TestOnFailure:
 
 
 class TestAfterReturn:
-    """the apprise dispatch that follows a task"""
-
     def _run(self, monkeypatch, result):
         monkeypatch.setattr(
             tasks,
@@ -103,7 +91,6 @@ class TestAfterReturn:
         StubTask().after_return("SUCCESS", None, "abc-123", (), {}, None)
 
     def test_nothing_configured_is_not_logged(self, monkeypatch, logged):
-        # the normal state of an install with no apprise urls
         self._run(monkeypatch, None)
         assert logged == []
 
@@ -119,19 +106,10 @@ class TestAfterReturn:
 
 
 class UnknownTask(StubTask):
-    """a registered celery task with no TASK_CONFIG entry"""
-
     name = "task_nobody_registered"
 
 
 class TestATaskWithNoConfig:
-    """the callbacks are the worst place for a missing entry to bite
-
-    An exception in on_failure or after_return is attributed to the task
-    that just finished, so a missing line in a dict reads as that task
-    having failed.
-    """
-
     def test_success_still_logs(self, logged):
         UnknownTask().on_success("did a thing.", "abc-123", (), {})
         assert logged == [("completed", "did a thing.")]
@@ -152,13 +130,6 @@ class TestATaskWithNoConfig:
         assert logged[0][0] == "notified"
 
     def test_progress_is_still_serializable(self, monkeypatch, logged):
-        """one malformed message fails the endpoint for every client
-
-        /api/notification/ serializes every stored message as one list,
-        and nothing expires the key send_progress writes, so a task with
-        no config takes the whole notification feed down until the next
-        restart rather than merely looking wrong.
-        """
         from common.serializers import NotificationSerializer
 
         sent: dict = {}

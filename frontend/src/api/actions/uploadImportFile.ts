@@ -4,7 +4,7 @@ import getCookie from '../../functions/getCookie';
 
 export type UploadProgressType = (loaded: number, total: number) => void;
 
-/** XMLHttpRequest rather than fetch: fetch cannot report upload progress */
+/** fetch cannot report upload progress */
 const uploadImportFile = (file: File, onProgress?: UploadProgressType): Promise<void> => {
   return new Promise((resolve, reject) => {
     const formData = new FormData();
@@ -35,7 +35,7 @@ const uploadImportFile = (file: File, onProgress?: UploadProgressType): Promise<
       try {
         message = JSON.parse(xhr.responseText)?.error ?? message;
       } catch {
-        // non JSON error body, keep the status message
+        // not json, keep the status message
       }
 
       reject(new Error(message));

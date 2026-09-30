@@ -5,8 +5,7 @@ export type TailscaleEgressType = {
   country: string | null;
   city: string | null;
   organization: string | null;
-  // null when the check fell back to a plain ip echo, which cannot tell
-  // whether the traffic left through an exit node
+  // null when the check could not tell
   is_mullvad: boolean | null;
   exit_hostname: string | null;
 };

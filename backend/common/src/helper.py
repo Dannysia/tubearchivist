@@ -52,10 +52,6 @@ def randomizor(length: int) -> str:
     return "".join(random.choice(pool) for i in range(length))
 
 
-# below 5 the randomised window is too narrow to pace at all: at 1 it
-# is randrange(int(0.5), int(1.5)), i.e. randrange(0, 1), always 0, and
-# 4 only spreads requests over 2-5s. The serializer rejects anything
-# lower, this catches configs stored before it did.
 MIN_SLEEP_INTERVAL = 5
 
 
@@ -76,36 +72,17 @@ def rand_sleep(config) -> None:
         sleep(secs)
 
 
-# the notification poll is 1s, so a finer step would only write updates
-# nothing reads
 COUNTDOWN_STEP = 1
 
 
 def countdown_sleep(config, task, notify=None, label: str = "") -> bool:
-    """
-    sleep the configured interval, staying responsive to a stop request
-
-    notify takes the countdown line alone: where the sleep runs before
-    the item's own message the label names what the wait is for
-    ("download"), and where it runs after the item is done it names what
-    comes next ("next URL"). Pass no notify for a wait with nothing to
-    narrate - the one after the last item of a queue - which still has
-    to be interruptible.
-
-    Returns False when a stop request cut the wait short. Callers must
-    act on that and leave the loop, propagating it all the way up: the
-    wait is the rate limit, so carrying on after a shortened one would
-    hit youtube harder than a normal pass does.
-    """
+    """False when a stop request cut the wait short"""
     remaining = rand_sleep_secs(config)
     if not task:
         sleep(remaining)
         return True
 
     while True:
-        # before the length check, not inside it: with pacing disabled
-        # there is no wait to step through, and this is the only place
-        # most of these loops ever look for a stop
         if task.is_stopped():
             return False
 
@@ -285,7 +262,6 @@ def get_duration_str(seconds: int | float | None) -> str:
     if seconds is None:
         return "NA"
 
-    # int() first: a sub second float would leave no parts to join below
     seconds = int(seconds)
     if not seconds:
         return "0s"

@@ -1,9 +1,4 @@
-"""test recording task outcomes
-
-the volume rule is the point: an install where update_subscribed ticks
-every five minutes must not bury one real event under hundreds of
-"nothing to do", so a task that returned nothing writes nothing.
-"""
+"""test recording task outcomes"""
 
 import pytest
 from task.src import task_log
@@ -38,7 +33,6 @@ class TestLogTaskEvent:
         assert entry["event"] == "completed"
         assert entry["task_id"] == "abc-123"
         assert entry["task_name"] == "download_pending"
-        # pulled from TASK_CONFIG, not passed in by the caller
         assert entry["task_title"] == "Downloading"
         assert entry["group"] == "download:run"
 
@@ -53,8 +47,6 @@ class TestLogTaskEvent:
         assert written[0]["level"] == "info"
 
     def test_survives_a_task_missing_from_task_config(self, written):
-        # a task registered without a TASK_CONFIG entry still logs,
-        # just without a title or group
         task_log.log_task_event(FakeTask(name="not_registered"), "failed", "x")
         entry = written[0]
         assert entry["task_name"] == "not_registered"
@@ -66,6 +58,4 @@ class TestLogTaskEvent:
             raise ValueError("es is down")
 
         monkeypatch.setattr(task_log, "write_log", explode)
-        # raising here would be reported against the task that just
-        # finished, making a successful run look failed
         task_log.log_task_event(FakeTask(), "completed", "downloaded 3")

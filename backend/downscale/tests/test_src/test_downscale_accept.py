@@ -58,7 +58,6 @@ def test_accept_copies_ffmpeg_args_onto_the_video():
 
 
 def test_accept_preserves_missing_ffmpeg_args_as_none():
-    """older job docs carry no ffmpeg_args field at all"""
     job = {**PENDING_JOB}
     del job["ffmpeg_args"]
     video = _mock_video({"media_url": "video1.mp4"})

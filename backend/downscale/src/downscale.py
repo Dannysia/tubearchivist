@@ -22,27 +22,17 @@ TERMINATE_TIMEOUT = 10
 DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
 DISPATCH_LOCK_TIMEOUT = 30
 DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
-# nothing frees a slot but an encode completing, which takes at least a
-# minute in practice, so there is no point retrying on the 20s cadence
-# transient lock contention uses
 CONCURRENCY_RETRY_DELAY = 60
 
 
 def _release_lock(lock) -> None:
-    """
-    redis-py raises LockError when the lock's TTL expired before we got
-    here. The critical section is already done by then, so letting that
-    out of a `finally` would replace the caller's return value with a
-    failure that has nothing to do with the request.
-    """
+    """redis-py raises LockError when the lock TTL already expired"""
     try:
         lock.release()
     except LockError:
         print(f"downscale: lock {DISPATCH_LOCK_KEY} already expired")
 
 
-# hardware (VAAPI) encoder keys all carry a _vaapi suffix; hw vs
-# software is derived from the key rather than stored
 ENCODER_SETTINGS = {
     "h264": {"codec": "libx264", "extra_args": []},
     "h264_vaapi": {"codec": "h264_vaapi", "extra_args": []},
@@ -145,7 +135,6 @@ def missing_vaapi_device_message(vaapi_device: str) -> str | None:
 
 
 def _now() -> int:
-    """current unix timestamp, seconds"""
     return int(datetime.now().timestamp())
 
 
@@ -188,11 +177,6 @@ def _build_ffmpeg_cmd(
     tmp_path: str,
     vaapi_device: str,
 ) -> list[str]:
-    """
-    for a hardware encoder, decoding and scaling still happen in
-    software - for compatibility with arbitrary source codecs - and only
-    the encode runs on the GPU, fed via hwupload after the scale filter.
-    """
     is_hw = is_hw_encoder(encoder_key)
 
     cmd = ["ffmpeg", "-y"]
@@ -225,18 +209,12 @@ def _build_ffmpeg_cmd(
 
 
 def dispatch_pending_downscales() -> None:
-    """
-    _reserve_slot() remains the source of truth for claiming a slot, via
-    the same lock, so free_slots here is a hint: a task dispatched on it
-    can still legitimately retry once if another dispatch won first.
-    """
     lock = RedisBase().conn.lock(
         DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
     )
     if not lock.acquire(
         blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
     ):
-        # another dispatch is already covering whatever is free
         return
 
     try:
@@ -246,8 +224,7 @@ def dispatch_pending_downscales() -> None:
         if max_concurrent is None:
             free_slots = None
         elif max_concurrent == 0:
-            # 0 disables local encoding outright, distinct from None,
-            # which means unlimited
+            # 0 disables local encoding, None means unlimited
             return
         else:
             free_slots = max_concurrent - DownscaleInteract.count_running()
@@ -278,14 +255,12 @@ class DownscaleRunner:
         self.target_height = target_height
         self.doc_id: str = doc_id
         self.tmp_path: str | None = None
-        # the settings _encode actually used, persisted on success
         self.encoder_key: str | None = None
         self.quality: int | None = None
         self.preset: str | None = None
         self.cmd: list[str] | None = None
 
     def run(self) -> None:
-        """self.doc_id already exists, in status=queued"""
         if self.task.is_stopped():
             DownscaleInteract(self.doc_id).delete_item()
             return
@@ -349,7 +324,6 @@ class DownscaleRunner:
         dispatch_pending_downscales()
 
     def _reserve_slot(self, current_height: int, original_path: str) -> bool:
-        """False means the caller should bail out without encoding"""
         lock = RedisBase().conn.lock(
             DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
         )
@@ -481,7 +455,6 @@ class DownscaleRunner:
         title: str,
         stderr_lines: list[str],
     ) -> None:
-        """drain both pipes so neither fills up and blocks the encode"""
         out_time_seconds = None
         readable = [
             stream
@@ -628,7 +601,6 @@ class DownscaleReview:
         return None
 
     def reject(self) -> str | None:
-        """the original file stays untouched"""
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
             return "job not found"
@@ -641,7 +613,6 @@ class DownscaleReview:
         return None
 
     def retry(self) -> str | None:
-        """target height and source file are re-validated at run time"""
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
             return "job not found"
@@ -653,10 +624,6 @@ class DownscaleReview:
         return None
 
     def requeue(self, job: dict) -> None:
-        """
-        does not dispatch: a caller requeueing many jobs should call
-        dispatch_pending_downscales() once at the end, not once per job
-        """
         tmp_path = job.get("tmp_file_path")
         if tmp_path and os.path.exists(tmp_path):
             os.remove(tmp_path)
@@ -666,12 +633,6 @@ class DownscaleReview:
         )
 
     def cancel(self) -> str | None:
-        """
-        a queued job has no process or tmp file yet, so its doc goes
-        immediately rather than waiting up to a retry delay for the task
-        to notice. A running job's ffmpeg can only be torn down from
-        inside the task, so that one goes through poll-and-notice.
-        """
         job, status_code = self.interact.get_item()
         if status_code == 404 or not job:
             return "job not found"
@@ -680,24 +641,15 @@ class DownscaleReview:
             return f"job is not queued or running, status is {job['status']}"
 
         if job["status"] == "running" and job.get("worker"):
-            # remote-held: no celery task to signal, only a worker
-            # polling on its own schedule, so leave the doc in place -
-            # the worker acks by deleting the job on its next
-            # heartbeat. If it is already dead the lease reaper cleans
-            # up once the lease goes stale.
             self.interact.update(stop_requested=True)
             return None
 
         task_id = job["task_id"]
         if not task_id:
-            # queued but never dispatched, so no celery task exists to
-            # signal - delete it directly
             self.interact.delete_item()
             return None
 
         if not TaskManager().get_task(task_id):
-            # TaskRedis.set_command raises KeyError on an unknown
-            # task_id instead of failing gracefully
             return "task not found, may not have started yet"
 
         TaskCommand().stop(task_id)
@@ -709,7 +661,6 @@ class DownscaleReview:
 
     @staticmethod
     def _move(src: str, dst: str) -> None:
-        """falls back to a copy across devices"""
         try:
             os.replace(src, dst)
         except OSError:

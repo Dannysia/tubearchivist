@@ -36,7 +36,6 @@ def fixture_video_doc():
 
 
 def _tracker(item_type="video", item_id="vid1"):
-    """fixed timestamp, so doc ids are predictable"""
     return HistoryTracker(item_type, item_id, timestamp=1700000000)
 
 
@@ -46,7 +45,6 @@ def test_no_changes_returns_empty(video_doc):
 
 
 def test_title_change(video_doc):
-    """string change is stored raw"""
     new = video_doc.copy()
     new["title"] = "New Title"
     changes = _tracker().build_changes(video_doc, new)
@@ -79,7 +77,6 @@ def test_nested_stat_change(video_doc):
 
 
 def test_list_reorder_is_not_a_change(video_doc):
-    """tag order from youtube is not stable"""
     new = video_doc.copy()
     new["tags"] = ["a", "b"]
     assert _tracker().build_changes(video_doc, new) == []
@@ -134,7 +131,6 @@ def test_multiple_changes_share_refresh_id(video_doc):
 
 
 def test_doc_id_is_deterministic(video_doc):
-    """replaying the same refresh overwrites instead of duplicating"""
     tracker = _tracker()
     # pylint: disable=protected-access
     assert tracker._build_doc_id("title") == "vid1-1700000000-title"
@@ -160,7 +156,6 @@ def test_channel_change():
 
 
 def test_playlist_entry_count():
-    """entry count is derived, not stored on the document"""
     old = {
         "playlist_id": "pl1",
         "playlist_name": "List",
@@ -181,13 +176,11 @@ def test_playlist_entry_count():
 
 def test_published_representation_flip_is_not_a_change(video_doc):
     new = video_doc.copy()
-    # 1600000000 is 2020-09-13 UTC
     new["published"] = "2020-09-13"
     assert _tracker().build_changes(video_doc, new) == []
 
 
 def test_published_real_change(video_doc):
-    """a real change is stored as given, not normalized"""
     new = video_doc.copy()
     new["published"] = "2020-09-14"
     changes = _tracker().build_changes(video_doc, new)
@@ -199,7 +192,6 @@ def test_published_real_change(video_doc):
 
 
 def test_bulk_item_errors_are_reported(video_doc, capsys):
-    """_bulk answers 200 even when individual documents fail"""
     failure = {
         "errors": True,
         "items": [
@@ -231,8 +223,6 @@ def test_track_deactivation(video_doc, monkeypatch):
 
 
 def test_track_never_raises(monkeypatch):
-    """a broken history write must not fail the reindex"""
-
     def boom(self, changes):
         raise ConnectionError("es is down")
 
@@ -287,7 +277,6 @@ def test_query_filters():
     assert {"term": {"item_id": {"value": "vid1"}}} in must
     assert {"term": {"item_type": {"value": "video"}}} in must
     assert {"terms": {"field": ["title"]}} in must
-    # the range must declare epoch_second, es reads bare numbers as millis
     assert {
         "range": {
             "timestamp": {"gte": 100, "lte": 200, "format": "epoch_second"}
@@ -296,7 +285,6 @@ def test_query_filters():
 
 
 def test_time_range_declares_epoch_second():
-    """without it an int cutoff silently matches nothing"""
     query = HistoryQuery(item_id="vid1", since=1787000000).build_query()
     time_range = [
         i["range"]["timestamp"] for i in query["bool"]["must"] if "range" in i

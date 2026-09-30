@@ -22,7 +22,6 @@ def test_falls_back_to_json_body_worker_field():
 
 
 def test_no_header_and_non_json_body_returns_none():
-    """a raw-body upload (PUT result) has no JSON to fall back to"""
     request = MagicMock()
     request.headers = {}
     request.content_type = "application/octet-stream"

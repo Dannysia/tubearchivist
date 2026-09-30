@@ -46,8 +46,7 @@ const PRESET_OPTIONS = [
 
 type PresetReferenceRow = { preset: string; time: string; size: string };
 
-// ballpark community figures, relative to each codec's own "medium" preset and
-// not measured on this device: a sense of direction, not a measurement
+// ballpark community figures, not measured on this device
 const PRESET_REFERENCE: Record<'h264' | 'h265' | 'av1' | 'h264_vaapi', PresetReferenceRow[]> = {
   h264: [
     { preset: 'ultrafast', time: '~0.3x (3x faster)', size: '~40-50% larger' },
@@ -85,8 +84,7 @@ const PRESET_REFERENCE: Record<'h264' | 'h265' | 'av1' | 'h264_vaapi', PresetRef
     { preset: 'veryslow', time: '~5-8x', size: '~10-16% smaller' },
     { preset: 'placebo', time: '~10-15x+', size: '~12-18% smaller' },
   ],
-  // Quick Sync's Target Usage covers a much narrower range than software
-  // presets, and ultrafast/superfast share a level, as do veryslow/placebo
+  // Quick Sync's Target Usage covers a narrower range than software presets
   h264_vaapi: [
     { preset: 'ultrafast', time: '~0.5x', size: '~15-20% larger' },
     { preset: 'superfast', time: '~0.5x', size: '~15-20% larger' },
@@ -171,8 +169,7 @@ const SettingsApplication = () => {
 
   const isHardwareEncoder = downscaleEncoder.endsWith('_vaapi');
   const codecFamily = downscaleEncoder.replace('_vaapi', '') as 'h264' | 'h265' | 'av1';
-  // h264_vaapi has a real speed/quality knob (ffmpeg's -quality, Intel's
-  // "Target Usage"); h265_vaapi/av1_vaapi expose nothing equivalent
+  // h264_vaapi has ffmpeg's -quality, h265_vaapi and av1_vaapi have none
   const presetUnsupported = isHardwareEncoder && downscaleEncoder !== 'h264_vaapi';
   const presetTableRows = presetUnsupported
     ? undefined

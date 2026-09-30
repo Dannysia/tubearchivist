@@ -43,7 +43,6 @@ def test_build_totals_with_encoder():
 
 
 def test_build_totals_nothing_downscaled():
-    """no division by zero when nothing matched"""
     agg = {"original_size": {"value": 0}, "new_size": {"value": 0}}
     assert Downscale._build_totals(0, agg) == {
         "doc_count": 0,
@@ -96,7 +95,6 @@ def test_remainder_folds_the_truncated_tail():
 
 
 def test_remainder_reconciles_with_the_total():
-    """shown plus remainder is exactly the total, whatever was dropped"""
     total = {"doc_count": 9, "original_size": 900, "new_size": 250}
     shown = [
         build_encoder(4, 500, 100, "h265"),
@@ -110,7 +108,6 @@ def test_remainder_reconciles_with_the_total():
 
 
 def test_remainder_ignores_a_negative_count():
-    """never emit an entry for a total that is already accounted for"""
     total = {"doc_count": 2, "original_size": 100, "new_size": 50}
     shown = [build_encoder(2, 100, 50, "h265")]
     assert Downscale._build_remainder(total, shown) is None

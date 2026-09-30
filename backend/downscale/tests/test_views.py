@@ -36,7 +36,6 @@ def test_encoder_filter():
 
 
 def test_size_change_smaller_uses_less_than():
-    """new_size stays 0 until a job finishes, so 0 must not count"""
     [clause] = _build_must_list({"size_change": "smaller"})
     source = clause["script"]["script"]["source"]
 
@@ -84,7 +83,6 @@ def test_build_aggs_query_defaults_to_channel_multi_terms():
 
 
 def test_build_aggs_query_encoder_uses_a_plain_terms_agg():
-    """the encoder string is both the display and the filter value"""
     agg_key, agg_body = _build_aggs_query("encoder")
 
     assert agg_key == "encoder_downscale"

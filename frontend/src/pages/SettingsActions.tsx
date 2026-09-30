@@ -24,7 +24,6 @@ const SettingsActions = () => {
   const [rescanPreferLocal, setRescanPreferLocal] = useState(false);
   const [manualPreferLocal, setManualPreferLocal] = useState(false);
   const [manualIgnoreErrors, setManualIgnoreErrors] = useState(false);
-  // bumped to re-list the import folder after an import run consumes it
   const [importFilesRefresh, setImportFilesRefresh] = useState(0);
 
   const [backupListResponse, setBackupListResponse] = useState<ApiResponseType<BackupListType>>();
@@ -62,8 +61,6 @@ const SettingsActions = () => {
             setDeleteIgnored(false);
             setDeletePending(false);
             if (processingImports) {
-              // functional update: this callback closes over a render's value
-              // and can fire more than once per render
               setImportFilesRefresh(current => current + 1);
             }
             setProcessingImports(false);

@@ -278,7 +278,6 @@ class Reindex(ReindexBase):
                 break
 
     def reindex_type(self, name: str, index_config: ReindexConfigType) -> bool:
-        """reindex all of a single index, False when a stop cut it short"""
         queue = RedisQueue(index_config["queue_name"])
         while True:
             total = queue.max_score()
@@ -304,17 +303,11 @@ class Reindex(ReindexBase):
             self._clear_active(queue_name=queue.key)
 
             if not self._wait_for_next(queue, name, total, idx):
-                # out of the whole run: the next type would also
-                # start hitting youtube
                 return False
 
         return True
 
     def _wait_for_next(self, queue, name: str, total: int, idx: int) -> bool:
-        """False when a stop request cut the wait short
-
-        A drained queue still waits: it paces the next index type.
-        """
         if not self.task or not queue.length():
             return countdown_sleep(self.config, self.task)
 
@@ -354,11 +347,6 @@ class Reindex(ReindexBase):
     def _get_media_path(
         youtube_id: str, es_meta: dict, is_redownload: bool
     ) -> str | bool:
-        """
-        during a force-redownload the archive has not been overwritten
-        yet, so prefer the fresh cache file; otherwise never probe the
-        cache, where a leftover from an interrupted download may sit.
-        """
         if is_redownload:
             cache_path = os.path.join(
                 EnvironmentSettings.CACHE_DIR,

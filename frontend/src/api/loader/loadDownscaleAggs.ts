@@ -13,7 +13,6 @@ export type DownscaleAggsType = {
   buckets: DownscaleAggsBucket[];
 };
 
-// a plain single-field terms agg, so the bucket key is the encoder string
 type DownscaleEncoderAggsBucket = {
   key: string;
   doc_count: number;
@@ -25,9 +24,6 @@ export type DownscaleEncoderAggsType = {
   buckets: DownscaleEncoderAggsBucket[];
 };
 
-// disjoint bands keyed by lower edge as a string, plus 'larger' when the
-// encode came out bigger. The dropdown's rungs overlap, so these are summed
-// rather than read one bucket per rung
 export type DownscaleSavedAggsBucket = {
   key: string;
   doc_count: number;

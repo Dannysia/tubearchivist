@@ -18,10 +18,6 @@ def _params(value):
 
 
 def test_plain_smaller_and_larger_keep_their_old_meaning():
-    """
-    a direct size comparison, not a percentage, is what makes a job that
-    saved a fraction of a percent still count as smaller
-    """
     assert "doc['new_size'].value < doc['original_size'].value" in _source(
         "smaller"
     )
@@ -33,7 +29,6 @@ def test_plain_smaller_and_larger_keep_their_old_meaning():
 
 @pytest.mark.parametrize("value", SIZE_CHANGE_VALUES)
 def test_every_rung_excludes_unfinished_jobs(value):
-    """new_size stays 0 until a job finishes, reading as a 100% saving"""
     source = _source(value)
 
     assert "doc['new_size'].value > 0" in source
@@ -58,7 +53,6 @@ def test_threshold_becomes_a_multiplier_on_the_original(value, factor):
 
 
 def test_lt_and_gt_at_the_same_threshold_are_complementary():
-    """a job saving precisely 5% lands in one of them and not both"""
     assert "<=" in _source("smaller_gt_5")
     assert ">" in _source("smaller_lt_5")
     assert "<=" not in _source("smaller_lt_5")
@@ -71,7 +65,6 @@ def test_rungs_reach_the_query_builder():
 
 
 def test_every_rung_has_a_band_to_count_it():
-    """a rung whose threshold is not a band edge could not be counted"""
     thresholds = [
         int(value.rsplit("_", 1)[1])
         for value in SIZE_CHANGE_VALUES
@@ -82,11 +75,6 @@ def test_every_rung_has_a_band_to_count_it():
 
 
 def test_unfinished_jobs_fall_outside_every_band():
-    """
-    the sentinel has to sit below the lowest band: an open ended
-    "larger" would swallow the whole queued backlog and report it as
-    jobs that grew
-    """
     agg = saved_percent_agg()["range"]
     sentinel = int(agg["script"]["source"].split("return ")[1].split(";")[0])
     larger = next(r for r in agg["ranges"] if r["key"] == "larger")
@@ -96,10 +84,6 @@ def test_unfinished_jobs_fall_outside_every_band():
 
 
 def test_bands_are_contiguous_and_disjoint():
-    """
-    bands are summed into overlapping rungs, so a gap would undercount a
-    rung and an overlap would double count it
-    """
     agg = saved_percent_agg()["range"]
     bands = agg["ranges"]
 
@@ -110,10 +94,6 @@ def test_bands_are_contiguous_and_disjoint():
 
 
 def _evaluate(value: str, original: int, new: int) -> bool:
-    """
-    reads the generated painless rather than restating its logic: a test
-    that reimplemented the comparison would agree with a wrong clause
-    """
     script = size_change_clause(value)["script"]["script"]
     expression = script["source"]
     for painless, python in (
@@ -146,15 +126,10 @@ def _evaluate(value: str, original: int, new: int) -> bool:
             },
         ),
         (1000, 960, {"smaller", "smaller_lt_5", "smaller_lt_10"}),
-        # exactly 10%: the boundary belongs to the gt rung
         (1000, 900, {"smaller", "smaller_gt_5", "smaller_gt_10"}),
-        # byte for byte identical: neither smaller nor larger, so no rung
         (1000, 1000, set()),
-        # a job that grew answers no "smaller" rung, however small the
-        # threshold
         (1000, 1020, {"larger"}),
         (1000, 2000, {"larger"}),
-        # never finished, so no rung at all
         (1000, 0, set()),
     ],
 )
@@ -170,6 +145,5 @@ def test_which_rungs_a_job_actually_matches(original, new, expected):
 
 @pytest.mark.parametrize("threshold", [5, 10])
 def test_lt_rung_is_bounded_on_both_sides(threshold):
-    """closed below by the threshold, above by having shrunk at all"""
     assert _evaluate(f"smaller_lt_{threshold}", 1000, 999)
     assert not _evaluate(f"smaller_lt_{threshold}", 1000, 1001)

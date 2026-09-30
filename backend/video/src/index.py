@@ -151,9 +151,7 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
     es_path = False
     index_name = "ta_video"
     yt_base = "https://www.youtube.com/watch?v="
-    # what YT fills in for a video it still has: a removed one answers
-    # with a stub instead, with all of these null. Age gated and members
-    # only videos have no formats but all of this intact
+    # a removed video answers with all of these null
     IDENTITY_FIELDS = (
         "fulltitle",
         "channel_id",
@@ -167,9 +165,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         self.channel_id = False
         self.video_type = video_type
         self.offline_import = False
-        # whether YT's answer carried real metadata rather than the stub
-        # it returns for a removed video; only a manual import with its
-        # own sidecar file can be indexed without one
         self.youtube_answered = True
 
     def build_json(
@@ -180,9 +175,7 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
     ):
         obs_overwrite = None
         if from_file:
-            # the media is already on disk, so metadata is worth having
-            # even when YT serves no streams; without this yt-dlp aborts
-            # the whole extraction
+            # without this yt-dlp aborts when there are no streams
             obs_overwrite = {"ignore_no_formats_error": True}
 
         self.get_from_youtube(obs_overwrite)
@@ -190,16 +183,10 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             return
 
         if not self.youtube_meta:
-            # nothing at all is a failed lookup, not a removed video,
-            # which answers with a stub and takes the branch below. A
-            # wrongly deactivated import has no reindex path back
             self.youtube_meta = youtube_meta_overwrite
             self.offline_import = True
         elif from_file and not self.youtube_meta.get("formats"):
-            # metadata but no streams: the file came from elsewhere
             self.offline_import = True
-            # read before the merge: it fills the stub's gaps from the
-            # file and would make every import look answered
             self.youtube_answered = self._youtube_answered(self.youtube_meta)
             self.youtube_meta = self._merge_offline_meta(
                 self.youtube_meta, youtube_meta_overwrite
@@ -221,19 +208,11 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
 
     @classmethod
     def _youtube_answered(cls, youtube_meta: dict) -> bool:
-        """any one field is enough: this decides whether a video is
-        indexed as gone, so a partial answer counts as answered
-        """
         return any(youtube_meta.get(field) for field in cls.IDENTITY_FIELDS)
 
     @staticmethod
     def _merge_offline_meta(youtube_meta: dict, overwrite) -> dict:
-        """
-        a removed video still answers, with a truthy stub: real id and
-        thumbnail, placeholder title, null for the rest. Only set values
-        from the file win, so a blank field in it does not clobber
-        something real from the stub, e.g. that thumbnail url.
-        """
+        """a removed video answers with a stub: id, thumbnail, nulls"""
         if not overwrite:
             return youtube_meta
 
@@ -267,9 +246,6 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
         self.channel_id = self.youtube_meta["channel_id"]
         last_refresh = int(datetime.now().timestamp())
         self.json_data = {
-            # close to one way: reindex only queues active videos, so
-            # nothing reconsiders this on its own, which is why
-            # _youtube_answered takes any one field as proof
             "active": self.youtube_answered,
             "category": self.youtube_meta.get("categories", []),
             "date_downloaded": last_refresh,

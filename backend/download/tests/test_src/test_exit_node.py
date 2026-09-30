@@ -89,7 +89,6 @@ class TestDisabled:
         assert switched == []
 
     def test_says_so_when_tailscale_is_missing(self, monkeypatch):
-        """on but inert is worth a line, since it looks like it works"""
         monkeypatch.setattr(exit_node.tailscale, "is_available", lambda: False)
         message = exit_node.rotate_on_bot_block(config())
         assert "no tailscaled" in message
@@ -140,12 +139,10 @@ class TestRotating:
 
         message = exit_node.rotate_on_bot_block(config())
         assert "no mullvad exit node" in message
-        # a rotate that did not happen must not cost budget
         assert redis.stored is None
         assert switched == []
 
     def test_tailscale_failure_does_not_raise(self, monkeypatch, wired):
-        """the bot error on its way up is the more useful of the two"""
         redis, _ = wired
 
         def boom():
@@ -160,9 +157,6 @@ class TestRotating:
     def test_an_unexpected_error_does_not_raise_either(
         self, monkeypatch, wired
     ):
-        """nothing in here replaces the bot error, not just
-        TailscaleError
-        """
         redis, _ = wired
 
         def boom():
@@ -176,11 +170,7 @@ class TestRotating:
 
 
 class TestBudget:
-    """clear_budget runs after every request that works"""
-
     def test_disabled_never_reaches_redis(self, monkeypatch):
-        """an install that will never rotate must not need a REDIS_CON"""
-
         def explode():
             raise AssertionError("redis must not be reached when off")
 
@@ -199,7 +189,6 @@ class TestBudget:
         assert redis.deleted is True
 
     def test_clearing_an_unused_budget_touches_nothing(self, monkeypatch):
-        """so every successful extract is not also a redis write"""
         redis = FakeRedis(stored=None)
         monkeypatch.setattr(exit_node, "RedisArchivist", lambda: redis)
 

@@ -31,7 +31,6 @@ const describeEgress = (egress: TailscaleEgressType) => {
     return `${where}${org} — not going through an exit node`;
   }
 
-  // the mullvad check was unreachable, so only the address itself is known
   return 'exit node could not be confirmed';
 };
 
@@ -53,7 +52,6 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [loadError, setLoadError] = useState('');
-  // "not read yet" renders differently from "read and found nothing"
   const [loaded, setLoaded] = useState(false);
   const [maxRotatesInput, setMaxRotatesInput] = useState<number | null>(maxRotates);
 
@@ -66,7 +64,6 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
           setCountry(response.data.current?.country ?? '');
           setNodeId(response.data.current?.node_id ?? '');
         } else {
-          // the socket is there but did not answer
           setLoadError(response.error?.error ?? 'could not read tailscale state');
         }
       } catch (err) {
@@ -115,7 +112,6 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
         setState(response.data);
         setCountry(response.data.current?.country ?? '');
         setNodeId(response.data.current?.node_id ?? '');
-        // the address only moves once tailscaled has re-routed
         await checkEgress();
       } else {
         setError(response.error?.error ?? 'exit node change failed');
@@ -130,7 +126,6 @@ const TailscaleExitNode = ({ autoRotate, maxRotates, updateCallback }: Tailscale
     return null;
   }
 
-  // say so rather than vanishing: a missing panel looks like one never built
   if (loadError || !state?.available) {
     return (
       <div className="info-box-item">

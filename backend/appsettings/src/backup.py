@@ -23,7 +23,6 @@ class ElasticBackup:
     INDEX_SIZE_CONF = {
         "comment": 100,
         "subtitle": 10000,
-        # a lot of tiny docs; 500 per page would be thousands of trips
         "history": 10000,
     }
     CACHE_DIR = EnvironmentSettings.CACHE_DIR

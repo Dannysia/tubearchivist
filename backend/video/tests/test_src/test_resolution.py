@@ -24,11 +24,6 @@ def test_top_tier_has_no_ceiling():
 
 
 def test_tier_excludes_the_one_above_it():
-    """
-    a 1200p video counts in the 1080p tier only, and a file carrying
-    both a 1080p and a 2160p stream in 2160p only: a plain gte/lt
-    window on a multi valued field delivers neither
-    """
     tier = resolution_filters()["1080"]
     assert tier == {
         "bool": {
@@ -100,7 +95,6 @@ def test_panels_reconcile_with_each_other():
 
 
 def test_tiers_reconcile_with_the_video_count():
-    """every video lands in exactly one tier, unmeasured ones included"""
     counts = {"2160": 4, "1080": 9, BELOW_KEY: 1, UNKNOWN_KEY: 6}
     parsed = parse_resolution(build_response(counts))
     assert sum(i["doc_count"] for i in parsed) == sum(counts.values())

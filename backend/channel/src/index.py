@@ -213,11 +213,6 @@ class YoutubeChannel(YouTubeItem):
                 break
 
     def _wait_for_next_playlist(self, idx: int, total: int) -> bool:
-        """False when the wait was interrupted - stop the loop
-
-        Nothing is paced after the last pass, where a wait would only
-        delay the task finishing.
-        """
         if idx + 1 == total:
             return True
 
@@ -393,13 +388,6 @@ class ChannelDelete(YouTubeItem):
 
 
 class ChannelVideoTypeDelete:
-    """delete every video of one type from a channel
-
-    Video by video, not a delete_by_query: the folder and the other
-    types stay in it, so each video goes through delete_media_file(),
-    the only path that clears subtitle files off disk too.
-    """
-
     def __init__(
         self,
         channel_id: str,
@@ -411,8 +399,6 @@ class ChannelVideoTypeDelete:
         self.vid_type = vid_type
         self.task = task
         self.ignore = ignore
-        # deleted without reaching the ignore list - a progress line
-        # would not survive, one redis key the next pass overwrites
         self.not_ignored: list[str] = []
         self.failed: list[str] = []
         self.ignored = 0
@@ -442,7 +428,6 @@ class ChannelVideoTypeDelete:
                 video.delete_media_file()
                 deleted += 1
             except FileNotFoundError:
-                # already gone from the index between the query and here
                 print(f"{youtube_id}: not indexed, skipping")
             except Exception as err:  # pylint: disable=broad-except
                 print(f"{youtube_id}: delete failed: {err}")
@@ -475,13 +460,6 @@ class ChannelVideoTypeDelete:
 
     @staticmethod
     def _build_ignore_doc(json_data: dict) -> dict | None:
-        """build a ta_download ignore entry, None when it does not hold up
-
-        The serializer runs only to reject a video document missing a
-        channel or a title, which would queue an entry nothing can
-        render. What gets indexed is this dict, not the serializer's
-        coerced copy.
-        """
         channel = json_data.get("channel") or {}
         player = json_data.get("player") or {}
         youtube_id = json_data["youtube_id"]
@@ -494,8 +472,7 @@ class ChannelVideoTypeDelete:
             "published": json_data.get("published"),
             "timestamp": int(datetime.now().timestamp()),
             "title": json_data.get("title"),
-            # or None, not as read: the field allows a null but not a
-            # blank, and a video indexed without a thumb url carries ""
+            # the field allows null but not blank
             "vid_thumb_url": json_data.get("vid_thumb_url") or None,
             "vid_type": json_data.get("vid_type"),
             "youtube_id": youtube_id,

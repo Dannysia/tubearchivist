@@ -11,7 +11,6 @@ def test_filter_shape():
 
 
 def test_filter_is_not_shared_state():
-    """each caller embeds it in its own query, so hand out a fresh dict"""
     first = downscaled_filter()
     first["exists"]["field"] = "mutated"
 

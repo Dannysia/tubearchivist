@@ -97,10 +97,6 @@ def test_unlimited_concurrency_dispatches_everything_queued():
 
 
 def test_max_concurrent_zero_disables_local_dispatch_entirely():
-    """
-    0 is remote-only - dispatch nothing locally, not even a query, as
-    distinct from None, which means unlimited
-    """
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(
@@ -123,7 +119,6 @@ def test_max_concurrent_zero_disables_local_dispatch_entirely():
 
 
 def test_lock_contention_does_nothing():
-    """the dispatch already running will cover whatever is free"""
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config, patch.object(

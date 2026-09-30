@@ -1,8 +1,4 @@
-"""steer the exit node of a tailscaled running alongside this container
-
-only ever talks to a unix socket in this container; no socket means the
-feature is absent rather than broken.
-"""
+"""steer the exit node of a tailscaled running alongside this container"""
 
 import http.client
 import json
@@ -25,17 +21,15 @@ LOCAL_API_HOST = "local-tailscaled.sock"
 SOCKET_TIMEOUT = 5
 EGRESS_TIMEOUT = 10
 
-# this echo also names the exit node, so a rotate can be confirmed
 MULLVAD_CHECK_URL = "https://am.i.mullvad.net/json"
 FALLBACK_CHECK_URL = "https://api.ipify.org?format=json"
 
 
 class TailscaleError(Exception):
-    """tailscaled is there but refused or failed the call"""
+    pass
 
 
 def socket_path() -> str | None:
-    """first tailscaled socket present, None when tailscale is absent"""
     for path in [os.environ.get("TS_SOCKET")] + SOCKET_CANDIDATES:
         if path and os.path.exists(path):
             return path
@@ -48,8 +42,6 @@ def is_available() -> bool:
 
 
 class _UnixConnection(http.client.HTTPConnection):
-    """http over a unix socket, which is what the localapi speaks"""
-
     def __init__(self, sock_path: str):
         super().__init__(LOCAL_API_HOST, timeout=SOCKET_TIMEOUT)
         self.sock_path = sock_path
@@ -99,8 +91,7 @@ def _parse_node(peer: dict) -> dict:
         "country": location.get("Country"),
         "city": location.get("City"),
         "online": bool(peer.get("Online")),
-        # only mullvad nodes report a Location, so it separates a vpn
-        # exit from one of the user's own machines
+        # only mullvad nodes report a Location
         "is_mullvad": bool(location),
     }
 
@@ -132,8 +123,7 @@ def get_state() -> dict:
 
     return {
         "available": True,
-        # a userspace tailscaled routes only its own proxy, so the exit
-        # node there would not move the downloader's traffic
+        # a userspace tailscaled routes only its own proxy
         "routes_all_traffic": bool(status.get("TUN")),
         "current": current,
         "nodes": nodes,
@@ -141,11 +131,6 @@ def get_state() -> dict:
 
 
 def set_exit_node(node_id: str | None) -> None:
-    """pin the exit node, None to go direct
-
-    masks ExitNodeID alone so nothing else in the config moves, notably
-    ExitNodeAllowLANAccess.
-    """
     _request(
         "PATCH",
         "/localapi/v0/prefs",
@@ -156,16 +141,10 @@ def set_exit_node(node_id: str | None) -> None:
 def pick_random(
     nodes: list[dict], exclude_id: str | None = None
 ) -> dict | None:
-    """any mullvad node to rotate onto, from anywhere
-
-    tailnet exit nodes are never drawn: they are the user's own
-    machines, so they would not change the public address.
-    """
     options = [i for i in nodes if i["is_mullvad"] and i["online"]]
     if not options:
         return None
 
-    # staying put is only acceptable when it is the one option left
     return random.choice(
         [i for i in options if i["node_id"] != exclude_id] or options
     )
@@ -193,7 +172,7 @@ def get_egress() -> dict:
     except (requests.RequestException, ValueError):
         pass
 
-    # a bare ip says nothing about the exit, hence nulls not false
+    # null, not false: a bare ip says nothing about the exit
     try:
         response = requests.get(FALLBACK_CHECK_URL, timeout=EGRESS_TIMEOUT)
         response.raise_for_status()

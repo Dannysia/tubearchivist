@@ -158,12 +158,6 @@ class PendingList(PendingIndex):
         return self.added
 
     def _wait_for_next(self, idx: int, total: int) -> bool:
-        """False when a stop cut the wait short
-
-        At the last entry there is no next url to name, but the wait
-        still paces the next extraction queue entry and still has to be
-        stoppable.
-        """
         if not self.task or idx == total:
             return countdown_sleep(self.config, self.task)
 
@@ -367,10 +361,6 @@ class PendingList(PendingIndex):
     def _parse_video(
         self, url: str, vid_type, track_failure: bool = True, notify=None
     ) -> dict | None:
-        """the wait is in a finally because every exit below has already
-        spent the youtube request it paces, and a run where extraction
-        keeps failing is a bot block - which is when pacing matters most
-        """
         try:
             return self._extract_video(url, vid_type, track_failure)
         finally:
@@ -426,9 +416,6 @@ class PendingList(PendingIndex):
         return to_add
 
     def _pace_notify(self, item_type: str, name: str, idx: int, total: int):
-        """None at the tail: after the last video there is no next one
-        to name, and the wait still happens, just unnarrated
-        """
         if not self.task or idx == total:
             return None
 
@@ -441,13 +428,6 @@ class PendingList(PendingIndex):
         )
 
     def _pace(self, notify) -> None:
-        """the wait that dominates a channel or playlist add, one per
-        video
-
-        Every caller checks is_stopped() before its next youtube
-        request, which is the break countdown_sleep's contract asks for,
-        so a shortened wait cannot turn into an unpaced request.
-        """
         countdown_sleep(self.config, self.task, notify, label="next video")
 
     def _parse_entry(

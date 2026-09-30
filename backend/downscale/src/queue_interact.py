@@ -10,11 +10,6 @@ class DownscaleInteract(BaseQueueInteract):
     INDEX_NAME = "ta_downscale"
 
     def create(self, doc: dict) -> str:
-        """
-        the id is keyed on youtube_id rather than random, so a racing
-        duplicate submission overwrites the same document instead of
-        creating a sibling
-        """
         doc_id = doc["youtube_id"]
         path = f"ta_downscale/_doc/{doc_id}"
         ElasticWrap(path).put(doc, refresh=True)
@@ -63,15 +58,6 @@ class DownscaleInteract(BaseQueueInteract):
 
     @staticmethod
     def get_interrupted() -> list[dict]:
-        """
-        only meaningful before this container's celery worker starts: a
-        job in either state at that point can only be a leftover from a
-        hard restart, never one in progress. Remote-held jobs (worker !=
-        "") survive a TA restart and are left to the lease reaper.
-        Paginated rather than capped because requeue_interrupted()
-        resets the same backlog uncapped, so jobs past the first 1000
-        would go missing from the tmp cleanup and the reported count.
-        """
         data = {
             "query": {
                 "bool": {
@@ -105,15 +91,7 @@ class DownscaleInteract(BaseQueueInteract):
 
     @staticmethod
     def get_next_queued(limit: int | None) -> list[dict]:
-        """
-        limit None means unlimited concurrency, still capped like every
-        other "get everything" query here. A job stays status=queued
-        from the moment it is dispatched until its task reaches
-        _reserve_slot(), so status alone cannot tell "never dispatched"
-        from "dispatched a moment ago" - without the empty task_id two
-        dispatch passes close together could start two tasks for one
-        doc.
-        """
+        """limit None means unlimited"""
         size = limit if limit is not None else 1000
         if size <= 0:
             return []
@@ -136,11 +114,6 @@ class DownscaleInteract(BaseQueueInteract):
 
     @staticmethod
     def count_running() -> int:
-        """
-        remote jobs (worker != "") are excluded: downscale_max_concurrent
-        protects the TA host's own CPU and has nothing to say about a
-        remote worker's hardware
-        """
         data = {
             "query": {
                 "bool": {
@@ -157,11 +130,6 @@ class DownscaleInteract(BaseQueueInteract):
         return response["hits"]["total"]["value"]
 
     def requeue_interrupted(self) -> None:
-        """
-        one update_by_query rather than a round-trip per job - a restart
-        sweep can be resetting hundreds. Remote-held jobs are left
-        alone.
-        """
         now = int(datetime.now().timestamp())
         must_list = [
             {"terms": {"status": ["queued", "running"]}},
@@ -179,7 +147,6 @@ class DownscaleInteract(BaseQueueInteract):
     def get_active_for_video(
         youtube_id: str, exclude_id: str | None = None
     ) -> dict | None:
-        """pass exclude_id to ignore a job's own doc"""
         must: list[dict] = [
             {"term": {"youtube_id": {"value": youtube_id}}},
             {"terms": {"status": ["queued", "running", "pending_review"]}},
@@ -201,20 +168,13 @@ class DownscaleInteract(BaseQueueInteract):
 
     @staticmethod
     def get_stale_leases(stale_before: int) -> list[dict]:
-        """
-        remote-held running jobs whose last_heartbeat predates
-        stale_before: a crashed or powered-off worker never renewed its
-        lease
-        """
         data = {
             "query": {
                 "bool": {
                     "must": [
                         {"term": {"status": {"value": "running"}}},
-                        # ES reads a bare numeric on a date field as
-                        # epoch millis, so without the format every
-                        # epoch-second value looks like Jan 1970 and
-                        # the range matches nothing
+                        # es reads a bare number on a date field
+                        # as epoch millis
                         {
                             "range": {
                                 "last_heartbeat": {

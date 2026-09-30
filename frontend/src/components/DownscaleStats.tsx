@@ -7,7 +7,7 @@ import { ALL_ENCODER_LABELS } from '../configuration/constants/DownscaleEncoders
 import buildTransitionCard from '../functions/buildTransitionCard';
 import buildSavingsBandCard from '../functions/buildSavingsBandCard';
 
-// the backend folds every encoder past its display limit into this one entry
+// every encoder past the backend's display limit
 const OTHER_ENCODER = 'other';
 
 const buildSavingsCard = (savings: DownscaleSavingsType, useSIUnits: boolean) => {
@@ -34,7 +34,6 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
       title: `Total: ${downscaleStats.saved_percent}% Saved`,
       data: buildSavingsCard(downscaleStats, useSIUnits),
     },
-    // a remote worker reports its own encoder string, hence the raw-key fallback
     ...downscaleStats.by_encoder.map(encoderStats => {
       const label =
         encoderStats.encoder === OTHER_ENCODER
@@ -54,8 +53,6 @@ const DownscaleStats = ({ downscaleStats, useSIUnits }: DownscaleStatsProps) => 
           },
         ]
       : []),
-    // guarded on the downscaled count, not on a populated band: an archive
-    // whose downscales all failed to measure still has an Unknown row
     ...(downscaleStats.doc_count > 0
       ? [
           {

@@ -63,7 +63,6 @@ def _entry_count_getter(doc: dict) -> Any:
 
 
 def _sorted_list(value: Any) -> Any:
-    """reordering is not a change"""
     if not isinstance(value, list):
         return value
 
@@ -71,12 +70,7 @@ def _sorted_list(value: Any) -> Any:
 
 
 def _published_date(value: Any) -> Any:
-    """
-    yt-dlp gives an epoch int when it has `timestamp` and a YYYY-MM-DD
-    string when it only has `upload_date`, and which one YT serves is
-    not stable across versions, so both sides are reduced to a UTC
-    calendar date rather than recording the flip as a change.
-    """
+    """yt-dlp gives either an epoch int or a YYYY-MM-DD string"""
     if value is None or isinstance(value, bool):
         return value
 
@@ -86,7 +80,6 @@ def _published_date(value: Any) -> Any:
         try:
             stamp = float(value)
         except (TypeError, ValueError):
-            # already a date string, keep the date part
             return value[:10]
     else:
         return value
@@ -100,11 +93,6 @@ def _published_date(value: Any) -> Any:
 
 
 def _stable_url(value: Any) -> Any:
-    """
-    YT rotates signing query params (sqp, rs) on every extraction
-    without the image itself changing, so only host and path are
-    compared. New artwork gets a new path.
-    """
     if not isinstance(value, str) or not value:
         return value
 
@@ -126,7 +114,6 @@ class FieldSpec:
         return self.getter(doc)
 
     def comparable(self, value: Any) -> Any:
-        """normalized for the equality check only, never stored"""
         if value is MISSING or self.normalize is None:
             return value
 
@@ -142,10 +129,6 @@ def _spec(
     )
 
 
-# video.comment_count is omitted on purpose: it is rebuilt only after
-# the video doc is written back, so tracking it would record a bogus
-# removal on every single refresh. Same for any other field the metadata
-# pass does not produce.
 TRACKED_FIELDS: dict[str, list[FieldSpec]] = {
     "video": [
         _spec("title"),
@@ -252,7 +235,6 @@ class HistoryTracker:
         return changes
 
     def build_changes(self, old: dict | None, new: dict | None) -> list[dict]:
-        """does not touch es"""
         specs = TRACKED_FIELDS.get(self.item_type)
         if specs is None:
             raise ValueError(f"unexpected item_type: {self.item_type}")
@@ -277,7 +259,6 @@ class HistoryTracker:
     def _get_channel_id(
         self, old: dict | None, new: dict | None
     ) -> str | None:
-        """denormalized so history can be filtered by channel"""
         if self.item_type == "channel":
             return self.item_id
 
@@ -328,7 +309,6 @@ class HistoryTracker:
         return doc
 
     def _build_doc_id(self, field_name: str) -> str:
-        """deterministic, so replaying a refresh cannot duplicate rows"""
         return f"{self.item_id}-{self.timestamp}-{field_name}"
 
     def _upload(self, changes: list[dict]) -> None:
@@ -370,7 +350,6 @@ def track_changes(
     new: dict | None,
     source: str = "reindex",
 ) -> list[dict]:
-    """never raises, losing history must not fail an indexing run"""
     # pylint: disable=broad-except
     try:
         tracker = HistoryTracker(item_type, item_id, source=source)
@@ -429,10 +408,7 @@ class HistoryQuery:
         if self.fields:
             must_list.append({"terms": {"field": self.fields}})
 
-        # the explicit format is required: es reads a bare numeric on a
-        # date field as epoch *millis* regardless of the field's own
-        # epoch_second format, so an int cutoff silently matches nothing
-        # rather than erroring
+        # es reads a bare number on a date field as epoch millis
         time_range: dict = {}
         if self.since:
             time_range["gte"] = self.since
@@ -464,10 +440,6 @@ class HistoryQuery:
         return [decode_change(i["_source"]) for i in hits]
 
     def get_all_changes(self) -> list[dict]:
-        """
-        oldest first, and loads everything into memory - the index runs
-        to millions of documents, so filter to an item or a time range.
-        """
         data = {
             "query": self.build_query(),
             "sort": [{"timestamp": {"order": "asc"}}],
@@ -508,10 +480,6 @@ class HistoryQuery:
         return {i["key"]: i["doc_count"] for i in buckets.get("buckets", [])}
 
     def get_refresh_events(self, size: int | None = None) -> list[dict]:
-        """
-        groups are built from one `size` limited page, so the oldest
-        event returned can be partial
-        """
         changes = self.get_changes(size=size, order="desc")
         events: dict[str, dict] = {}
         for change in changes:

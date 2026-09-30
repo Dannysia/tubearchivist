@@ -1,4 +1,4 @@
-/** always decimal (SI) prefixes, powers of 1000: bit rates are quoted that way */
+/** decimal (SI) prefixes, powers of 1000 */
 function humanBitRate(bitsPerSecond: number, dp = 1) {
   const thresh = 1000;
 

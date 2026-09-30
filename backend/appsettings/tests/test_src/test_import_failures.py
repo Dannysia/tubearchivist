@@ -1,9 +1,4 @@
-"""test how a manual import reports a video it cannot import
-
-YT answers for any well formed eleven character id, so a media file
-named with a typo in its id gets the same empty stub a removed video
-returns, with no info.json to fall back on.
-"""
+"""test how a manual import reports a video it cannot import"""
 
 import subprocess
 from types import SimpleNamespace
@@ -18,7 +13,6 @@ MEDIA_PATH = f"/cache/import/{VIDEO_ID}.mp4"
 
 
 def build_current_video(**overwrites):
-    """a matched video as match_files hands it over"""
     current_video = {
         "media": MEDIA_PATH,
         "video_id": VIDEO_ID,
@@ -32,7 +26,6 @@ def build_current_video(**overwrites):
 
 
 def build_importer(**overwrites):
-    """a ManualImport with no config of its own to read"""
     return ManualImport(
         build_current_video(**overwrites),
         config={},
@@ -42,17 +35,11 @@ def build_importer(**overwrites):
 
 
 def build_video(answered: bool):
-    """a YoutubeVideo as build_json leaves it when it raises
-
-    a stand in, not the real class: constructing one reaches for ES, and
-    these two attributes are all the message reads
-    """
     return SimpleNamespace(youtube_id=VIDEO_ID, youtube_answered=answered)
 
 
 class TestWhyNoMetadata:
     def test_names_the_file_not_just_the_id(self):
-        """a bulk import reports by file, the id alone is not findable"""
         message = build_importer()._why_no_metadata(
             build_video(answered=False),
             info_json=False,
@@ -62,8 +49,6 @@ class TestWhyNoMetadata:
         assert f"{VIDEO_ID}.mp4" in message
 
     def test_points_at_a_typo_when_youtube_never_answered(self):
-        """the typo and the removed video are indistinguishable here, so
-        the message offers both"""
         message = build_importer()._why_no_metadata(
             build_video(answered=False),
             info_json=False,
@@ -74,8 +59,6 @@ class TestWhyNoMetadata:
         assert "Generate metadata" in message
 
     def test_says_the_sidecar_came_up_short_when_there_was_one(self):
-        """a file was supplied and still did not cover the gap, so the
-        remedy is fixing that file, not writing one"""
         message = build_importer(metadata=f"{VIDEO_ID}.info.json")
         message = message._why_no_metadata(
             build_video(answered=False),
@@ -85,12 +68,9 @@ class TestWhyNoMetadata:
 
         assert "info.json beside the file did not fill the gap" in message
         assert "Could not extract published date" in message
-        # writing another one is not the fix when one is already there
         assert "Generate metadata" not in message
 
     def test_passes_the_original_through_when_youtube_did_answer(self):
-        """an age gated video answers in full, so a failure past that is
-        some other gap and the underlying message is the useful one"""
         message = build_importer()._why_no_metadata(
             build_video(answered=True),
             info_json=False,
@@ -102,11 +82,8 @@ class TestWhyNoMetadata:
 
 
 class TestBatchKeepsGoing:
-    """one unimportable file must not take the rest of the queue"""
-
     @staticmethod
     def build_scanner(to_import, failing):
-        """a scanner whose per video import fails for named files"""
         scanner = ImportFolderScanner()
         scanner.to_import = to_import
         scanner.imported = []
@@ -172,17 +149,13 @@ class TestBatchKeepsGoing:
         "err",
         [
             ValueError("no metadata"),
-            # ffprobe on a truncated file
             subprocess.CalledProcessError(1, ["ffprobe", "-i", "bad.mp4"]),
-            # the disk, or PIL on an unreadable thumbnail
             OSError("cannot identify image file"),
             KeyError("id"),
             MutagenError("can't sync to an MPEG frame"),
         ],
     )
     def test_survives_what_one_unusable_file_raises(self, monkeypatch, err):
-        """a corrupt media file raises out of ffprobe, not as a
-        ValueError"""
         monkeypatch.setattr(
             "appsettings.src.manual.AppConfig",
             lambda: type("C", (), {"config": {}})(),
@@ -211,7 +184,6 @@ class TestBatchKeepsGoing:
         scanner.process_videos()
 
         assert scanner.imported == ["/cache/import/good.mp4"]
-        # named, even though CalledProcessError stringifies to a command
         assert "bad.mp4" in scanner.failed[0]
 
     @pytest.mark.parametrize(
@@ -251,7 +223,6 @@ class TestBatchKeepsGoing:
         assert scanner.failed == []
 
     def test_scan_raises_once_with_every_reason(self, monkeypatch):
-        """the run is still a failure, but the report covers all of it"""
         monkeypatch.setattr(
             "appsettings.src.manual.AppConfig",
             lambda: type("C", (), {"config": {}})(),
@@ -284,7 +255,6 @@ class TestBatchKeepsGoing:
 
 class TestDetectYoutubeId:
     def test_names_the_file(self):
-        """ "failed to find video id" alone is unactionable in a batch"""
         scanner = ImportFolderScanner()
         current_video = {
             "media": "/cache/import/mystery clip.mp4",

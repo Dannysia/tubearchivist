@@ -383,15 +383,9 @@ class BiggestChannel(AggBase):
 
 
 class Downscale(AggBase):
-    """get downscale savings stats"""
-
     name = "downscale_stats"
     path = "ta_video/_search"
 
-    # the distinct encoder set is small and does not grow with the
-    # archive, so this is a defensive bound rather than a real ceiling;
-    # anything past it is folded into one OTHER_ENCODER entry, so the
-    # panels still reconcile with the total
     ENCODER_LIMIT = 8
     OTHER_ENCODER = "other"
 
@@ -404,11 +398,8 @@ class Downscale(AggBase):
         "query": downscaled_filter(),
         "aggs": {
             **_size_aggs,
-            # get() returns only the aggregations, not the hit total
             "video_count": {"value_count": {"field": "youtube_id"}},
             "by_encoder": {
-                # ordered by data processed, so a truncated tail is
-                # the least significant one
                 "terms": {
                     "field": "downscale.encoder",
                     "size": ENCODER_LIMIT,
@@ -449,11 +440,6 @@ class Downscale(AggBase):
 
     @classmethod
     def _build_remainder(cls, total: dict, shown: list[dict]) -> dict | None:
-        """
-        the terms agg never returns the buckets it dropped, so the fold
-        is derived by subtracting what is shown from the total, which
-        stays exact however many encoders were left out
-        """
         doc_count = total["doc_count"] - sum(i["doc_count"] for i in shown)
         if doc_count <= 0:
             return None
@@ -488,7 +474,6 @@ class Downscale(AggBase):
             "original_size": original_size,
             "new_size": new_size,
             "saved": saved,
-            # of the original size: 76% saved leaves 24% on disk
             "saved_percent": (
                 round(saved / original_size * 100, 2) if original_size else 0
             ),

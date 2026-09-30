@@ -33,8 +33,7 @@ const APIClient = async <T>(
   const apiUrl = getApiUrl();
   const csrfToken = getCookie('csrftoken');
 
-  // the browser has to set Content-Type itself for FormData, so it can add
-  // the multipart boundary. sending defaultHeaders here breaks the upload
+  // the browser sets Content-Type for FormData, with the boundary
   const isFormData = body instanceof FormData;
 
   const response = await fetch(`${apiUrl}${endpoint}`, {

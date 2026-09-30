@@ -95,8 +95,7 @@ const EmbeddableVideoPlayer = ({ videoId }: EmbeddableVideoPlayerProps) => {
   const watched = video.player.watched;
   const sponsorblock = video.sponsorblock;
   const views = formatCount(video.stats.view_count);
-  // > 0 so a zero count does not render a bare 0 next to the icon; the unknown
-  // sentinel is truthy, hence the explicit isKnownCount arm
+  // the unknown count sentinel is truthy
   const hasLikes = video.stats.like_count > 0 || !isKnownCount(video.stats.like_count);
   const likes = formatCount(video.stats.like_count);
   const hasDislikes = video.stats.dislike_count > 0 && appSettingsConfig.downloads.integrate_ryd;

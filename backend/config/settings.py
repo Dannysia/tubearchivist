@@ -222,15 +222,9 @@ CORS_EXPOSE_HEADERS = ["X-Start-Timestamp"]
 
 # TA application settings
 TA_UPSTREAM = "https://github.com/tubearchivist/tubearchivist"
-# upstream's release number: it says which mainline base this fork sits
-# on, which decides the migrations and features inherited, so it is not
-# a place to record fork changes. ReleaseVersion._parse_version int()s
-# the dot separated parts and raises on any suffix that is not spelled
-# out of the letters in "-unstable".
+# upstream's release number, not the fork's
 TA_VERSION = "v0.5.12"
-# which build of this working tree is running, baked in at image build
-# time. Empty for an image built without the build args, which then
-# reports TA_VERSION on its own.
+# empty for an image built without the build args
 TA_BUILD_SHA = environ.get("TA_BUILD_SHA", "")
 TA_BUILD_DATE = environ.get("TA_BUILD_DATE", "")
 try:

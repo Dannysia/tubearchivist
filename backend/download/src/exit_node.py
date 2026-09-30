@@ -1,23 +1,18 @@
 from appsettings.src import tailscale
 from common.src.ta_redis import RedisArchivist
 
-# consecutive rotations not yet followed by a working request; redis
-# because it is runtime state, not configuration
 ROTATE_COUNT_KEY = "exit_node_rotates"
 
-# unreachable through the api, the serializer always sets a cap
 FALLBACK_MAX_ROTATES = 3
 
 
 def _budget_used() -> int:
-    """rotations since the last request that worked"""
     stored = RedisArchivist().get_message_str(ROTATE_COUNT_KEY)
 
     return int(stored) if stored and stored.isdigit() else 0
 
 
 def _is_enabled(config) -> bool:
-    """no config at all is neither on nor off, and has to read as off"""
     if not config:
         return False
 
@@ -25,10 +20,6 @@ def _is_enabled(config) -> bool:
 
 
 def clear_budget(config=None) -> None:
-    """takes the config because this runs after every successful
-    request: an install with rotation switched off must not pay a redis
-    round trip, or need a redis at all
-    """
     if not _is_enabled(config):
         return
 
@@ -37,11 +28,6 @@ def clear_budget(config=None) -> None:
 
 
 def rotate_on_bot_block(config) -> str | None:
-    """returns a line to log, or None when there is nothing to say
-
-    never raises: a failure to rotate must not replace the bot error
-    that is already on its way up.
-    """
     if not _is_enabled(config):
         return None
 
@@ -64,8 +50,6 @@ def rotate_on_bot_block(config) -> str | None:
             return "no mullvad exit node available to rotate onto"
 
         tailscale.set_exit_node(picked["node_id"])
-    # deliberately broad: the bot error already on its way up is more
-    # useful than anything that fails in here
     except Exception as err:
         return f"exit node rotate failed: {err}"
 

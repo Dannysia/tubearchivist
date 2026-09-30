@@ -46,7 +46,6 @@ const InputConfig = ({
     setSuccess(false);
     setFailed(false);
     try {
-      // awaited, so a rejected update stops reporting itself as saved
       await updateCallback(name, value);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);

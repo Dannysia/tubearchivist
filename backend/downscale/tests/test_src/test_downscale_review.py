@@ -35,7 +35,6 @@ def test_retry_job_not_failed():
 
 
 def test_retry_requeues_failed_job():
-    """requeueing dispatches nothing, so a batch retry dispatches once"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(FAILED_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
@@ -65,7 +64,6 @@ def test_retry_cleans_up_leftover_tmp_file():
 
 
 def test_requeue_works_on_queued_or_running_job():
-    """requeue() does not gate on status, unlike retry()"""
     job = {**FAILED_JOB, "status": "running"}
     with patch.object(DownscaleInteract, "update") as mock_update, patch(
         "downscale.src.downscale.os.path.exists", return_value=False

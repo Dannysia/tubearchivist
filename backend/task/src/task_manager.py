@@ -67,8 +67,6 @@ class TaskManager:
             "task_id": task.request.id,
         }
         if existing.get("command"):
-            # init() runs again on every retry re-entry, so a pending
-            # STOP/KILL has to survive it to be seen at all
             message["command"] = existing["command"]
         handler.set_key(task.request.id, message)
 

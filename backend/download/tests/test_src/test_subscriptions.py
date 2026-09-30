@@ -18,7 +18,6 @@ from download.src.subscriptions import (
     ],
 )
 def test_is_due_true(item):
-    """missing, falsy or past next_check all count as due"""
     assert _is_due(item, "next_check", now_epoch=2000) is True
 
 
@@ -41,7 +40,6 @@ def test_compute_next_check_no_jitter_is_exact():
 
 @pytest.mark.parametrize("_run", range(20))
 def test_compute_next_check_within_jitter_bounds(_run):
-    """result stays within frequency_hours * (1 +/- jitter_percent/100)"""
     now = datetime(2026, 1, 1, 0, 0, 0)
     now_epoch = int(now.timestamp())
     frequency_hours = 24

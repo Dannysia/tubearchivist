@@ -7,7 +7,6 @@ import loadArchiveMetadata from '../api/loader/loadArchiveMetadata';
 import { ChannelType } from '../pages/Channels';
 
 type ImportMetadataModalProps = {
-  // media files staged without metadata
   candidates: ImportFileType[];
   onClose: () => void;
   onCreated: () => void;
@@ -39,7 +38,6 @@ const EMPTY_FORM: FormState = {
   like_count: '',
 };
 
-// in form order, so the "still needed" list names fields in the order asked
 const REQUIRED_LABELS: { field: keyof FormState; label: string }[] = [
   { field: 'title', label: 'title' },
   { field: 'channel_id', label: 'channel ID' },
@@ -86,8 +84,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
   useEffect(() => {
     if (channelMode !== 'existing') return;
 
-    // clearing happens in the timer too: a state update in the effect body
-    // renders twice per keystroke
     const timer = setTimeout(async () => {
       const term = channelSearch.trim();
       if (!term) {
@@ -116,7 +112,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
 
   const switchChannelMode = (mode: ChannelMode) => {
     setChannelMode(mode);
-    // whatever was picked or typed belongs to the other mode
     setForm(current => ({ ...current, channel_id: '', channel_name: '' }));
     setChannelSearch('');
     setChannelResults([]);
@@ -124,7 +119,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
 
   const setField = (field: keyof FormState, value: string) => {
     setForm(current => ({ ...current, [field]: value }));
-    // a lookup result is only true for the id it ran against
     if (field === 'video_id') {
       setLookupMessage('');
       setLookupError('');
@@ -146,9 +140,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
       }
 
       const found = response.data;
-      // never fill over something already typed in. The counts usually come
-      // back null, and String(undefined) would put the word "undefined" in a
-      // number input
       const fill = (current: string, value: string | number | null | undefined) =>
         current || (value === null || value === undefined ? '' : String(value));
 
@@ -165,12 +156,8 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
         like_count: fill(current.like_count, found.like_count),
       });
 
-      // functional update, so a field typed while the request was in flight
-      // is merged into rather than reverted
       let stale = false;
       setForm(current => {
-        // the id moved while this was in the air: dropping the answer beats
-        // reverting the id and filling the form from the old video
         if (current.video_id.trim() !== videoId) {
           stale = true;
           return current;
@@ -181,9 +168,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
 
       if (stale) return;
 
-      // a capture regularly has the title and nothing else, so say what is
-      // still needed. Reads the pre-update snapshot, so at worst it names a
-      // field that was typed in while the request was in flight
       const filled = merge(form);
       const stillEmpty = REQUIRED_LABELS.filter(({ field }) => !filled[field]).map(
         ({ label }) => label,
@@ -200,7 +184,6 @@ const ImportMetadataModal = ({ candidates, onClose, onCreated }: ImportMetadataM
     }
   };
 
-  // the backend validates all of this too; this only saves a round trip
   const isComplete =
     form.video_id.length === 11 && REQUIRED_LABELS.every(({ field }) => !!form[field]);
 

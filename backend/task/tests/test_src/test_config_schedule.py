@@ -67,11 +67,6 @@ def test_update_subscribed_uses_minutes():
 
 
 def test_downscale_reap_leases_uses_minutes():
-    """
-    the lease reaper runs every minute - a remote worker's job would
-    otherwise hang in status=running for up to an hour past its 60s
-    lease before anything noticed the worker died
-    """
     assert (
         ScheduleBuilder.UNITS["downscale_reap_leases"]
         == IntervalSchedule.MINUTES
@@ -102,15 +97,12 @@ class TestOrphanedSchedules:
         ) == ["log_cleanup"]
 
     def test_a_known_task_without_a_schedule_is_not_orphaned(self):
-        # most TASK_CONFIG entries are on demand and never scheduled
         assert (
             orphaned_schedules(["log_cleanup"], ["log_cleanup", "run_backup"])
             == []
         )
 
     def test_refuses_to_act_on_an_empty_known_set(self):
-        # celery's registry reads as empty until task.tasks is imported.
-        # taking that at face value would delete every schedule there is
         assert (
             orphaned_schedules(["download_pending", "log_cleanup"], []) == []
         )
@@ -126,24 +118,10 @@ class TestOrphanedSchedules:
 
 
 def test_reindex_is_stoppable():
-    """the reindex spends hours asleep between youtube requests
-
-    A stop is only ever checked between items, after the current one is
-    indexed and cleared, and whatever is still queued stays in redis for
-    the next scheduled run.
-    """
     assert TASK_CONFIG["check_reindex"]["api_stop"] is True
 
 
 def test_reindex_is_not_killable():
-    """stop and kill are different things and share one flag by default
-
-    A kill terminates the worker wherever it is - the id is already
-    popped off the queue, and reindex_single_video deletes the old
-    subtitle files before writing the new document, so a kill in that
-    window loses the entry and leaves ES advertising subtitles that are
-    gone from disk.
-    """
     assert TASK_CONFIG["check_reindex"]["api_kill"] is False
 
 

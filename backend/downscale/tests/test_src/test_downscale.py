@@ -83,10 +83,6 @@ def test_software_cmd_has_no_hw_flags(encoder_key, expected_codec):
 def test_hardware_cmd_uses_vaapi_pipeline(
     encoder_key, expected_codec, expected_rc_mode, expected_quality_flag
 ):
-    """
-    av1_vaapi has no -qp/CQP in ffmpeg, so it takes
-    ICQ+-global_quality where the other two take CQP+-qp
-    """
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,
@@ -121,7 +117,6 @@ def test_hardware_cmd_uses_vaapi_pipeline(
 
 
 def test_h265_vaapi_maps_to_hevc_vaapi_not_h265_vaapi():
-    """ffmpeg has no encoder named h265_vaapi, only hevc_vaapi"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,
@@ -157,12 +152,8 @@ def test_unknown_encoder_falls_back_to_h264():
         ("h264", "veryfast", "-preset", "veryfast"),
         ("h264", "placebo", "-preset", "placebo"),
         ("h265", "slow", "-preset", "slow"),
-        # libsvtav1 has no named presets, only its own 0 (slowest/best)
-        # - 13 (fastest) numeric scale
         ("av1", "veryfast", "-preset", "8"),
         ("av1", "placebo", "-preset", "0"),
-        # h264_vaapi's -quality is Intel's Target Usage, 1 (best,
-        # slowest) - 7 (fastest, worst)
         ("h264_vaapi", "medium", "-quality", "4"),
         ("h264_vaapi", "ultrafast", "-quality", "7"),
         ("h264_vaapi", "veryslow", "-quality", "1"),
@@ -187,7 +178,6 @@ def test_preset_maps_onto_whatever_speed_knob_the_encoder_supports(
 
 @pytest.mark.parametrize("encoder_key", ["h265_vaapi", "av1_vaapi"])
 def test_preset_has_no_effect_on_encoders_without_a_speed_knob(encoder_key):
-    """h265_vaapi/av1_vaapi expose no -preset/-quality option in ffmpeg"""
     cmd = _build_ffmpeg_cmd(
         "/youtube/original.mp4",
         720,

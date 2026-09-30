@@ -24,14 +24,12 @@ MIN_INTERVAL_HOURS = 1
 
 
 def _is_due(item: dict, field: str, now_epoch: int) -> bool:
-    """never checked, i.e. a falsy field, counts as due"""
     return not item.get(field) or item[field] <= now_epoch
 
 
 def _compute_next_check(
     frequency_hours: float, jitter_percent: float, now: datetime | None = None
 ) -> int:
-    """a next-check epoch, jitter rerolled per call"""
     jitter_factor = 1 + random.uniform(-jitter_percent, jitter_percent) / 100
     interval_hours = max(frequency_hours * jitter_factor, MIN_INTERVAL_HOURS)
     next_check = (now or datetime.now()) + timedelta(hours=interval_hours)

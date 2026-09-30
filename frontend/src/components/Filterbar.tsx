@@ -74,7 +74,6 @@ const Filterbar = ({
     }
   }, [currentViewStyle, showSort]);
 
-  // the options come from the index: only encoders something was encoded with
   useEffect(() => {
     (async () => {
       const { data } = await loadVideoDownscaleEncoders();

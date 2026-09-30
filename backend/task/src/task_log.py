@@ -1,13 +1,6 @@
-"""
-a task log entry outlives the redis toast. Separate from common.src.log
-so the writer stays free of task concerns, and from notify.py so apprise
-stays free of both.
-"""
-
 from common.src.log import LevelType, write_log
 from task.src.task_config import get_task_config
 
-# the level an outcome maps to, so the writer and the UI filter agree
 EVENT_LEVELS: dict[str, LevelType] = {
     "completed": "info",
     "failed": "error",
@@ -17,11 +10,6 @@ EVENT_LEVELS: dict[str, LevelType] = {
 
 
 def log_task_event(task, event: str, message: str) -> None:
-    """
-    never raises: this runs from celery callbacks, where an exception is
-    reported against the task that just finished and reads as that task
-    having failed
-    """
     # pylint: disable=broad-except
     try:
         config = get_task_config(task.name)

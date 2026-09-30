@@ -8,7 +8,6 @@ from channel.src.list_query import ChannelListQuery
 
 @pytest.fixture
 def stats():
-    """three channels with videos, UC4 has none"""
     return {
         "UC1": {
             "doc_count": 10,
@@ -57,7 +56,6 @@ def sorted_ids(sort_by, order, stats, ids=None):
 
 
 def test_sort_by_videos_desc(stats):
-    """ties stay in name order, a channel with no videos sorts last"""
     assert sorted_ids("videos", "desc", stats) == ["UC1", "UC2", "UC3", "UC4"]
 
 
@@ -102,7 +100,6 @@ def test_sort_by_last_download(stats):
 
 
 def test_sort_by_last_published_asc(stats):
-    """null dates sort lowest"""
     assert sorted_ids("last_published", "asc", stats) == [
         "UC4",
         "UC2",
@@ -117,7 +114,6 @@ def test_sort_key_falls_back_to_empty_stats():
 
 
 def test_stat_sorts_are_not_doc_fields():
-    """is_stat means resolved from the video index, not a doc field"""
     assert ChannelSortEnum.VIDEOS.is_stat is True
     assert ChannelSortEnum.WATCH_PROGRESS.is_stat is True
     assert ChannelSortEnum.NAME.is_stat is False
@@ -131,7 +127,6 @@ def test_sort_enum_unknown_name():
 
 
 def test_every_stat_sort_has_a_stat_key():
-    """the enum value is the key of the aggregation"""
     empty = ChannelListAggs.empty_stats()
     for sort in ChannelSortEnum:
         if sort.is_stat:
@@ -192,7 +187,6 @@ def test_agg_build_stats():
 
 
 def test_agg_build_stats_without_duration():
-    """no division by zero"""
     bucket = {
         "key": "UC1",
         "doc_count": 0,

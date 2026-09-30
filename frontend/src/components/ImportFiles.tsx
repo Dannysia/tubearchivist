@@ -24,8 +24,6 @@ type FailureType = {
   message: string;
 };
 
-// APIClient throws a bare {status, message} object on 400, not an Error,
-// so instanceof alone would render these as [object Object]
 const errorMessage = (err: unknown): string => {
   if (err instanceof Error) return err.message;
   if (typeof err === 'object' && err !== null && 'message' in err) {
@@ -58,8 +56,6 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
     const failed: FailureType[] = [];
     setFailures([]);
 
-    // one request per file, sequentially: a single batch request would have no
-    // per file progress, and one rejected name would take the batch down
     for (const [index, file] of queue.entries()) {
       setUpload({
         done: index,
@@ -84,7 +80,6 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
     const response = await loadImportFiles();
     setFiles(response.data ?? []);
 
-    // let the same selection be picked again after a failed run
     if (fileInput.current) fileInput.current.value = '';
   };
 
@@ -192,8 +187,6 @@ const ImportFiles = ({ refreshToken }: ImportFilesProps) => {
                 <span>{humanFileSize(file.size)}</span>
                 <span>{file.video_id ?? <i>not detected</i>}</span>
                 <div className="button-box">
-                  {/* an anchor, not a fetch: the file can be many GB, so the
-                      browser streams it to disk itself */}
                   <a
                     className="link-button"
                     href={importFileUrl(file.filename)}

@@ -1,11 +1,6 @@
 import { DownscaleSavedAggsType } from '../../api/loader/loadDownscaleAggs';
 
-/**
- * mirrors SIZE_CHANGE_VALUES in backend/downscale/src/constants.py, which
- * validates the value, so a rung added here and not there is rejected. The
- * labels live here only. 'smaller' and 'larger' stay as the broad rungs, so an
- * existing ?size_change=smaller link still resolves.
- */
+/** mirrors SIZE_CHANGE_VALUES in backend/downscale/src/constants.py */
 export type DownscaleSizeChange =
   | 'larger'
   | 'smaller'
@@ -32,12 +27,6 @@ export const DOWNSCALE_SIZE_CHANGES: { value: DownscaleSizeChange; label: string
 export const sizeChangeLabel = (value: string): string =>
   DOWNSCALE_SIZE_CHANGES.find(option => option.value === value)?.label ?? value;
 
-/**
- * the rungs overlap - >5% contains >10%, 'got smaller' contains all of them -
- * so the disjoint bands are summed rather than read one per rung. A band the
- * backend adds but this does not know still lands in the 'got smaller' total,
- * so a new edge under-reports a rung rather than dropping off the page.
- */
 export const countsBySizeChange = (
   aggs: DownscaleSavedAggsType | undefined,
 ): Partial<Record<DownscaleSizeChange, number>> => {

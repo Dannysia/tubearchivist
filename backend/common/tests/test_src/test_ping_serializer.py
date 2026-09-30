@@ -1,8 +1,3 @@
-"""
-an image built without the TA_BUILD_* build args reports empty strings,
-so the serializer has to pass those through rather than reject them
-"""
-
 import pytest
 from common.serializers import PingSerializer
 
@@ -28,7 +23,6 @@ def test_serializes_a_built_image():
 
 
 def test_serializes_a_dirty_build():
-    """a build from a modified working tree is marked"""
     data = PingSerializer(build_payload(build_sha="52ef730f-dirty")).data
 
     assert data["build_sha"] == "52ef730f-dirty"

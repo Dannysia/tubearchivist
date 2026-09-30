@@ -25,11 +25,6 @@ def _build_test_cmd(encoder_key: str, vaapi_device: str) -> list[str]:
 
 
 class EncoderCapabilityTest:
-    """
-    ffmpeg knowing an encoder name is not enough: this catches missing
-    device passthrough, an unloaded driver, or a codec the GPU lacks
-    """
-
     HW_ENCODER_KEYS = [key for key in ENCODER_SETTINGS if is_hw_encoder(key)]
 
     def run(self) -> list[dict]:
@@ -50,7 +45,6 @@ class EncoderCapabilityTest:
             )
 
     def _test_one(self, encoder_key: str, vaapi_device: str) -> dict:
-        """the caller must already have checked the device exists"""
         cmd = _build_test_cmd(encoder_key, vaapi_device)
         try:
             result = subprocess.run(

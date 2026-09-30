@@ -52,8 +52,6 @@ class PaginationSerializer(serializers.Serializer):
 class ResolutionBucketSerializer(serializers.Serializer):
     """serialize one tier of the resolution breakdown"""
 
-    # a rung of the downscale ladder as a string, "1440", or one of the
-    # two catch-all keys, "below" and "unknown"
     key = serializers.CharField()
     doc_count = serializers.IntegerField()
     media_size = serializers.IntegerField()
@@ -107,7 +105,6 @@ class PingSerializer(serializers.Serializer):
     response = serializers.ChoiceField(choices=["pong"])
     user = serializers.IntegerField()
     version = serializers.CharField()
-    # empty for an image built without the build args
     build_sha = serializers.CharField(allow_blank=True)
     build_date = serializers.CharField(allow_blank=True)
     ta_update = PingUpdateSerializer(required=False)

@@ -38,9 +38,6 @@ class TestPace:
         assert seen == ["next video"]
 
     def test_waits_stoppably_with_nothing_to_narrate(self, monkeypatch):
-        """no counter to count down against, but the wait still has to
-        be interruptible
-        """
         seen = []
         monkeypatch.setattr(
             queue_mod,
@@ -76,14 +73,10 @@ class TestPaceNotify:
         ]
 
     def test_no_task_means_no_callback(self):
-        """_pace then falls through to the plain wait"""
         handler = SimpleNamespace(task=None, flat=False)
         assert PendingList._pace_notify(handler, "channel", "x", 1, 2) is None
 
     def test_the_last_video_names_no_next_one(self):
-        """the highest volume wait here, so a lie at the tail is the
-        one seen most
-        """
         _, task = capture_task()
         handler = SimpleNamespace(task=task, flat=False)
 
@@ -109,8 +102,6 @@ class TestNotifyAdd:
 
 
 class TestParseUrlListTail:
-    """the wait after the last url must not name a next one"""
-
     @staticmethod
     def _handler(task):
         handler = SimpleNamespace(
@@ -125,7 +116,6 @@ class TestParseUrlListTail:
             _notify=lambda *a, **kw: None,
             _process_entry=lambda *a: None,
         )
-        # the real one, so the test sees how the loop actually waits
         handler._wait_for_next = lambda *a: PendingList._wait_for_next(
             handler, *a
         )
@@ -133,7 +123,6 @@ class TestParseUrlListTail:
         return handler
 
     def test_single_url_waits_without_narrating(self, monkeypatch):
-        """the real path: one entry per extraction queue item"""
         waits = []
         monkeypatch.setattr(
             queue_mod,

@@ -1,8 +1,7 @@
 import APIClient from '../../functions/APIClient';
 
 export type ResolutionBucketType = {
-  // a rung of the downscale ladder as a string, '1440', or one of the
-  // two catch-all keys, 'below' and 'unknown'
+  // a ladder rung as a string, or 'below' or 'unknown'
   key: string;
   doc_count: number;
   media_size: number;

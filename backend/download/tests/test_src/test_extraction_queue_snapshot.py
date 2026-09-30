@@ -138,7 +138,6 @@ def test_a_failed_entry_still_refreshes_for_the_next(monkeypatch):
 
 
 def test_a_video_that_leaves_the_queue_mid_run_stays_skipped(monkeypatch):
-    """a download finishing mid run takes it out of ta_download"""
     FakeES.download = [{"youtube_id": "queued1", "status": "pending"}]
     queue = _queue(monkeypatch, ["a", "b"])
     FakePending.on_parse = _on_first_parse(

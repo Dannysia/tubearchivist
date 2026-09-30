@@ -62,7 +62,6 @@ class EnvironmentSettings:
     APP_DIR: str = str(environ.get("TA_APP_DIR", "/app"))
     CACHE_DIR: str = str(environ.get("TA_CACHE_DIR", "/cache"))
 
-    # Hardware acceleration
     VAAPI_RENDER_DEVICE: str = str(
         environ.get("TA_VAAPI_RENDER_DEVICE", "/dev/dri/renderD128")
     )

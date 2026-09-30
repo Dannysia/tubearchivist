@@ -1,8 +1,4 @@
-"""
-redis-py raises LockError from release() when the lock's TTL lapsed
-first; uncaught in a caller's finally that replaces an in-flight return
-value, or fails a request whose work under the lock already succeeded.
-"""
+"""redis-py raises LockError from release() when the lock's TTL lapsed"""
 
 from unittest.mock import MagicMock
 

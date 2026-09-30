@@ -1,9 +1,4 @@
-"""the sleep interval setting, which paces every youtube facing queue
-
-At 1 the randomised window collapses to always zero, and 2 to 4 pace
-too little to be worth the setting - 4 spreads requests over 2-5s - so
-the floor sits at 5 for all of them.
-"""
+"""the sleep interval setting, which paces every youtube facing queue"""
 
 # flake8: noqa: E402
 
@@ -20,7 +15,6 @@ from common.src.helper import MIN_SLEEP_INTERVAL
 
 
 def _validate(sleep_interval):
-    """partial, so only the field under test has to be present"""
     serializer = AppConfigDownloadsSerializer(
         data={"sleep_interval": sleep_interval}, partial=True
     )
@@ -45,7 +39,6 @@ def test_accepts_the_minimum_and_above(value):
 
 @pytest.mark.parametrize("value", [None, 0])
 def test_disabling_pacing_stays_allowed(value):
-    """null and 0 both mean off; rejecting 0 would lock configs out"""
     serializer = _validate(value)
 
     assert serializer.is_valid(), serializer.errors

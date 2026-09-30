@@ -137,17 +137,12 @@ def test_rand_sleep_secs_disabled():
 
 
 def test_rand_sleep_secs_in_range():
-    """half to one and a half times the configured interval"""
     for _ in range(50):
         secs = rand_sleep_secs({"downloads": {"sleep_interval": 10}})
         assert 5 <= secs < 15
 
 
 def test_rand_sleep_secs_floors_a_useless_interval():
-    """
-    1 collapses the range to randrange(0, 1), which is always 0. The
-    serializer rejects 1 to 4, but stored configs may still hold them.
-    """
     for value in (1, 2, 3, 4):
         for _ in range(20):
             secs = rand_sleep_secs({"downloads": {"sleep_interval": value}})

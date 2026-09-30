@@ -50,9 +50,6 @@ class BaseTask(Task):
         message, key = self._build_message()
         message.update({"messages": ["Task completed"]})
         RedisArchivist().set_message(key, message, expire=5)
-        # a task returns a summary string when it did something and None
-        # when it found nothing to do - logging every run would bury a
-        # real event under the tasks that tick every few minutes
         if retval:
             log_task_event(self, "completed", str(retval))
 
@@ -68,8 +65,7 @@ class BaseTask(Task):
         print(f"{task_id} return callback")
         task_title = get_task_config(self.name).get("title")
         result = Notifications(self.name).send(task_id, task_title)
-        # None means nothing to send, the normal case on an install with
-        # no apprise urls configured; anything else was attempted
+        # None means nothing to send
         if result:
             sent, detail = result
             log_task_event(
@@ -93,14 +89,6 @@ class BaseTask(Task):
         RedisArchivist().set_message(key, message)
 
     def _build_message(self, level="info"):
-        """
-        the four keys below are required by NotificationSerializer, and
-        /api/notification/ serializes every stored message as one list,
-        so one message missing them fails that response for every
-        client. Nothing expires the key send_progress writes, so it
-        would stay broken until the next restart; a task with no config
-        gets its own name and no stop button rather than a hole.
-        """
         task_id = self.request.id
         message = {
             "title": self.name,
@@ -405,9 +393,6 @@ def delete_channel_videos(
     suffix = " and ignored them" if ignore else ""
     message = f"Deleted {deleted} {vid_type} from {channel_id}{suffix}."
     if handler.not_ignored:
-        # without an ignore entry a subscribed channel downloads them
-        # again on the next scan, which is the whole reason the button
-        # is not just Delete
         message += (
             f" {len(handler.not_ignored)} could not be ignored, "
             "incomplete metadata."

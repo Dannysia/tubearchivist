@@ -112,10 +112,6 @@ class QueryBuilder:
 
     @staticmethod
     def parse_downscale_encoder(encoder: str):
-        """
-        not validated against a fixed list: a remote worker reports its
-        own encoder string, so the values are whatever jobs wrote
-        """
         return {"term": {"downscale.encoder": {"value": encoder}}}
 
     def parse_sort(self) -> dict | None:

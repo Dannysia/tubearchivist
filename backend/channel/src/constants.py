@@ -1,7 +1,5 @@
 import enum
 
-# every key channel_overwrites accepts: the update serializer and
-# set_overwrites both build from this, so they cannot drift apart
 OVERWRITE_KEYS = [
     "download_format",
     "downscale_target_height",
@@ -14,12 +12,6 @@ OVERWRITE_KEYS = [
 
 
 class ChannelSortEnum(enum.Enum):
-    """all channel list sort options
-
-    values are either a field on the channel doc or, for the stat sorts, a
-    key of the per channel video aggregation in ChannelListAggs
-    """
-
     NAME = "channel_name.keyword"
     SUBSCRIBERS = "channel_subs"
     LAST_REFRESH = "channel_last_refresh"
@@ -47,7 +39,6 @@ class ChannelSortEnum(enum.Enum):
 
     @property
     def is_stat(self) -> bool:
-        """sorts not backed by a field on the channel doc"""
         return self in STAT_SORTS
 
 

@@ -361,11 +361,6 @@ def test_upload_result_streams_to_part_then_renames_into_place():
 
 
 def test_upload_result_aborts_without_renaming_if_reclaimed_mid_upload():
-    """
-    a large upload sends no heartbeat traffic of its own, so it can run
-    long enough for a reap to requeue-and-reclaim the doc; the .part is
-    then discarded rather than left to clobber the new claim's output
-    """
     stream = MagicMock()
     reclaimed_job = {**RUNNING_JOB, "worker": "someone-else"}
 
@@ -392,7 +387,6 @@ def test_upload_result_aborts_without_renaming_if_reclaimed_mid_upload():
 
 
 def test_upload_result_aborts_without_renaming_if_cancelled_mid_upload():
-    """the result is discarded even though it is complete and valid"""
     stream = MagicMock()
     cancelled_job = {**RUNNING_JOB, "stop_requested": True}
 
@@ -428,7 +422,6 @@ def test_finish_rejects_when_not_owned():
 
 
 def test_finish_marks_failed_on_invalid_output():
-    """ffmpeg exited cleanly on the worker side but produced junk"""
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
@@ -481,11 +474,6 @@ def test_finish_marks_pending_review_and_records_the_report():
 
 
 def test_finish_discards_instead_of_pending_review_when_already_cancelled():
-    """
-    a worker sends no heartbeat during upload/finish, so a cancel can
-    race in after its last one: the otherwise-valid result is discarded
-    rather than marked done
-    """
     cancelled_job = {**RUNNING_JOB, "stop_requested": True}
 
     with patch.object(
@@ -547,7 +535,6 @@ def test_fail_truncates_an_overlong_message_like_the_local_runner_does():
 
 
 def test_fail_discards_instead_of_failed_when_already_cancelled():
-    """not a failed doc left around for a retry nobody asked for"""
     cancelled_job = {**RUNNING_JOB, "stop_requested": True}
 
     with patch.object(
@@ -607,10 +594,6 @@ def test_reap_no_stale_leases_does_nothing():
 
 
 def test_reap_requeues_a_stale_lease_and_clears_every_remote_field():
-    """
-    every remote field is cleared, not just status: the local-only
-    count_running/get_interrupted filters key off worker==""
-    """
     stale_job = {
         "id": "doc1",
         "tmp_file_path": "/cache/downscale/video1_720p.mp4",
@@ -636,10 +619,6 @@ def test_reap_requeues_a_stale_lease_and_clears_every_remote_field():
 
 
 def test_reap_requeue_also_cleans_up_a_leftover_part_file():
-    """
-    the .part sibling belongs to the expired lease too, and must not
-    survive to collide with whoever claims this job next
-    """
     stale_job = {
         "id": "doc1",
         "tmp_file_path": "/cache/downscale/video1_720p.mp4",
@@ -662,7 +641,6 @@ def test_reap_requeue_also_cleans_up_a_leftover_part_file():
 
 
 def test_reap_deletes_a_stale_lease_with_stop_requested():
-    """cancelled before the worker died: delete rather than requeue"""
     stale_job = {
         "id": "doc1",
         "tmp_file_path": "/cache/downscale/video1_720p.mp4",

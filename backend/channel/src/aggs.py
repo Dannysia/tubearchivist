@@ -69,8 +69,6 @@ class ChannelAggs:
                         "by_saved": saved_percent_agg(VIDEO_SIZE_FIELDS),
                     },
                 },
-                # full timestamps, not yyyy-MM-dd: these are rendered in
-                # the viewer's timezone
                 "published_first": {"min": {"field": "published", **DATE_FMT}},
                 "published_last": {"max": {"field": "published", **DATE_FMT}},
                 "downloaded_first": {
@@ -155,7 +153,6 @@ class ChannelAggs:
         }
 
     def _parse_type(self, buckets: list[dict]) -> dict:
-        """every type is kept, so the totals reconcile"""
         parsed = {i: self._empty_bucket() for i in VideoTypeEnum.values()}
         for bucket in buckets:
             parsed[bucket["key"]] = self._build_bucket(bucket)
@@ -211,11 +208,9 @@ class ChannelAggs:
 class ChannelListAggs:
     path = "ta_video/_search"
 
-    # sized to fit every channel of an archive into one terms agg
     MAX_CHANNELS = 10000
 
     def __init__(self, channel_ids: list[str] | None = None):
-        # None aggregates every channel, needed to sort the whole list
         self.channel_ids = channel_ids
 
     def build_query(self) -> dict:

@@ -11,13 +11,6 @@ def _mock_task(task_id="task-1", name="downscale_video"):
 
 
 class FakeRedisConn:
-    """
-    in-memory stand-in for the subset of redis-py's connection interface
-    TaskRedis uses, so the real TaskRedis/TaskManager/TaskCommand
-    read-modify-write logic runs instead of being mocked away - one call
-    clobbering another's write shows up no other way
-    """
-
     def __init__(self):
         self.store: dict[str, str] = {}
 
@@ -48,11 +41,6 @@ def test_init_sets_initial_pending_message():
 
 
 def test_init_preserves_pending_stop_command():
-    """
-    a task that retries internally (e.g. waiting on a concurrency limit)
-    re-runs init() on every retry re-entry, so a STOP requested in
-    between must survive that or the task never notices it
-    """
     with patch("task.src.task_manager.TaskRedis") as mock_task_redis:
         mock_task_redis.return_value.get_single.return_value = {
             "status": "RETRY",
@@ -79,13 +67,6 @@ def test_init_does_not_invent_a_command():
 
 
 def test_stop_signal_survives_a_retry_reentry():
-    """
-    the whole sequence: init (first run) -> stop() while it is retrying
-    -> init() again (the retry re-entry) -> is_stopped() must still see
-    it. Only the redis connection is faked, because mocking
-    get_single/set_key directly cannot catch a bug that IS the
-    interaction between those two calls.
-    """
     fake_conn = FakeRedisConn()
     task = _mock_task(task_id="task-1")
 

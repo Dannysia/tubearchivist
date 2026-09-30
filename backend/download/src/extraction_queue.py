@@ -69,7 +69,6 @@ class ExtractionQueue:
 
     @staticmethod
     def _build_id(item_type: str, youtube_id: str, vid_type) -> str:
-        """deterministic: multi-tab channel scans reuse one channel_id"""
         return f"{item_type}_{youtube_id}_{vid_type or 'na'}"
 
     def run_queue(self) -> tuple[int, int, bool]:

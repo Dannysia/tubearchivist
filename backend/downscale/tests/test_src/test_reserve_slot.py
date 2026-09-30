@@ -11,7 +11,6 @@ def _make_runner(task):
 
 
 def _mock_task():
-    """real celery Task.retry() raises, so the mock has to as well"""
     task = Mock()
     task.request.id = "task-1"
     task.retry.side_effect = RuntimeError("retry raised")
@@ -51,10 +50,6 @@ def test_concurrency_limit_retries_with_longer_countdown():
 
 
 def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
-    """
-    0 is a real limit, not falsy - a local job dispatched under it
-    retries forever, waiting for a slot that never opens
-    """
     task = _mock_task()
     runner = _make_runner(task)
 

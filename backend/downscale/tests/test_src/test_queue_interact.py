@@ -8,10 +8,6 @@ def _es_response(hits: list[dict]) -> dict:
 
 
 def test_get_interrupted_maps_hits_to_docs():
-    """
-    paginated rather than a single capped query, so a restart backlog
-    past 1000 jobs is not silently truncated
-    """
     hits = [
         {"_id": "doc1", "_source": {"status": "queued", "youtube_id": "a"}},
         {"_id": "doc2", "_source": {"status": "running", "youtube_id": "b"}},
@@ -75,11 +71,6 @@ def test_get_next_queued_maps_hits_and_sorts_oldest_first():
 
 
 def test_get_next_queued_excludes_already_dispatched_jobs():
-    """
-    a job stays status=queued from dispatch until its task reaches
-    _reserve_slot(), so without the empty task_id filter two dispatch
-    passes close together could start two tasks for one doc
-    """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response([]), 200)
 
@@ -92,7 +83,6 @@ def test_get_next_queued_excludes_already_dispatched_jobs():
 
 
 def test_get_next_queued_unlimited_uses_a_capped_size():
-    """limit=None is unlimited concurrency, not an unlimited query"""
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response([]), 200)
 
@@ -111,7 +101,6 @@ def test_get_next_queued_zero_or_negative_limit_skips_the_query():
 
 
 def test_requeue_interrupted_uses_a_single_update_by_query():
-    """remote-held jobs (worker != "") are excluded from the sweep"""
     with patch("common.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.post.return_value = ({}, 200)
 
@@ -151,7 +140,6 @@ def test_get_all_tmp_filenames_returns_basenames():
 
 
 def test_get_all_tmp_filenames_skips_docs_without_tmp_path():
-    """a doc that never reserved a slot has no tmp_file_path"""
     with patch("downscale.src.queue_interact.IndexPaginate") as mock_paginate:
         mock_paginate.return_value.get_results.return_value = [{}]
 
@@ -185,10 +173,6 @@ def test_get_all_tmp_filenames_covers_every_status_holding_a_file():
 
 
 def test_count_running_excludes_remote_jobs():
-    """
-    downscale_max_concurrent protects the TA host's own CPU, so remote
-    (worker != "") running jobs must not count against it
-    """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (
             {"hits": {"total": {"value": 3}}},
@@ -210,10 +194,6 @@ def test_count_running_excludes_remote_jobs():
 
 
 def test_build_queued_doc_defaults_worker_fields_for_a_local_job():
-    """
-    worker is written as "" rather than left absent: the local-vs-remote
-    filters all rely on an exact term match against it
-    """
     video_json_data = {
         "channel": {"channel_id": "UC123", "channel_name": "chan"},
         "title": "title",
@@ -244,10 +224,6 @@ def test_create_keys_the_doc_id_off_youtube_id():
 
 
 def test_create_is_deterministic_across_repeated_calls_for_one_video():
-    """
-    a racing double submission, or a retry at a different target_height,
-    writes to the same doc path
-    """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.put.return_value = ({}, 200)
 
@@ -264,7 +240,6 @@ def test_create_is_deterministic_across_repeated_calls_for_one_video():
 
 
 def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
-    """a local job, or one heartbeating on time, is not a stale lease"""
     hits = [
         {
             "_id": "doc1",
@@ -308,11 +283,6 @@ def test_get_stale_leases_queries_remote_jobs_past_the_threshold():
 
 
 def test_get_stale_leases_range_declares_epoch_second_format():
-    """
-    ES reads a bare numeric on a date field as epoch *millis*, so
-    without the explicit format the threshold lands in Jan 1970, the
-    range matches nothing and no lease is ever reaped
-    """
     with patch("downscale.src.queue_interact.ElasticWrap") as mock_wrap:
         mock_wrap.return_value.get.return_value = (_es_response([]), 200)
 

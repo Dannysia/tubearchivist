@@ -87,12 +87,7 @@ class VideoDownscaleEncoderView(ApiBaseView):
     )
     def get(self, request):
         # pylint: disable=unused-argument
-        """
-        get the encoders videos have actually been downscaled with, to
-        populate the filter dropdown. Aggregated rather than served from
-        ENCODER_SETTINGS because a remote worker reports its own encoder
-        string, which is not in that dict (see DownscaleEncoders.ts)
-        """
+        """get the encoders videos have been downscaled with"""
         self.data = {
             "query": {"exists": {"field": "downscale.encoder"}},
             "aggs": {

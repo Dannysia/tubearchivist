@@ -1,9 +1,4 @@
-"""test the query building behind the log page
-
-The task filter is the fiddly part: it has to list every task in the
-log rather than every task on the visible page, and it has to keep
-listing them once one is picked.
-"""
+"""test the query building behind the log page"""
 
 # flake8: noqa: E402
 
@@ -24,8 +19,6 @@ def tasks_agg(query: dict) -> dict:
 
 class TestBuildTaskAggs:
     def test_is_global_so_the_active_filters_do_not_narrow_it(self):
-        # without the global wrapper the dropdown would collapse to the
-        # one task already picked, leaving no way back to the others
         built = LogView._build_task_aggs({"source": "notification"})
         assert built["all"]["global"] == {}
 
@@ -44,8 +37,6 @@ class TestBuildTaskAggs:
         assert tasks_agg(query) == tasks_agg({"source": "notification"})
 
     def test_a_task_without_a_title_still_buckets(self):
-        # multi_terms drops a document missing any of its fields, so a
-        # task with no config entry would have unselectable log rows
         terms = tasks_agg({"source": "notification"})["terms"]
         title = [i for i in terms if i["field"] == "task_title"][0]
         assert title["missing"] == ""

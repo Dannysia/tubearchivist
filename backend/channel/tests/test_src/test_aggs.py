@@ -11,7 +11,6 @@ from video.src.resolution import empty_resolution, resolution_agg
 
 
 def a_transition_agg(buckets=None, other=0):
-    """a multi_terms response as ES returns one"""
     return {
         "buckets": buckets or [],
         "sum_other_doc_count": other,
@@ -19,7 +18,6 @@ def a_transition_agg(buckets=None, other=0):
 
 
 def a_saved_agg(**counts):
-    """a savings band range response as ES returns one"""
     buckets = [{"key": "larger", "doc_count": counts.get("larger", 0)}]
     buckets += [
         {"key": str(edge), "doc_count": counts.get(str(edge), 0)}
@@ -29,7 +27,6 @@ def a_saved_agg(**counts):
 
 
 def no_bands(**overrides):
-    """the all-zero band payload, biggest band first"""
     payload = {
         "bands": [
             {"from": edge, "to": upper, "doc_count": 0}
@@ -130,7 +127,6 @@ def test_parse_downscale_grown():
     parsed = ChannelAggs._parse_downscale(agg)
 
     assert parsed["saved"] == -500
-    # its own row, not folded into the smallest saving band
     assert parsed["by_saved"] == no_bands(grew=1)
 
 

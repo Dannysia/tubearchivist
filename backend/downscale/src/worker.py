@@ -1,9 +1,3 @@
-"""
-a remote-held job is status="running" with worker set and task_id="" - it
-has no celery task, so none of this goes through TaskCommand/TaskManager.
-Job-scoped calls return an error string the caller turns into a 409.
-"""
-
 import os
 import shutil
 
@@ -24,7 +18,6 @@ from downscale.src.queue_interact import DownscaleInteract
 from video.src.index import YoutubeVideo
 from video.src.media_streams import MediaStreamExtractor
 
-# three missed 10s heartbeats
 STALE_LEASE_SECONDS = 60
 
 NOT_HELD_ERROR = "job no longer held by this worker"
@@ -32,7 +25,7 @@ CANCELLED_ERROR = "job was cancelled"
 
 
 def _own_job(doc_id: str, worker: str) -> tuple[dict | None, str | None]:
-    """returns (job, None), or (None, error) when the caller must reject"""
+    """returns (job, None), or (None, error)"""
     job, status_code = DownscaleInteract(doc_id).get_item()
     if status_code == 404 or not job:
         return None, "job not found"
@@ -53,7 +46,6 @@ def _cleanup_tmp_files(tmp_path: str | None) -> None:
 
 
 def _discard(doc_id: str, tmp_path: str | None) -> None:
-    """dispatch after: clearing a job may free a concurrency slot"""
     _cleanup_tmp_files(tmp_path)
     try:
         DownscaleInteract(doc_id).delete_item()
@@ -64,7 +56,6 @@ def _discard(doc_id: str, tmp_path: str | None) -> None:
 
 
 def claim(worker: str) -> dict | None:
-    """first claim wins: shares the dispatch lock with celery dispatch"""
     lock = RedisBase().conn.lock(
         DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
     )
@@ -147,11 +138,7 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
         "title": job["title"],
         "target_height": target_height,
         "quality_hint": quality_hint,
-        # nginx's /youtube/ alias, not a Django endpoint: FileResponse
-        # over the ASGI worker pool retains the full file size in the
-        # serving process for that process's lifetime, unreclaimable.
-        # No ownership check - the same bytes are already reachable by
-        # any authenticated user through the normal download path.
+        # nginx's /youtube/ alias, not a django endpoint
         "source_url": f"/youtube/{video.json_data['media_url']}",
     }
 
@@ -169,13 +156,6 @@ def heartbeat(
 
 
 def upload_result(doc_id: str, worker: str, stream) -> str | None:
-    """
-    .part then rename, so a dropped connection never leaves a file that
-    looks finished. tmp_file_path is deterministic across claims, so a
-    reaped-and-reclaimed lease could land its rename on a new claim's
-    output; the re-check before the rename narrows that window to a
-    couple of ES round-trips rather than closing it.
-    """
     job, error = _own_job(doc_id, worker)
     if error:
         return error
@@ -205,10 +185,6 @@ def finish(
     preset: str | None,
     ffmpeg_args: str,
 ) -> str | None:
-    """
-    returns an error string only for the ownership case - an invalid
-    upload is a normal failed job, not a rejected request
-    """
     job, error = _own_job(doc_id, worker)
     if error:
         return error
@@ -216,8 +192,6 @@ def finish(
     tmp_path = job["tmp_file_path"]
 
     if job.get("stop_requested"):
-        # cancel landed after the worker's last heartbeat: the encode
-        # is valid but unwanted, so discard rather than offer it up
         _discard(doc_id, tmp_path)
         return None
 
@@ -259,14 +233,11 @@ def fail(doc_id: str, worker: str, message: str) -> str | None:
         return error
 
     if job.get("stop_requested"):
-        # already cancelled - don't leave a failed job for a retry the
-        # user never asked for
         _discard(doc_id, job.get("tmp_file_path"))
         return None
 
     DownscaleInteract(doc_id).update(
         status="failed",
-        # same cap as the local runner's ffmpeg stderr
         message=message[-2000:],
         worker="",
         last_heartbeat=0,
@@ -276,7 +247,6 @@ def fail(doc_id: str, worker: str, message: str) -> str | None:
 
 
 def delete(doc_id: str, worker: str) -> str | None:
-    """the same end state the local cancel path reaches"""
     job, error = _own_job(doc_id, worker)
     if error:
         return error
@@ -286,12 +256,6 @@ def delete(doc_id: str, worker: str) -> str | None:
 
 
 def reap_stale_leases() -> None:
-    """
-    nothing else recovers a remote-held job - auto-resume on startup
-    skips them - so without this a crashed worker's job stays running
-    forever. A stale job already carrying stop_requested is deleted
-    rather than requeued: it was cancelled before the worker died.
-    """
     stale_before = _now() - STALE_LEASE_SECONDS
     stale_jobs = DownscaleInteract.get_stale_leases(stale_before)
     if not stale_jobs:

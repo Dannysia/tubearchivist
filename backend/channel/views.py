@@ -268,8 +268,6 @@ class ChannelVideoDeleteView(ApiBaseView):
         vid_type = validated["vid_type"]
         ignore = validated["ignore"]
 
-        # backgrounded: one es round trip per video plus its playlist
-        # entries, subtitles and comments outlives the request
         task = delete_channel_videos.delay(channel_id, vid_type, ignore)
         message = {
             "message": f"deleting {vid_type} from {channel_id}",
@@ -340,8 +338,6 @@ class ChannelDownscaleView(ApiBaseView):
             queued.append(youtube_id)
 
         if queued:
-            # one pass for the batch: dispatch_pending_downscales
-            # fills every free slot in a single call
             dispatch_pending_downscales()
 
         serializer = ChannelDownscaleSerializer(

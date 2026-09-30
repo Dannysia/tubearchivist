@@ -1,8 +1,4 @@
-"""test import upload file name validation
-
-validate_name is the only thing between an attacker controlled upload
-name and a write to disk
-"""
+"""test import upload file name validation"""
 
 import os
 
@@ -38,12 +34,10 @@ def test_accepts_every_supported_extension(file_name):
     ],
 )
 def test_accepts_sidecar_names(file_name):
-    """secondary extensions resolve to the same base name"""
     assert ImportFolderFiles.validate_name(file_name) == file_name
 
 
 def test_accepts_yt_dlp_bracket_name():
-    """the yt-dlp default output template"""
     file_name = f"Never Gonna Give You Up [{VIDEO_ID}].mp4"
     assert ImportFolderFiles.validate_name(file_name) == file_name
 
@@ -89,8 +83,6 @@ def test_strips_any_path_from_the_name(file_name):
     ],
 )
 def test_rejects_traversal_that_survives_basename(file_name):
-    """a windows or encoded separator is not a path separator here, so
-    the name keeps its slashes and fails the id rule instead"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
@@ -134,8 +126,6 @@ def test_rejects_unsupported_extensions(file_name):
     ],
 )
 def test_rejects_names_that_are_not_an_unambiguous_video_id(file_name):
-    """extract_video_id would take the trailing 11 characters of any
-    name, so mystery-clip.mp4 would import as ystery-clip"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
@@ -143,23 +133,17 @@ def test_rejects_names_that_are_not_an_unambiguous_video_id(file_name):
 @pytest.mark.parametrize(
     "file_name",
     [
-        # rejected on the extension
         f"{VIDEO_ID}.mp4\x00.txt",
-        # keeps a valid extension, so the id rule has to catch it
         f"{VIDEO_ID}\x00.mp4",
         f"{VIDEO_ID}\x00.evil.mp4",
     ],
 )
 def test_rejects_a_null_byte_in_the_name(file_name):
-    """a truncating name never reaches open()"""
     with pytest.raises(ValueError):
         ImportFolderFiles.validate_name(file_name)
 
 
 class TestStagedFilePath:
-    """the name comes off a url, so the basename rule is the only thing
-    between a caller and the rest of the filesystem"""
-
     @staticmethod
     @pytest.fixture
     def import_dir(tmp_path, monkeypatch):
@@ -187,8 +171,6 @@ class TestStagedFilePath:
     def test_a_traversal_naming_nothing_staged_resolves_to_nothing(
         self, import_dir, file_name
     ):
-        """basename first, so a traversal collapses to a plain name that
-        is looked for in the import folder and is not there"""
         assert ImportFolderFiles.file_path(file_name) is None
 
     @pytest.mark.parametrize(
@@ -197,9 +179,6 @@ class TestStagedFilePath:
     def test_a_path_can_never_resolve_outside_the_import_folder(
         self, import_dir, file_name
     ):
-        """the basename collapses onto the staged file rather than
-        following the path. Assert the directory rather than a prefix, so
-        this cannot pass by resolving to None"""
         resolved = ImportFolderFiles.file_path(file_name)
 
         assert resolved == str(import_dir / "staged.mp4")
@@ -208,13 +187,11 @@ class TestStagedFilePath:
     def test_a_traversal_onto_a_real_outside_file_is_not_reachable(
         self, import_dir, tmp_path
     ):
-        """the file it points at exists, and still must not be served"""
         (tmp_path.parent / "outside.mp4").write_bytes(b"secret")
 
         assert ImportFolderFiles.file_path("../outside.mp4") is None
 
     def test_delete_still_refuses_the_same_names(self, import_dir):
-        """delete_file shares this gate, it must not have lost it"""
         with pytest.raises(ValueError):
             ImportFolderFiles.delete_file(".hidden")
 

@@ -1,13 +1,4 @@
-"""every paced loop must leave itself when the wait refuses
-
-countdown_sleep returns False when a stop request cut the wait short,
-and the wait *is* the rate limit - carrying on after a shortened one
-hits youtube harder than a normal pass does. Each test drives a real
-loop with a wait that always refuses, because a loop that drops the
-break passes every other test. The message shape tests are the other
-half: the countdown line goes *under* whatever the loop is working on,
-never replacing it.
-"""
+"""every paced loop must leave itself when the wait refuses"""
 
 # flake8: noqa: E402
 
@@ -48,7 +39,6 @@ def capture_task():
 
 
 def queue_of_one(length=1):
-    """one item comes off, then nothing; length is what is left after"""
     items = iter([("abc", 1), (None, None)])
     return SimpleNamespace(
         key="q",
@@ -59,9 +49,6 @@ def queue_of_one(length=1):
 
 
 def endless_queue():
-    """never drains - a queue that runs dry ends the loop by itself, so
-    a stop test against one passes whether or not the break is there
-    """
     counter = count(1)
 
     def get_next():
@@ -75,7 +62,6 @@ def endless_queue():
 
 
 def refuse(monkeypatch, module):
-    """a wait that always reports a stop"""
     monkeypatch.setattr(module, "countdown_sleep", lambda *a, **kw: False)
 
 
@@ -187,7 +173,6 @@ class TestChannelPlaylistIndex:
 
         YoutubeChannel.index_channel_playlists(handler)
 
-        # the second playlist never gets a line of its own
         assert not any("2/2" in line for msg in sent for line in msg)
 
     def test_countdown_goes_under_the_counter(self, monkeypatch):
@@ -198,10 +183,7 @@ class TestChannelPlaylistIndex:
 
         YoutubeChannel.index_channel_playlists(handler)
 
-        # only one wait, after the first of two: nothing follows the
-        # last playlist, index_channel_playlists is the whole task
         assert seen == ["next playlist"]
-        # sent[0] is the "Looking for Playlists" preamble
         assert sent[2] == [
             "Some Channel: Scanning channel for playlists",
             "Progress: 1/2",
@@ -326,24 +308,13 @@ class TestPostProcessPlaylists:
                 DownloadPostProcess.run(handler)
 
     def test_run_does_not_go_to_youtube_after_a_refusal(self):
-        """a refusal reported by refresh_playlist must not be dropped:
-        the comment index would go straight to youtube with no pacing,
-        which is the one thing the wait exists to stop
-        """
         ran = []
         self._run(self._run_handler(ran, refresh=False), ran)
 
         assert "comments" not in ran, "youtube step must be skipped"
-        # the local ones still run, so downloaded work is fully filed
         assert "match" in ran and "embed" in ran
 
     def test_run_queues_comments_even_after_a_refusal(self):
-        """queueing is a redis write, not a youtube request
-
-        The clear at the end of run is the last thing holding those
-        video ids and the comment queue is what carries them into the
-        next run, so skipping it loses the comments for good.
-        """
         ran = []
         self._run(self._run_handler(ran, refresh=False), ran)
 
@@ -351,10 +322,6 @@ class TestPostProcessPlaylists:
         assert ran.index("queue comments") < ran.index("clear")
 
     def test_run_skips_the_youtube_steps_when_already_stopped(self):
-        """refresh_playlist reaches youtube on the way to its return, so
-        the check has to gate the call itself, not only act on what it
-        reports back
-        """
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
 
@@ -364,9 +331,6 @@ class TestPostProcessPlaylists:
         assert "match" in ran and "embed" in ran
 
     def test_a_stopped_run_still_queues_the_quick_sync(self):
-        """_add_video_playlists hangs off refresh_playlist, which a stop
-        skips whole, so run has to do it itself or the ids are cleared
-        below and those playlists never learn what was downloaded"""
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
 
@@ -374,8 +338,6 @@ class TestPostProcessPlaylists:
         assert ran.index("quick sync") < ran.index("match")
 
     def test_the_normal_path_leaves_the_quick_sync_to_refresh(self):
-        """where it has to run before the full refresh queue is drained,
-        so its must_not still excludes what is about to be refreshed"""
         ran = []
         self._run(self._run_handler(ran), ran)
 
@@ -389,24 +351,18 @@ class TestPostProcessPlaylists:
         assert "refresh" in ran
 
     def test_auto_downscale_runs_after_the_file_is_final(self):
-        """embed_metadata rewrites the media file in place, so a
-        downscale queued before it encodes a file that is about to be
-        rewritten underneath the job
-        """
         ran = []
         self._run(self._run_handler(ran), ran)
 
         assert ran.index("embed") < ran.index("downscale")
 
     def test_auto_downscale_runs_before_the_ids_are_cleared(self):
-        """it reads the same video queue the clear empties"""
         ran = []
         self._run(self._run_handler(ran), ran)
 
         assert ran.index("downscale") < ran.index("clear")
 
     def test_a_stopped_run_still_queues_downscales(self):
-        """es and redis only: it files work that is already downloaded"""
         ran = []
         self._run(self._run_handler(ran, stopped=True), ran)
 
@@ -428,10 +384,6 @@ class TestPostProcessPlaylists:
         ]
 
     def test_pacing_happens_without_a_task(self, monkeypatch):
-        """no task means nowhere to narrate to, so the label is empty -
-        but the wait itself still has to happen, or a scheduled refresh
-        reaches youtube with no pacing at all
-        """
         handler = self._handler(None, monkeypatch, length=3)
         seen = []
         record(monkeypatch, post_mod, seen)
@@ -442,11 +394,6 @@ class TestPostProcessPlaylists:
 
 
 class TestPostProcessChannelScan:
-    """_add_channel_playlists asks youtube for the playlists of every
-    channel with index_playlists set, so without pacing and a stop check
-    it is the first thing a stopped download run hammers youtube with
-    """
-
     @staticmethod
     def _queue(length=1, endless=False):
         queue = endless_queue() if endless else queue_of_one(length)
@@ -458,8 +405,6 @@ class TestPostProcessChannelScan:
         monkeypatch.setattr(
             post_mod, "RedisQueue", lambda name: self._queue(length)
         )
-        # no default on task: a construction that forgets to hand the
-        # task over has to fail here rather than pass quietly
         monkeypatch.setattr(
             post_mod,
             "YoutubeChannel",
@@ -501,7 +446,6 @@ class TestPostProcessChannelScan:
         ), "must report the stop"
 
     def test_a_stop_request_ends_it_before_the_next_channel(self, monkeypatch):
-        """the check sits before get_next, so the channel stays queued"""
         _, task = capture_task()
         task.is_stopped = lambda: True
         popped = []
@@ -530,8 +474,6 @@ class TestPostProcessChannelScan:
         ]
 
     def test_the_channel_carries_the_task(self, monkeypatch):
-        """get_all_playlists reaches youtube, so its bot block wait has
-        to be able to see a stop"""
         _, task = capture_task()
         built: list = []
         handler = self._handler(task, monkeypatch, built=built)
@@ -542,7 +484,6 @@ class TestPostProcessChannelScan:
         assert built == [task]
 
     def test_no_wait_when_nothing_went_to_youtube(self, monkeypatch):
-        """a channel without index_playlists never leaves elasticsearch"""
         _, task = capture_task()
         handler = self._handler(task, monkeypatch, indexes=False)
         seen = []
@@ -553,12 +494,6 @@ class TestPostProcessChannelScan:
 
 
 class TestFailedRequestsStillPace:
-    """a spent youtube request owes the wait whether or not it worked
-
-    A run where requests are failing is a bot block, and a bot block is
-    when pacing matters most.
-    """
-
     def test_a_failed_extraction_paces(self, monkeypatch):
         _, task = capture_task()
         monkeypatch.setattr(

@@ -118,7 +118,6 @@ class Scanner:
                 break
 
     def _index_one(self, file_path: str, youtube_id: str) -> bool:
-        """True when the caller should pace, not whether indexing worked"""
         if self.prefer_local:
             if self._try_embed(file_path, youtube_id):
                 return False

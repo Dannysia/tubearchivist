@@ -7,7 +7,6 @@ type ChannelSearchResponse = {
   };
 };
 
-/** channel: scopes the search to ta_channel's channel_name.search_as_you_type */
 const searchChannels = async (term: string) => {
   const query = encodeURIComponent(`channel:${term}`);
 

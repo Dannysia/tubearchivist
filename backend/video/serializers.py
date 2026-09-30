@@ -17,11 +17,7 @@ class VideoDownscaleSerializer(serializers.Serializer):
 
 
 class DownscaleQueuedResponseSerializer(serializers.Serializer):
-    """
-    serialize a newly queued downscale job. No task_id here - whether
-    it's dispatched immediately or sits queued behind others depends on
-    concurrency slot availability, decided by dispatch_pending_downscales()
-    """
+    """serialize a newly queued downscale job. No task_id here - whether"""
 
     doc_id = serializers.CharField()
 

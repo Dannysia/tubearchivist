@@ -10,12 +10,9 @@ from video.src.index import YoutubeVideo
 
 VIDEO_ID = "ibyCDgITtxg"
 
-# what yt-dlp returns for a removed video, ignore_no_formats_error set
 REMOVED_STUB = {
     "id": VIDEO_ID,
     "title": f"youtube video #{VIDEO_ID}",
-    # measured empty on live removed videos; YoutubeDL substitutes
-    # the generic title above
     "fulltitle": "",
     "upload_date": None,
     "timestamp": None,
@@ -26,8 +23,6 @@ REMOVED_STUB = {
 }
 
 
-# age gated or members only: no formats, real metadata intact - the
-# case that must not be mistaken for a removed video
 AGE_GATED_META = {
     "id": VIDEO_ID,
     "fulltitle": "Members only upload",
@@ -66,16 +61,12 @@ def test_file_fills_in_what_the_stub_left_null():
 
 
 def test_file_replaces_the_placeholder_title():
-    """the stub title is truthy, so a gap fill alone would keep it"""
     merged = YoutubeVideo._merge_offline_meta(REMOVED_STUB, build_info_json())
 
     assert merged["title"] == "Firing a minigun from a Helicopter"
 
 
 def test_blank_file_field_keeps_what_the_stub_had():
-    """YT serves a thumbnail even for a removed video, and the import
-    form writes an empty string when no url is given
-    """
     merged = YoutubeVideo._merge_offline_meta(REMOVED_STUB, build_info_json())
 
     assert merged["thumbnail"] == REMOVED_STUB["thumbnail"]
@@ -113,7 +104,6 @@ def test_the_merge_does_not_mutate_either_input():
 
 def test_merged_upload_date_is_what_build_published_parses():
     merged = YoutubeVideo._merge_offline_meta(REMOVED_STUB, build_info_json())
-    # __init__ would read the app config out of ES
     video = YoutubeVideo.__new__(YoutubeVideo)
     video.youtube_meta = merged
     video.youtube_id = VIDEO_ID
@@ -131,11 +121,6 @@ def test_the_stub_alone_still_raises():
 
 
 class TestUnknownCounts:
-    """UNKNOWN_COUNT is an in band sentinel: -1 survives _add_stats
-    only because it is truthy, so a max(0, ...) there would turn every
-    unknown count into a claimed zero
-    """
-
     @staticmethod
     def add_stats(youtube_meta: dict) -> dict:
         video = object.__new__(YoutubeVideo)
@@ -178,8 +163,6 @@ class TestUnknownCounts:
 
 
 class TestActiveState:
-    """only one of the two offline_import branches is a gone video"""
-
     @staticmethod
     def process(youtube_meta: dict, youtube_answered: bool) -> dict:
         video = object.__new__(YoutubeVideo)
@@ -200,7 +183,6 @@ class TestActiveState:
 
     @staticmethod
     def run_build_json(served, overwrite=False, from_file=False):
-        """the real build_json, with youtube, es and the file stubbed"""
         video = object.__new__(YoutubeVideo)
         video.youtube_id = VIDEO_ID
         video.video_type = VideoTypeEnum.VIDEOS
@@ -238,10 +220,6 @@ class TestActiveState:
         assert video.offline_import is False
 
     def test_a_failed_lookup_does_not_mark_a_video_gone(self):
-        """
-        nothing back at all is a network error or a stale cookie, not a
-        gone video - guessing gone would deactivate a live one
-        """
         video = self.run_build_json(
             served=False, overwrite=build_info_json(), from_file=True
         )
@@ -250,10 +228,6 @@ class TestActiveState:
         assert video.offline_import is True
 
     def test_a_removed_video_answers_with_a_stub_not_with_nothing(self):
-        """
-        YT replies for a removed video, so it never reaches the empty
-        response branch: it lands with no formats, like an age gated one
-        """
         video = self.run_build_json(
             served=dict(REMOVED_STUB),
             overwrite=build_info_json(),
@@ -284,14 +258,12 @@ class TestActiveState:
         ["fulltitle", "channel_id", "uploader", "upload_date", "timestamp"],
     )
     def test_any_single_identifying_field_counts_as_answered(self, field):
-        """gone is the damaging direction, so a partial answer counts"""
         partial = dict(REMOVED_STUB)
         partial[field] = "something"
 
         assert YoutubeVideo._youtube_answered(partial) is True
 
     def test_the_default_is_active(self, monkeypatch):
-        # __init__ reads the config out of ES
         monkeypatch.setattr(
             index_generic, "AppConfig", lambda: SimpleNamespace(config={})
         )

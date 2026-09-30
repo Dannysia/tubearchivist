@@ -262,8 +262,6 @@ class LogView(ApiBaseView):
         self.initiate_pagination(request)
 
         response, _ = ElasticWrap(self.search_base).get(data=self.data)
-        # deliberately not get_document_list: that 404s on an empty
-        # result, and an empty log is normal on a fresh install
         hits = response.get("hits", {})
         self.pagination_handler.validate(hits.get("total", {}).get("value", 0))
         serializer = LogListSerializer(
@@ -278,12 +276,6 @@ class LogView(ApiBaseView):
 
     @staticmethod
     def _build_task_aggs(validated_query: dict) -> dict:
-        """
-        scoped to the source alone rather than the active filters: an
-        agg over the current result set would drop every other task the
-        moment one is picked, and would miss any task whose entries all
-        sit on a later page
-        """
         source = validated_query.get("source")
         source_filter: dict = (
             {"term": {"source": {"value": source}}}
@@ -303,10 +295,6 @@ class LogView(ApiBaseView):
                                     "size": 50,
                                     "terms": [
                                         {"field": "task_name"},
-                                        # multi_terms drops a document
-                                        # missing any of its fields, and
-                                        # a task with no config entry
-                                        # logs without a title
                                         {"field": "task_title", "missing": ""},
                                     ],
                                     "order": {"_count": "desc"},

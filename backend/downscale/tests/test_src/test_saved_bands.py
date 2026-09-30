@@ -17,10 +17,6 @@ def _agg(**counts):
 
 
 def test_video_agg_reads_the_downscale_subfields():
-    """
-    a video doc carries the sizes under downscale, not at the top level
-    like a queue doc, so the queue's field names would match nothing
-    """
     source = saved_percent_agg(VIDEO_SIZE_FIELDS)["range"]["script"]["source"]
 
     assert "doc['downscale.new_size']" in source
@@ -58,7 +54,6 @@ def test_counts_land_in_their_own_band():
 
 
 def test_grew_is_reported_separately_from_every_band():
-    """a video that came out larger is not a saving of any size"""
     parsed = parse_saved_bands(_agg(larger=9, **{"0": 1}), total=10)
 
     assert parsed["grew"] == 9
@@ -68,10 +63,6 @@ def test_grew_is_reported_separately_from_every_band():
 
 
 def test_rows_reconcile_with_the_caller_total():
-    """
-    the shortfall is reported rather than dropped: a video whose
-    original_size was never indexed fails the guard and lands in no band
-    """
     parsed = parse_saved_bands(_agg(**{"50": 4}), total=7)
 
     counted = (
@@ -84,14 +75,12 @@ def test_rows_reconcile_with_the_caller_total():
 
 
 def test_total_below_the_bands_never_goes_negative():
-    """clamped rather than rendering a negative row if they disagree"""
     parsed = parse_saved_bands(_agg(**{"50": 4}), total=0)
 
     assert parsed["unknown"] == 0
 
 
 def test_missing_buckets_read_as_zero():
-    """ES omits nothing here, but an empty archive returns no buckets"""
     parsed = parse_saved_bands({}, total=0)
 
     assert [band["doc_count"] for band in parsed["bands"]] == [0] * len(

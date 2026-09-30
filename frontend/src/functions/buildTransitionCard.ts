@@ -9,7 +9,6 @@ const buildTransitionCard = (byTransition: DownscaleTransitionsType): Record<str
     card[label] = formatNumbers(transition.doc_count);
   });
 
-  // the backend caps the pairs it returns, so say what the rows leave out
   if (byTransition.other_count > 0) {
     card['Other'] = formatNumbers(byTransition.other_count);
   }

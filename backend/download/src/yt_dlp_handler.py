@@ -66,8 +66,6 @@ class VideoDownloader(DownloaderBase):
                 self._reset_auto()
                 break
 
-            # failures count too: every attempt spends the request the
-            # wait exists to pace, and an all-failing run is a bot block
             if (downloaded or failed) and not countdown_sleep(
                 self.config,
                 self.task,
@@ -288,21 +286,10 @@ class DownloadPostProcess(DownloaderBase):
     """handle task to run after download queue finishes"""
 
     def run(self):
-        """a stop skips the steps that reach youtube, not the local ones
-
-        run_queue calls this even when a stop broke its own loop, so the
-        check is up front: everything up to refresh_playlist's return
-        reaches youtube too. Queueing the new videos for comments is a
-        redis write and happens either way - the clear below is the last
-        thing holding those ids.
-        """
         keep_going = not (self.task and self.task.is_stopped())
         if keep_going:
             keep_going = self.refresh_playlist()
         else:
-            # refresh_playlist owns this normally, before the full
-            # refresh queue is drained; a stop skips that whole path and
-            # the ids are cleared below
             self._add_video_playlists()
 
         self.match_videos()
@@ -318,12 +305,6 @@ class DownloadPostProcess(DownloaderBase):
         RedisQueue(self.VIDEO_QUEUE).clear()
 
     def auto_downscale(self) -> None:
-        """
-        runs after embed_metadata() because that rewrites the media file
-        in place and would throw the encode away. ES and redis only, so
-        it runs even when the task was stopped. Jobs land in
-        pending_review, so an original is only replaced by an accept.
-        """
         targets = {
             channel_id: value["downscale_target_height"]
             for channel_id, value in self.channel_overwrites.items()
@@ -365,14 +346,12 @@ class DownloadPostProcess(DownloaderBase):
             queued += 1
 
         if queued:
-            # one pass after the batch: dispatch fills every free slot
             dispatch_pending_downscales()
 
     @staticmethod
     def _get_downscale_candidates(
         video_ids: list[str], targets: dict[str, int]
     ) -> list[dict]:
-        """carries the fields build_queued_doc reads"""
         data = {
             "query": {
                 "bool": {
@@ -400,8 +379,6 @@ class DownloadPostProcess(DownloaderBase):
 
             playlist = self._refresh_one_playlist(playlist_id)
             if not playlist:
-                # the failed request was still spent, so the wait is
-                # owed; no notify, there is no title to count down
                 if not countdown_sleep(self.config, self.task):
                     return False
 
@@ -469,13 +446,6 @@ class DownloadPostProcess(DownloaderBase):
         )
 
     def add_playlists_to_refresh(self) -> bool:
-        """False when a stop cut it short
-
-        _add_video_playlists has to run here, not in run(): its must_not
-        reads the full refresh queue that the loop below has not drained
-        yet. A stop skips this method whole, so run() calls it on that
-        path instead - keep the two in step.
-        """
         if self.task:
             message = ["Post Processing Playlists", "Scanning for Playlists"]
             self.task.send_progress(message)
@@ -493,14 +463,6 @@ class DownloadPostProcess(DownloaderBase):
         RedisQueue(self.PLAYLIST_QUEUE).add_list(to_add)
 
     def _add_channel_playlists(self) -> bool:
-        """False when a stop cut it short
-
-        get_all_playlists is a youtube request per channel that has
-        index_playlists set, so this loop paces like every other one
-        that reaches out. The stop check sits before get_next: a popped
-        channel is off the queue for good, so leaving it unpopped gives
-        its playlists another go on the next run.
-        """
         queue = RedisQueue(self.CHANNEL_QUEUE)
         while True:
             if self.task and self.task.is_stopped():
@@ -519,7 +481,6 @@ class DownloadPostProcess(DownloaderBase):
 
             overwrites = channel.get_overwrites()
             if not overwrites.get("index_playlists"):
-                # nothing went to youtube, so there is nothing to pace
                 continue
 
             self._notify_channel_scan(idx, total)
@@ -533,7 +494,6 @@ class DownloadPostProcess(DownloaderBase):
         return True
 
     def _notify_channel_scan(self, idx, total, waiting=None) -> None:
-        """send progress for one channel scanned for playlists"""
         if not self.task:
             return
 

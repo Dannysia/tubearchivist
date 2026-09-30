@@ -11,7 +11,6 @@ VAAPI_DEVICE = "/dev/dri/renderD128"
 
 
 def test_hw_encoder_keys_are_only_the_hardware_variants():
-    """software encoders are always available, so never tested"""
     assert EncoderCapabilityTest.HW_ENCODER_KEYS == [
         "h264_vaapi",
         "h265_vaapi",
@@ -35,7 +34,6 @@ def test_build_test_cmd_uses_synthetic_source():
 
 
 def test_build_test_cmd_h265_vaapi_maps_to_hevc_vaapi():
-    """ffmpeg's own name for the h265 vaapi encoder is hevc_vaapi"""
     cmd = _build_test_cmd("h265_vaapi", VAAPI_DEVICE)
 
     assert cmd[cmd.index("-c:v") + 1] == "hevc_vaapi"
@@ -57,7 +55,6 @@ def test_run_reports_missing_device_without_invoking_ffmpeg():
 
 
 def test_run_tests_each_encoder_when_device_present():
-    """results come back in encoder order despite the thread pool"""
     with patch.object(
         EnvironmentSettings, "VAAPI_RENDER_DEVICE", VAAPI_DEVICE
     ), patch(
