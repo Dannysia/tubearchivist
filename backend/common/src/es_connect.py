@@ -193,7 +193,9 @@ class IndexPaginate:
     def run_loop(self):
         """loop through results until last hit"""
         all_results = []
+        processed = 0
         counter = 0
+        callback = self.kwargs.get("callback")
         while True:
             get_kwargs = {"data": self.data}
             if timeout_overwrite := self.kwargs.get("timeout"):
@@ -204,20 +206,19 @@ class IndexPaginate:
             if not all_hits:
                 break
 
-            for hit in all_hits:
-                if self.kwargs.get("keep_source"):
-                    all_results.append(hit)
-                else:
-                    all_results.append(hit["_source"])
+            if callback:
+                callback(all_hits, self.index_name, counter=counter).run()
+            else:
+                for hit in all_hits:
+                    if self.kwargs.get("keep_source"):
+                        all_results.append(hit)
+                    else:
+                        all_results.append(hit["_source"])
 
-            if self.kwargs.get("callback"):
-                self.kwargs.get("callback")(
-                    all_hits, self.index_name, counter=counter
-                ).run()
-
+            processed += len(all_hits)
             if self.kwargs.get("task"):
                 print(f"{self.index_name}: processing page {counter}")
-                self._notify(len(all_results))
+                self._notify(processed)
 
             counter += 1
 

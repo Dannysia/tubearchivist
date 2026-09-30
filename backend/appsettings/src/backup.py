@@ -42,6 +42,8 @@ class ElasticBackup:
 
         if self.task:
             self.task.send_progress(["Scanning your index."])
+
+        self._clear_leftovers()
         for index in self.index_config:
             index_name = index["index_name"]
             print(f"backup: export in progress for {index_name}")
@@ -81,6 +83,12 @@ class ElasticBackup:
         response, _ = ElasticWrap(path).get()
 
         return response.get("count")
+
+    def _clear_leftovers(self):
+        for file in os.listdir(self.BACKUP_DIR):
+            if file.startswith("es_") and file.endswith(".json"):
+                print(f"backup: removing leftover {file}")
+                os.remove(os.path.join(self.BACKUP_DIR, file))
 
     def zip_it(self):
         """pack it up into single zip file"""

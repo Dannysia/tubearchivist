@@ -459,7 +459,7 @@ but a superseded answer is dropped.
   before the default can flip: a raise inside a cleanup path or a
   per-item loop is its own regression.
 
-- `appsettings/src/backup.py:28` - the new `"history": 10000` entry feeds an
+- **Fixed.** `appsettings/src/backup.py:28` - the new `"history": 10000` entry feeds an
   unpruned index through `IndexPaginate`, which accumulates every hit with
   full `_source` regardless of the callback. After an OOM kill the loose
   `es_*.json` stay in `BACKUP_DIR` and the next `zip_it` globs any `*.json`
