@@ -3,16 +3,12 @@ import APIClient from '../../functions/APIClient';
 export type TaskScheduleNameType =
   | 'update_subscribed'
   | 'download_pending'
-  | 'extract_download'
   | 'check_reindex'
-  | 'manual_import'
-  | 'run_backup'
-  | 'restore_backup'
-  | 'rescan_filesystem'
   | 'thumbnail_check'
-  | 'index_playlists'
-  | 'subscribe_to'
-  | 'version_check';
+  | 'run_backup'
+  | 'version_check'
+  | 'downscale_reap_leases'
+  | 'log_cleanup';
 
 type ScheduleConfigType = {
   schedule?: string;

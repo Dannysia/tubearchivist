@@ -221,6 +221,10 @@ class ScheduleView(ApiBaseView):
         request=TaskCreateDataSerializer(),
         responses={
             200: OpenApiResponse(CustomPeriodicTaskSerializer()),
+            404: OpenApiResponse(
+                ErrorResponseSerializer(),
+                description="task cannot be scheduled",
+            ),
             400: OpenApiResponse(
                 ErrorResponseSerializer(), description="bad request"
             ),
@@ -228,6 +232,12 @@ class ScheduleView(ApiBaseView):
     )
     def post(self, request, task_name):
         """create/update schedule for task"""
+        if task_name not in ScheduleBuilder.SCHEDULES:
+            error = ErrorResponseSerializer(
+                {"error": f"{task_name} cannot be scheduled"}
+            )
+            return Response(error.data, status=404)
+
         data_serializer = TaskCreateDataSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data

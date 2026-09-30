@@ -486,7 +486,7 @@ but a superseded answer is dropped.
 - `download/src/queue.py:128,385,401` - `videos_failed_count` is incremented
   and never read; with `track_failure=False` for channel/playlist videos it
   is the only record, so 50/50 videos failing still reports "resolved 1".
-- `task/src/config_schedule.py:66-67` - no task-name validation. An unknown
+- **Fixed.** `task/src/config_schedule.py:66-67` - no task-name validation. An unknown
   name with `"auto"` raises `KeyError` -> 500 instead of 404; a known but
   unschedulable task (`manual_import`) gets a real periodic task that beat
   then calls without its required args every interval.
