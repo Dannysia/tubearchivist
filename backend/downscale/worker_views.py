@@ -14,14 +14,7 @@ from rest_framework.response import Response
 
 
 def _get_worker_name(request) -> str | None:
-    header = request.headers.get("X-TA-Worker")
-    if header:
-        return header
-
-    if request.content_type == "application/json":
-        return request.data.get("worker")
-
-    return None
+    return request.headers.get("X-TA-Worker")
 
 
 class DownscaleWorkerClaimView(ApiBaseView):
@@ -43,10 +36,16 @@ class DownscaleWorkerClaimView(ApiBaseView):
         data_serializer = WorkerClaimRequestSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         worker_name = data_serializer.validated_data["worker"]
+        encoders = data_serializer.validated_data.get("encoders") or []
 
         claimed = worker_logic.claim(worker_name)
         if not claimed:
             return Response(status=204)
+
+        print(
+            f"{claimed['youtube_id']}: claimed by {worker_name}, "
+            f"encoders {', '.join(encoders) or 'not reported'}"
+        )
 
         response_serializer = WorkerClaimResponseSerializer(claimed)
         return Response(response_serializer.data)

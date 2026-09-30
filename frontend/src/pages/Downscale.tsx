@@ -338,7 +338,6 @@ const Downscale = () => {
             <option value="running">running</option>
             <option value="pending_review">pending review</option>
             <option value="failed">failed</option>
-            <option value="cancelled">cancelled</option>
           </select>
           {channelAggsList && channelAggsList.length > 0 && (
             <select

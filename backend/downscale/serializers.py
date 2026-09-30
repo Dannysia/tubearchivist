@@ -31,7 +31,7 @@ class DownscaleItemSerializer(serializers.Serializer):
     vid_thumb_url = serializers.CharField(allow_null=True)
     media_url = serializers.CharField()
     status = serializers.ChoiceField(
-        choices=["queued", "running", "pending_review", "failed", "cancelled"]
+        choices=["queued", "running", "pending_review", "failed"]
     )
     current_height = serializers.IntegerField()
     target_height = serializers.IntegerField()
@@ -62,7 +62,7 @@ class DownscaleListQuerySerializer(serializers.Serializer):
     """serialize query params for downscale list"""
 
     status = serializers.ChoiceField(
-        choices=["queued", "running", "pending_review", "failed", "cancelled"],
+        choices=["queued", "running", "pending_review", "failed"],
         required=False,
     )
     channel = serializers.CharField(required=False, help_text="channel ID")
@@ -124,7 +124,7 @@ class DownscaleAggsQuerySerializer(serializers.Serializer):
     """serialize query params for downscale aggs"""
 
     status = serializers.ChoiceField(
-        choices=["queued", "running", "pending_review", "failed", "cancelled"],
+        choices=["queued", "running", "pending_review", "failed"],
         required=False,
     )
     field = serializers.ChoiceField(

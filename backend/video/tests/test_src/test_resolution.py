@@ -97,3 +97,7 @@ def test_tiers_reconcile_with_the_video_count():
     counts = {"2160": 4, "1080": 9, BELOW_KEY: 1, UNKNOWN_KEY: 6}
     parsed = parse_resolution(build_response(counts))
     assert sum(i["doc_count"] for i in parsed) == sum(counts.values())
+
+
+def test_the_ladder_is_tallest_first():
+    assert DOWNSCALE_LADDER == sorted(DOWNSCALE_LADDER, reverse=True)

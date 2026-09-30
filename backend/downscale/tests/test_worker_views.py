@@ -3,27 +3,17 @@ from unittest.mock import MagicMock
 from downscale.worker_views import _get_worker_name
 
 
-def test_header_takes_priority_over_body():
+def test_the_header_names_the_worker():
     request = MagicMock()
     request.headers = {"X-TA-Worker": "gaming-pc"}
-    request.content_type = "application/json"
-    request.data = {"worker": "some-other-worker"}
 
     assert _get_worker_name(request) == "gaming-pc"
 
 
-def test_falls_back_to_json_body_worker_field():
+def test_a_json_body_does_not_name_the_worker():
     request = MagicMock()
     request.headers = {}
     request.content_type = "application/json"
     request.data = {"worker": "gaming-pc"}
-
-    assert _get_worker_name(request) == "gaming-pc"
-
-
-def test_no_header_and_non_json_body_returns_none():
-    request = MagicMock()
-    request.headers = {}
-    request.content_type = "application/octet-stream"
 
     assert _get_worker_name(request) is None

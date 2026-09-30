@@ -204,8 +204,7 @@ class YoutubeChannel(YouTubeItem):
 
         total = len(self.all_playlists)
         for idx, playlist in enumerate(self.all_playlists):
-            if self.task:
-                self._notify_single_playlist(idx, total)
+            self._notify_single_playlist(idx, total)
 
             self._index_single_playlist(playlist)
             print("add playlist: " + playlist[1])
@@ -215,9 +214,6 @@ class YoutubeChannel(YouTubeItem):
     def _wait_for_next_playlist(self, idx: int, total: int) -> bool:
         if idx + 1 == total:
             return True
-
-        if not self.task:
-            return countdown_sleep(self.config, self.task)
 
         return countdown_sleep(
             self.config,

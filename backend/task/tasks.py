@@ -182,17 +182,13 @@ def process_extraction_queue(self):
         return None
 
     manager.init(self)
-    try:
-        resolver = ExtractionQueue(task=self)
-        resolved, failed, any_auto_start = resolver.run_queue()
+    resolver = ExtractionQueue(task=self)
+    resolved, failed, any_auto_start = resolver.run_queue()
 
-        if failed:
-            print(f"[task][{self.name}] Extractions failed, retry.")
-            self.send_progress(["Extractions failed, retry."])
-            raise self.retry()
-
-    except Retry as exc:
-        raise exc
+    if failed:
+        print(f"[task][{self.name}] Extractions failed, retry.")
+        self.send_progress(["Extractions failed, retry."])
+        raise self.retry()
 
     if any_auto_start:
         download_pending.delay(auto_only=True)
