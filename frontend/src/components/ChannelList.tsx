@@ -10,6 +10,7 @@ import ChannelBanner from './ChannelBanner';
 import ChannelYouTubeLink from './ChannelYouTubeLink';
 import LoadingIndicator from './LoadingIndicator';
 import { useUserConfigStore } from '../stores/UserConfigStore';
+import useIsAdmin from '../functions/useIsAdmin';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 import humanFileSize from '../functions/humanFileSize';
 import formatNumbers from '../functions/formatNumbers';
@@ -21,6 +22,7 @@ type ChannelListProps = {
 
 const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
   const { userConfig } = useUserConfigStore();
+  const isAdmin = useIsAdmin();
   const viewStyle = userConfig.view_style_channel;
   const useSiUnits = userConfig.file_size_unit === FileSizeUnits.Metric;
 
@@ -74,7 +76,7 @@ const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
                   )}
                   <p>Last refreshed: {formatDate(channel.channel_last_refresh)}</p>
                   <div className="button-box">
-                    {channel.channel_subscribed && (
+                    {isAdmin && channel.channel_subscribed && (
                       <Button
                         label="Unsubscribe"
                         className="unsubscribe"
@@ -87,7 +89,7 @@ const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
                       />
                     )}
 
-                    {!channel.channel_subscribed && (
+                    {isAdmin && !channel.channel_subscribed && (
                       <Button
                         label="Subscribe"
                         type="button"

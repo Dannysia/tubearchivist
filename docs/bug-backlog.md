@@ -399,6 +399,8 @@ is upstream's and stays.
 ## Tier 4 - UI
 
 ### T4.1 `frontend/src/components/ChannelList.tsx:76-100` - non-admins see Subscribe and get logged out
+**Fixed.** Both buttons are behind `isAdmin`, as in `ChannelOverview`.
+
 Verified, and the whole button block is ours (2026-09-02). `POST
 /api/channel/<id>/` is `AdminWriteOnly` -> 403, and `APIClient.ts:73` treats
 any 403 as a dead session: `logOut(); window.location.href = Routes.Login`.
