@@ -307,6 +307,23 @@ encode and all worker jobs collide on the empty-string key. (c) `:279-388`
 and `Extraction.tsx:89` change filters without resetting `page`, landing the
 user on an empty page 4. `SettingsLogs.tsx` calls `setPage(0)` correctly.
 
+### Tier 2 open follow-ups
+Low severity, not fixed:
+- T2.1: a stopped batch reports the same "Queued N" message as a
+  finished one.
+- T2.2: `has_work` reads an ES error at boot as "nothing waiting", so that
+  boot does not resume the queue.
+- T2.3: a stop pressed during the pacing wait after an entry fully
+  finished still puts it back to pending; the next run repeats the lookup
+  only to skip every video.
+- T2.4: `extrac_dl` raising on a partial bulk skips dispatching the entries
+  that did land, and a failed channel scan now skips that cycle's playlist
+  scan too.
+- T2.5: "no other mullvad exit node" is also the wording when there is no
+  current exit node at all.
+- T2.8: the 5s refresh while a remote job runs also reloads the three
+  aggregation queries.
+
 ## Tier 3 - dead code that would mislead a future reader
 
 ### T3.1 `common/src/history.py:432-587` - the entire read side has no caller
