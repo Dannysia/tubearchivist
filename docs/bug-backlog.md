@@ -238,7 +238,13 @@ channel stopped at 50 loses the other 450 with no failed or pending trace,
 and the task reports "resolved 1".
 
 ### T2.4 `download/src/subscriptions.py:57-66` and `:97-105` - enqueue/advance is non-transactional, both results discarded
-Reported. A failed enqueue still advances `*_subscribed_next_check`, so one
+**Fixed.** `add_to_queue` raises `QueueWriteError` unless every entry
+applied, so a failed enqueue stops the scan before anything advances;
+`_advance_next_check` raises `IndexWriteError` the same way. Both fail
+the task visibly. A re-run after a failed advance re-enqueues the same
+deterministic ids, so it overwrites rather than duplicates.
+
+Verified. A failed enqueue still advances `*_subscribed_next_check`, so one
 ES 503 silently skips every subscription for a full cycle. A failed advance
 is never captured at all (no assignment, no `?refresh=true`), so the
 5-minute `update_subscribed` re-enqueues every subscribed channel forever.

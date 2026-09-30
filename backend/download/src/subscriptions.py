@@ -14,6 +14,7 @@ from channel.src.index import YoutubeChannel
 from channel.src.remote_query import VideoQueryBuilder
 from common.src.es_connect import ElasticWrap
 from common.src.helper import get_channels, get_playlists
+from common.src.index_generic import IndexWriteError
 from common.src.urlparser import ParsedURLType, Parser
 from download.src.extraction_queue import ExtractionQueue
 from playlist.src.index import YoutubePlaylist
@@ -59,7 +60,11 @@ def _advance_next_check(
 
     bulk_list.append("\n")
     query_str = "\n".join(bulk_list)
-    ElasticWrap("_bulk").post(query_str, ndjson=True)
+    response, status_code = ElasticWrap("_bulk").post(query_str, ndjson=True)
+    if status_code not in [200, 201] or response.get("errors"):
+        raise IndexWriteError(
+            f"{index_name}: next check not advanced, es answered {status_code}"
+        )
 
 
 def _run_subscription_scan(

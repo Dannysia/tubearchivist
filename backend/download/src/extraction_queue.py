@@ -27,7 +27,7 @@ class ExtractionQueue:
         force: bool = False,
         target_status: str = "pending",
     ) -> int:
-        """returns how many were added, 0 when the bulk failed"""
+        """returns how many were added"""
         if not entries:
             return 0
 
@@ -63,9 +63,11 @@ class ExtractionQueue:
         response, status_code = ElasticWrap("_bulk?refresh=true").post(
             query_str, ndjson=True
         )
-        if status_code not in [200, 201]:
-            print(response)
-            return 0
+        if status_code not in [200, 201] or response.get("errors"):
+            raise QueueWriteError(
+                f"ta_extraction: adding {len(entries)} entries failed, "
+                f"es answered {status_code}"
+            )
 
         return len(entries)
 
