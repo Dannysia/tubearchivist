@@ -279,7 +279,11 @@ toml. The server-side CRF setting does nothing for remote jobs, and the
 value the server just computed.
 
 ### T2.7 `task/src/notify.py:38-41` - apprise add() result discarded
-Reported. `count = len(urls)` regardless, so one malformed URL among two
+**Fixed.** Only URLs apprise accepted are counted; with none it sends
+nothing, and any rejected URL logs the send as `notify_failed` with the
+count, without echoing the URLs.
+
+Verified. `count = len(urls)` regardless, so one malformed URL among two
 yields `(True, "notification sent to 2 url(s)")`, which the task log then
 records as a `notified` event. `test()` checks the same return value.
 

@@ -27,19 +27,26 @@ class Notifications:
         if not body:
             return None
 
-        for url in urls:
-            apobj.add(url)
+        rejected = sum(not apobj.add(url) for url in urls)
+        accepted = len(apobj)
+        if not accepted:
+            return False, f"all {len(urls)} notification url(s) are invalid"
 
-        count = len(urls)
         try:
             sent = bool(apobj.notify(body=body, title=title))
         except Exception as err:
-            return False, f"notification failed for {count} url(s): {err}"
+            return False, f"notification failed for {accepted} url(s): {err}"
 
         if not sent:
-            return False, f"notification failed for {count} url(s)"
+            return False, f"notification failed for {accepted} url(s)"
 
-        return True, f"notification sent to {count} url(s): {body}"
+        if rejected:
+            return False, (
+                f"notification sent to {accepted} url(s), {rejected} "
+                f"rejected as invalid: {body}"
+            )
+
+        return True, f"notification sent to {accepted} url(s): {body}"
 
     def test(self, url) -> tuple[bool, str]:
         """send test notification"""
