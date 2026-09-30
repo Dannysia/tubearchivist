@@ -120,6 +120,9 @@ class ExtractionQueue:
                 handler.parse_url_list(
                     status=entry_doc.get("target_status", "pending")
                 )
+                if self.task and self.task.is_stopped():
+                    self._write_state(interact.mark_pending)
+                    break
 
                 if handler.extraction_failed:
                     failed += 1

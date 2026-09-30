@@ -43,5 +43,8 @@ class ExtractionInteract(BaseQueueInteract):
     def mark_extracting(self):
         self.update(status="extracting")
 
+    def mark_pending(self):
+        self.update(status="pending")
+
     def mark_failed(self, message: str):
         self.update(status="failed", message=message)

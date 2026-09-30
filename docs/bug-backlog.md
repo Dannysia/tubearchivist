@@ -229,7 +229,10 @@ downscale jobs. The download-queue sibling PATCH calls
 `download_pending.delay(auto_only=True)`.
 
 ### T2.3 `download/src/extraction_queue.py:92-135` - STOP deletes the in-flight entry as resolved
-Reported. `parse_url_list` breaks on `is_stopped` leaving `extraction_failed`
+**Fixed.** A stop seen after `parse_url_list` puts the entry back to
+`pending` and ends the run; the next run skips what was already queued.
+
+Verified. `parse_url_list` breaks on `is_stopped` leaving `extraction_failed`
 False, so `run_queue` does `resolved += 1` and `delete_item()`. A 500-video
 channel stopped at 50 loses the other 450 with no failed or pending trace,
 and the task reports "resolved 1".

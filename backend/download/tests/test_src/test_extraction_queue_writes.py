@@ -40,6 +40,9 @@ class Recorder:
     def mark_failed(self, message):
         self._run("mark_failed")
 
+    def mark_pending(self):
+        self._run("mark_pending")
+
     def delete_item(self):
         self._run("delete_item")
 
@@ -141,3 +144,24 @@ def test_a_failed_delete_stops_the_run(monkeypatch):
     assert resolved == 1
     assert passes["n"] < MAX_PASSES
     assert ("mark_extracting", "b") not in Recorder.calls
+
+
+class StopsDuringFirstEntry:
+    def __init__(self):
+        self.checks = 0
+
+    def is_stopped(self):
+        self.checks += 1
+        return self.checks > 1
+
+
+def test_a_stop_mid_entry_puts_it_back_to_pending(monkeypatch):
+    queue, _ = _queue(monkeypatch, ["a", "b"])
+    queue.task = StopsDuringFirstEntry()
+
+    resolved, failed, _ = queue.run_queue()
+
+    assert ("mark_pending", "a") in Recorder.calls
+    assert ("delete_item", "a") not in Recorder.calls
+    assert ("mark_extracting", "b") not in Recorder.calls
+    assert (resolved, failed) == (0, 0)
