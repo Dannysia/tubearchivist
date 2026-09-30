@@ -1,6 +1,6 @@
 from channel.src.aggs import ChannelListAggs
 from channel.src.constants import ChannelSortEnum
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.search_processor import SearchProcess
 
 
@@ -60,7 +60,7 @@ class ChannelListQuery:
 
     def _by_stat(self, page_from: int, page_size: int) -> tuple[list, int]:
         all_ids = self._get_all_ids()
-        stats = ChannelListAggs().process()
+        stats = ChannelListAggs(all_ids).process()
         all_ids.sort(key=self._build_sort_key(stats), reverse=self._reverse)
 
         page_to = page_from + page_size
@@ -79,13 +79,12 @@ class ChannelListQuery:
             "query": self.query,
             "sort": [{ChannelSortEnum.NAME.value: {"order": "asc"}}],
             "_source": False,
-            "size": ChannelListAggs.MAX_CHANNELS,
         }
-        response, _ = ElasticWrap(self.path).get(data)
-        if not response.get("hits"):
-            return []
+        hits = IndexPaginate(
+            "ta_channel", data, keep_source=True
+        ).get_results()
 
-        return [i["_id"] for i in response["hits"]["hits"]]
+        return [i["_id"] for i in hits]
 
     def _build_sort_key(self, stats: dict[str, dict]):
         field = self.sort_by.value

@@ -1,6 +1,7 @@
 # pylint: disable=protected-access
 
 import pytest
+from channel.src import list_query
 from channel.src.aggs import ChannelListAggs
 from channel.src.constants import ChannelSortEnum
 from channel.src.list_query import ChannelListQuery
@@ -151,14 +152,6 @@ def test_build_query_unsubscribed():
     assert build_query("name")._build_query("unsubscribed") == expected
 
 
-def test_agg_query_all_channels():
-    query = ChannelListAggs().build_query()
-    assert query["query"] == {"match_all": {}}
-    terms = query["aggs"]["by_channel"]["terms"]
-    assert terms["field"] == "channel.channel_id"
-    assert terms["size"] == ChannelListAggs.MAX_CHANNELS
-
-
 def test_agg_query_limited_to_ids():
     query = ChannelListAggs(["UC1", "UC2"]).build_query()
     assert query["query"] == {"terms": {"channel.channel_id": ["UC1", "UC2"]}}
@@ -197,3 +190,36 @@ def test_agg_build_stats_without_duration():
         "last_published": {},
     }
     assert ChannelListAggs._build_stats(bucket)["watch_progress"] == 0
+
+
+def test_a_stat_sort_pages_past_ten_thousand_channels(monkeypatch):
+    ids = [f"UC{i:06d}" for i in range(12000)]
+    asked = {}
+
+    class Paginate:
+        def __init__(self, index, data, **kwargs):
+            pass
+
+        def get_results(self):
+            return [{"_id": i} for i in ids]
+
+    class Aggs:
+        empty_stats = staticmethod(ChannelListAggs.empty_stats)
+
+        def __init__(self, channel_ids):
+            asked["ids"] = channel_ids
+
+        def process(self):
+            return {}
+
+    monkeypatch.setattr(list_query, "IndexPaginate", Paginate)
+    monkeypatch.setattr(list_query, "ChannelListAggs", Aggs)
+    monkeypatch.setattr(
+        list_query.ChannelListQuery, "_get_by_ids", lambda self, page: []
+    )
+    query = build_query("videos")
+
+    _, total = query._by_stat(0, 50)
+
+    assert total == 12000
+    assert len(asked["ids"]) == 12000

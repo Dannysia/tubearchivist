@@ -180,25 +180,19 @@ class ChannelAggs:
 class ChannelListAggs:
     path = "ta_video/_search"
 
-    MAX_CHANNELS = 10000
-
-    def __init__(self, channel_ids: list[str] | None = None):
+    def __init__(self, channel_ids: list[str]):
         self.channel_ids = channel_ids
 
     def build_query(self) -> dict:
-        if self.channel_ids is None:
-            query = {"match_all": {}}
-            size = self.MAX_CHANNELS
-        else:
-            query = {"terms": {"channel.channel_id": self.channel_ids}}
-            size = max(len(self.channel_ids), 1)
-
         return {
             "size": 0,
-            "query": query,
+            "query": {"terms": {"channel.channel_id": self.channel_ids}},
             "aggs": {
                 "by_channel": {
-                    "terms": {"field": "channel.channel_id", "size": size},
+                    "terms": {
+                        "field": "channel.channel_id",
+                        "size": max(len(self.channel_ids), 1),
+                    },
                     "aggs": {
                         "media_size": {"sum": {"field": "media_size"}},
                         "duration": {"sum": {"field": "player.duration"}},
@@ -222,7 +216,7 @@ class ChannelListAggs:
         }
 
     def process(self) -> dict[str, dict]:
-        if self.channel_ids is not None and not self.channel_ids:
+        if not self.channel_ids:
             return {}
 
         response, status_code = ElasticWrap(self.path).get(self.build_query())

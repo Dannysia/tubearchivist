@@ -494,7 +494,7 @@ but a superseded answer is dropped.
   `mark_failed` writes `status: failed` while `_get_next` queries only
   `pending|extracting`. Also missing the `and not self.is_stopped()` guard
   its sibling has.
-- `channel/src/list_query.py:94-106` - the 10000-channel ceiling truncates
+- **Fixed.** `channel/src/list_query.py:94-106` - the 10000-channel ceiling truncates
   silently and reports exactly 10000 as the total; ES's `relation: "gte"` is
   discarded. Low severity at current scale.
 - **Fixed** (with T1.6's per-entry re-read). `download/src/extraction_queue.py:116` - `to_skip` is re-copied per entry,
