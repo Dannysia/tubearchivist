@@ -452,13 +452,19 @@ but a superseded answer is dropped.
 
 ## Tier 5 - other in-scope bugs
 
-- `common/src/index_generic.py` - `upload_to_es()` takes a `checked` flag
-  that raises `IndexWriteError`, but it defaults to off and only
-  `DownscaleReview.accept()` passes it. The other 21 callers still discard
-  the status. Each needs the same audit the queue writes got in T1.3
-  before the default can flip: a raise inside a cleanup path or a
-  per-item loop is its own regression.
-
+- **Audited, no change.** `common/src/index_generic.py` - `upload_to_es()`
+  takes a `checked` flag that only `DownscaleReview.accept()` passes. The
+  premise that the other 21 callers discard the status does not hold:
+  `ElasticWrap.put` raises `ValueError` for any answer at or above 400 and
+  `upload_to_es` re-raises it unchecked, so every caller already fails on
+  a failed write. `checked` adds only its own exception type and a check
+  on sub-400 statuses ES does not return for an index PUT. Flipping the
+  default would change the type to `IndexWriteError` under three callers
+  that catch `ValueError` - the manual import and filesystem rescan
+  per-file nets, and `channel/src/index.py:259` - turning a failed write
+  there from a per-item failure into an aborted task. That is the open
+  T1.5 question of telling an ES outage from a bad file, and belongs with
+  it rather than with a default flip.
 - **Fixed.** `appsettings/src/backup.py:28` - the new `"history": 10000` entry feeds an
   unpruned index through `IndexPaginate`, which accumulates every hit with
   full `_source` regardless of the callback. After an OOM kill the loose
@@ -479,7 +485,7 @@ but a superseded answer is dropped.
   misses the "no videos from channel" return, so a failed listing is deleted
   as resolved after `next_check` has moved. The fork added the flag to the
   three adjacent branches and missed this one.
-- `download/src/extraction_queue.py` `add_to_queue` returns `len(entries)`
+- **Fixed in T2.4.** `download/src/extraction_queue.py` `add_to_queue` returns `len(entries)`
   whenever `_bulk` answers 200, even when individual bulk items errored, so
   the reported add count can overstate what was indexed. Same T1 family as
   T1.4b - a `_bulk` 200 is not an all-items-succeeded signal.
