@@ -116,7 +116,7 @@ class DownscaleApiListView(ApiBaseView):
 
         action = validated_data["action"]
         ids = validated_data.get("ids")
-        if not ids:
+        if ids is None:
             ids = self._get_ids_by_filter(request)
 
         success: list[str] = []

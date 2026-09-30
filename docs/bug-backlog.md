@@ -373,6 +373,11 @@ that cannot happen and absorbs the case that does. A channel with thousands
 of videos then reports "0 videos, 0 bytes, no date range" with HTTP 200.
 
 ### T3.5 Smaller dead items
+**Fixed**, all seven. The worker-name JSON branch was reachable for the
+DELETE view, but no client uses it: both the current worker and the one at
+142a451b send `X-TA-Worker`. The `except Retry` wrapper in `download_pending`
+is upstream's and stays.
+
 - `status="cancelled"` appears in three ChoiceFields and the UI dropdown but
   no code path ever writes it.
 - `channel/src/index.py:214-233` `_wait_for_next_playlist`'s "no task" path
