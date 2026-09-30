@@ -138,7 +138,22 @@ class TestRotating:
         )
 
         message = exit_node.rotate_on_bot_block(config())
-        assert "no mullvad exit node" in message
+        assert "no other mullvad exit node" in message
+        assert redis.stored is None
+        assert switched == []
+
+    def test_the_current_node_alone_is_not_a_rotation(
+        self, monkeypatch, wired
+    ):
+        redis, switched = wired
+        monkeypatch.setattr(
+            exit_node.tailscale,
+            "get_state",
+            lambda: {"current": NODES[0], "nodes": [NODES[0]]},
+        )
+
+        message = exit_node.rotate_on_bot_block(config())
+        assert "no other mullvad exit node" in message
         assert redis.stored is None
         assert switched == []
 

@@ -82,9 +82,9 @@ class TestPickRandom:
             picked = tailscale.pick_random(NODES, exclude_id="n1")
             assert picked["node_id"] != "n1"
 
-    def test_sole_option_returns_that_node(self):
+    def test_an_excluded_sole_option_returns_none(self):
         only = [i for i in NODES if i["node_id"] == "n3"]
-        assert tailscale.pick_random(only, exclude_id="n3")["node_id"] == "n3"
+        assert tailscale.pick_random(only, exclude_id="n3") is None
 
     def test_no_mullvad_nodes_returns_none(self):
         only_tailnet = [i for i in NODES if not i["is_mullvad"]]
@@ -103,6 +103,11 @@ class TestPickRotationTarget:
 
     def test_nothing_to_move_to(self):
         state = {"current": None, "nodes": []}
+        assert tailscale.pick_rotation_target(state) is None
+
+    def test_the_current_node_alone_is_nothing_to_move_to(self):
+        current = next(i for i in NODES if i["node_id"] == "n3")
+        state = {"current": current, "nodes": [current]}
         assert tailscale.pick_rotation_target(state) is None
 
 

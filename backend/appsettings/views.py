@@ -856,7 +856,7 @@ class TailscaleExitNodeView(ApiBaseView):
 
         picked = tailscale.pick_rotation_target(state)
         if not picked:
-            return None, "no mullvad exit node available to rotate onto"
+            return None, "no other mullvad exit node is online to rotate onto"
 
         return picked["node_id"], None
 

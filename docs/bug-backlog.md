@@ -251,7 +251,11 @@ is never captured at all (no assignment, no `?refresh=true`), so the
 Fails open in both directions.
 
 ### T2.5 `appsettings/src/tailscale.py:182` - exit-node rotation re-picks the current node
-Reported. `[i for i in options if i["node_id"] != exclude_id] or options`
+**Fixed.** `pick_random` excludes strictly, so a rotation with nothing
+else online returns None; the bot-block rotate and the manual rotate both
+report that instead of a move, and no budget is spent.
+
+Verified. `[i for i in options if i["node_id"] != exclude_id] or options`
 falls back to the node already in use when it is the only online one.
 `set_exit_node` is then a no-op, but the budget is still incremented and the
 user is told "rotated exit node to ... 1 of 3", and eventually "already

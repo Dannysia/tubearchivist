@@ -47,7 +47,7 @@ def rotate_on_bot_block(config) -> str | None:
     try:
         picked = tailscale.pick_rotation_target(tailscale.get_state())
         if not picked:
-            return "no mullvad exit node available to rotate onto"
+            return "no other mullvad exit node is online to rotate onto"
 
         tailscale.set_exit_node(picked["node_id"])
     except Exception as err:

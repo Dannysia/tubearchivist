@@ -141,13 +141,15 @@ def set_exit_node(node_id: str | None) -> None:
 def pick_random(
     nodes: list[dict], exclude_id: str | None = None
 ) -> dict | None:
-    options = [i for i in nodes if i["is_mullvad"] and i["online"]]
+    options = [
+        i
+        for i in nodes
+        if i["is_mullvad"] and i["online"] and i["node_id"] != exclude_id
+    ]
     if not options:
         return None
 
-    return random.choice(
-        [i for i in options if i["node_id"] != exclude_id] or options
-    )
+    return random.choice(options)
 
 
 def pick_rotation_target(state: dict) -> dict | None:
