@@ -348,7 +348,10 @@ more than `_get_height`. `test_finish_renames_to_the_container_the_worker_report
 passes only because `_get_height` is mocked.
 
 ### T3.3 `downscale/src/downscale.py:420-428` - max_concurrent = 0 traps jobs forever
-Reported. `_reserve_slot` has no zero case, unlike
+**Fixed.** `_reserve_slot` hands a dispatched job back to the queue with an
+empty `task_id` when local encoding is off, so a remote worker can claim it.
+
+Verified. `_reserve_slot` has no zero case, unlike
 `dispatch_pending_downscales:287`. `count_running() >= 0` always retries,
 `max_retries=None` (`task/tasks.py:432`) means it never gives up, and
 `task_id != ""` keeps the job invisible to `claim()`. Only a restart clears

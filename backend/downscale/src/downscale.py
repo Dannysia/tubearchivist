@@ -351,6 +351,13 @@ class DownscaleRunner:
             max_concurrent = AppConfig().config["application"][
                 "downscale_max_concurrent"
             ]
+            if max_concurrent == 0:
+                print(
+                    f"{self.youtube_id}: local encoding is disabled, requeue"
+                )
+                DownscaleInteract(self.doc_id).update(task_id="")
+                return False
+
             if (
                 max_concurrent is not None
                 and DownscaleInteract.count_running() >= max_concurrent

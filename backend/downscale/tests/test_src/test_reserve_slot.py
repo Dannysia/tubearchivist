@@ -49,7 +49,7 @@ def test_concurrency_limit_retries_with_longer_countdown():
     task.retry.assert_called_once_with(countdown=CONCURRENCY_RETRY_DELAY)
 
 
-def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
+def test_max_concurrent_zero_hands_a_dispatched_job_back():
     task = _mock_task()
     runner = _make_runner(task)
 
@@ -59,7 +59,9 @@ def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
         DownscaleInteract, "get_active_for_video", return_value=None
     ), patch.object(
         DownscaleInteract, "count_running", return_value=0
-    ), patch(
+    ), patch.object(
+        DownscaleInteract, "update"
+    ) as mock_update, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config:
         mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
@@ -67,12 +69,13 @@ def test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched():
             "application": {"downscale_max_concurrent": 0}
         }
 
-        try:
-            runner._reserve_slot(current_height=1080, original_path="/x.mp4")
-        except RuntimeError:
-            pass
+        reserved = runner._reserve_slot(
+            current_height=1080, original_path="/x.mp4"
+        )
 
-    task.retry.assert_called_once_with(countdown=CONCURRENCY_RETRY_DELAY)
+    assert reserved is False
+    task.retry.assert_not_called()
+    mock_update.assert_called_once_with(task_id="")
 
 
 def test_dispatch_lock_contention_uses_default_retry_cadence():
