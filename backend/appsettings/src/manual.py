@@ -320,6 +320,7 @@ class ImportFolderScanner:
         _, ext = os.path.splitext(media_path)
 
         new_path = False
+        ext = ext.lower()
         if ext == ".mkv":
             idx, thumb_type = self._get_mkv_thumb_stream(media_path)
             if idx is not None:
@@ -386,7 +387,7 @@ class ImportFolderScanner:
         thumb_path = current_video["thumb"]
 
         base_path, ext = os.path.splitext(thumb_path)
-        if ext == ".jpg":
+        if ext.lower() == ".jpg":
             return
 
         new_path = f"{base_path}.jpg"
@@ -405,7 +406,7 @@ class ImportFolderScanner:
         streams = self._get_streams(media_path)
         base_path, ext = os.path.splitext(media_path)
 
-        if ext == ".webm":
+        if ext.lower() == ".webm":
             print(f"{media_path}: subtitle extract from webm not supported")
             return
 
@@ -472,7 +473,7 @@ class ImportFolderScanner:
         """convert if needed"""
         current_path = current_video["media"]
         base_path, ext = os.path.splitext(current_path)
-        if ext == ".mp4":
+        if ext.lower() == ".mp4":
             return
 
         new_path = base_path + ".mp4"

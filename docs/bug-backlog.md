@@ -464,7 +464,7 @@ but a superseded answer is dropped.
   full `_source` regardless of the callback. After an OOM kill the loose
   `es_*.json` stay in `BACKUP_DIR` and the next `zip_it` globs any `*.json`
   into an unrelated archive that a later restore applies.
-- `appsettings/src/manual.py:787-809` - `validate_name` accepts uppercase
+- **Fixed.** `appsettings/src/manual.py:787-809` - `validate_name` accepts uppercase
   extensions (a test blesses `.MP4`), but `_convert_video` compares
   `ext == ".mp4"` case-sensitively, so a correct mp4 is fully re-encoded and
   the original deleted. `.MKV` misses `_dump_thumb`'s branch.
