@@ -80,6 +80,9 @@ def patched(monkeypatch):
     monkeypatch.setattr(queue_module, "IndexPaginate", FakePaginate)
     monkeypatch.setattr(eq, "PendingList", FakePending)
     monkeypatch.setattr(eq, "ExtractionInteract", Interact)
+    monkeypatch.setattr(
+        ExtractionQueue, "has_work", classmethod(lambda cls: True)
+    )
 
 
 def _queue(monkeypatch, entries: list[str]):
@@ -157,3 +160,16 @@ def test_the_indexed_videos_survive_every_refresh(monkeypatch):
 
     assert len(FakePending.seen) == 3
     assert all("indexed1" in entry for entry in FakePending.seen)
+
+
+def test_an_empty_queue_scans_nothing(monkeypatch):
+    built = []
+    monkeypatch.setattr(
+        ExtractionQueue, "has_work", classmethod(lambda cls: False)
+    )
+    monkeypatch.setattr(
+        eq, "PendingList", lambda *a, **kw: built.append(1) or FakePending(*a)
+    )
+
+    assert ExtractionQueue().run_queue() == (0, 0, False)
+    assert built == []

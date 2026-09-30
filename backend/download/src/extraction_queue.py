@@ -77,6 +77,9 @@ class ExtractionQueue:
 
     def run_queue(self) -> tuple[int, int, bool]:
         """returns (resolved, failed, any_auto_start)"""
+        if not self.has_work():
+            return 0, 0, False
+
         warm = PendingList(youtube_ids=[], task=self.task)
         warm.get_download()
         warm.get_indexed()
@@ -89,9 +92,7 @@ class ExtractionQueue:
         try:
             while True:
                 entry_id, entry_doc = self._get_next()
-                if self.task and self.task.is_stopped():
-                    break
-                if not entry_doc:
+                if self._stopped() or not entry_doc:
                     break
 
                 interact = ExtractionInteract(entry_id)
@@ -122,7 +123,7 @@ class ExtractionQueue:
                 handler.parse_url_list(
                     status=entry_doc.get("target_status", "pending")
                 )
-                if self.task and self.task.is_stopped():
+                if self._stopped():
                     self._write_state(interact.mark_pending)
                     break
 
@@ -142,6 +143,9 @@ class ExtractionQueue:
             pass
 
         return resolved, failed, any_auto_start
+
+    def _stopped(self) -> bool:
+        return bool(self.task and self.task.is_stopped())
 
     @staticmethod
     def _write_state(write, *args) -> bool:

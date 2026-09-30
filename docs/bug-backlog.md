@@ -501,7 +501,7 @@ but a superseded answer is dropped.
   so a video reachable from two entries is fully re-extracted.
 - `task/tasks.py:145-147` - "Found N channels/playlists" counts one entry
   per channel per tab.
-- `download/src/extraction_queue.py` `run_queue` warms three full-index
+- **Fixed.** `download/src/extraction_queue.py` `run_queue` warms three full-index
   scans, including all of `ta_video` with no `_source` filter, before
   checking whether the queue has work; `extrac_dl` dispatches it
   unconditionally. On the ~105k-video box that is a full scroll for nothing,

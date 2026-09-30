@@ -52,6 +52,9 @@ def patched(monkeypatch):
     Recorder.calls = []
     Recorder.raises = {}
     monkeypatch.setattr(eq, "ExtractionInteract", Recorder)
+    monkeypatch.setattr(
+        ExtractionQueue, "has_work", classmethod(lambda cls: True)
+    )
 
     class FakePending:
         extraction_failed = False
