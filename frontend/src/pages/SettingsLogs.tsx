@@ -37,8 +37,13 @@ const SettingsLogs = () => {
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [retentionDays, setRetentionDays] = useState<number | null>(null);
 
-  const { data: logData, error: logError } = logResponse ?? {};
-  const entries = logData?.data ?? [];
+  const { data: logData, error: logError, status: logStatus } = logResponse ?? {};
+  const logFailure =
+    logError?.error ??
+    (logStatus !== undefined && logStatus >= 400
+      ? ((logData as { detail?: string } | undefined)?.detail ?? `status ${logStatus}`)
+      : null);
+  const entries = logFailure ? [] : (logData?.data ?? []);
   const paginate = logData?.paginate;
 
   const refresh = useCallback(() => setRefreshNonce(nonce => nonce + 1), []);
@@ -46,14 +51,19 @@ const SettingsLogs = () => {
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const response = await loadLogs(
-        'notification',
-        page,
-        level || null,
-        taskName || null,
-        search,
-      );
-      setLogResponse(response);
+      try {
+        const response = await loadLogs(
+          'notification',
+          page,
+          level || null,
+          taskName || null,
+          search,
+        );
+        setLogResponse(response);
+      } catch (error) {
+        const { status, message } = error as { status?: number; message?: string };
+        setLogResponse({ status: status ?? 0, error: { error: message ?? 'request failed' } });
+      }
       setLoading(false);
     })();
   }, [page, level, taskName, search, refreshNonce]);
@@ -210,11 +220,9 @@ const SettingsLogs = () => {
 
             {loading && <LoadingIndicator />}
 
-            {!loading && logError && (
-              <p>Could not read the log: {logError.error ?? 'unknown error'}</p>
-            )}
+            {!loading && logFailure && <p>Could not read the log: {logFailure}</p>}
 
-            {!loading && !logError && entries.length === 0 && (
+            {!loading && !logFailure && entries.length === 0 && (
               <p>
                 {level || taskName || search
                   ? 'No entry matches the current filter.'
@@ -222,7 +230,7 @@ const SettingsLogs = () => {
               </p>
             )}
 
-            {!loading && !logError && entries.length > 0 && (
+            {!loading && !logFailure && entries.length > 0 && (
               <div className="log-table-wrapper">
                 <table className="log-table">
                   <thead>

@@ -45,6 +45,13 @@ _STATUS_SORT = [
 ]
 
 
+FACET_OWN_FILTER = {
+    "channel": "channel",
+    "encoder": "encoder",
+    "saved": "size_change",
+}
+
+
 def _build_must_list(validated_query: dict) -> list[dict]:
     must_list = []
     status_filter = validated_query.get("status")
@@ -203,11 +210,14 @@ class DownscaleAggsApiView(ApiBaseView):
         query_serializer.is_valid(raise_exception=True)
         validated_query = query_serializer.validated_data
 
-        status_filter = validated_query.get("status")
-        if status_filter:
-            self.data["query"] = {"term": {"status": {"value": status_filter}}}
-
         field_filter = validated_query.get("field") or "channel"
+        own_filter = FACET_OWN_FILTER[field_filter]
+        must_list = _build_must_list(
+            {k: v for k, v in validated_query.items() if k != own_filter}
+        )
+        if must_list:
+            self.data["query"] = {"bool": {"must": must_list}}
+
         agg_key, agg_body = _build_aggs_query(field_filter)
         self.data["aggs"] = {agg_key: agg_body}
         self.get_aggs()

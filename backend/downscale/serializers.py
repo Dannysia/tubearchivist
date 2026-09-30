@@ -120,13 +120,9 @@ class DownscaleEncoderTestSerializer(serializers.Serializer):
     message = serializers.CharField(allow_null=True)
 
 
-class DownscaleAggsQuerySerializer(serializers.Serializer):
+class DownscaleAggsQuerySerializer(DownscaleListQuerySerializer):
     """serialize query params for downscale aggs"""
 
-    status = serializers.ChoiceField(
-        choices=["queued", "running", "pending_review", "failed"],
-        required=False,
-    )
     field = serializers.ChoiceField(
         choices=["channel", "encoder", "saved"],
         required=False,

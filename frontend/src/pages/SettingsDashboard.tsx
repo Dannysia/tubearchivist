@@ -65,17 +65,17 @@ const SettingsDashboard = () => {
   useEffect(() => {
     (async () => {
       const all = await Promise.all([
-        await loadStatsVideo(),
-        await loadStatsChannel(),
-        await loadStatsPlaylist(),
-        await loadStatsDownload(),
-        await loadStatsWatchProgress(),
-        await loadStatsDownloadHistory(),
-        await loadStatsBiggestChannels('doc_count'),
-        await loadStatsBiggestChannels('duration'),
-        await loadStatsBiggestChannels('media_size'),
-        await loadStatsDownscale(),
-        await loadStatsResolution(),
+        loadStatsVideo(),
+        loadStatsChannel(),
+        loadStatsPlaylist(),
+        loadStatsDownload(),
+        loadStatsWatchProgress(),
+        loadStatsDownloadHistory(),
+        loadStatsBiggestChannels('doc_count'),
+        loadStatsBiggestChannels('duration'),
+        loadStatsBiggestChannels('media_size'),
+        loadStatsDownscale(),
+        loadStatsResolution(),
       ]);
 
       const [

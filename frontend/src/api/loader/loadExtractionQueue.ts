@@ -15,7 +15,7 @@ const loadExtractionQueue = async (
   if (page) searchParams.append('page', page.toString());
   if (status) searchParams.append('filter', status);
   if (itemType) searchParams.append('item_type', itemType);
-  if (search) searchParams.append('q', encodeURIComponent(search));
+  if (search) searchParams.append('q', search);
 
   const endpoint = `/api/download/extraction/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
 

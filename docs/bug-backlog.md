@@ -428,6 +428,10 @@ a folder nothing has consumed. `Channels.tsx:171`, `Download.tsx:181` and
 `Playlists.tsx:147` all branch on `isDone`.
 
 ### T4.4 Smaller UI items
+**Fixed**, all five. The filter counts are faceted: each applies every
+active filter except its own. The search keeps refetching per keystroke
+but a superseded answer is dropped.
+
 - `Downscale.tsx:89` filter dropdown counts ignore every other active
   filter, so a count can name more jobs than selecting it will show.
 - `Downscale.tsx:115` queue search refetches per keystroke with no debounce

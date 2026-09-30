@@ -114,6 +114,7 @@ const Downscale = () => {
   };
 
   useEffect(() => {
+    let stale = false;
     (async () => {
       const response = await loadDownscaleQueue(
         currentPage,
@@ -123,8 +124,12 @@ const Downscale = () => {
         sizeChangeFilterFromUrl,
         encoderFilterFromUrl,
       );
-      setDownscaleResponse(response);
+      if (!stale) setDownscaleResponse(response);
     })();
+
+    return () => {
+      stale = true;
+    };
   }, [
     currentPage,
     statusFilterFromUrl,
@@ -136,25 +141,37 @@ const Downscale = () => {
   ]);
 
   useEffect(() => {
+    let stale = false;
+    const filters = {
+      status: statusFilterFromUrl,
+      channel: channelFilterFromUrl,
+      search: searchInput,
+      sizeChange: sizeChangeFilterFromUrl,
+      encoder: encoderFilterFromUrl,
+    };
     (async () => {
-      const response = await loadDownscaleAggs(statusFilterFromUrl);
-      setDownscaleAggsResponse(response);
+      const [channels, encoders, saved] = await Promise.all([
+        loadDownscaleAggs(filters),
+        loadDownscaleEncoderAggs(filters),
+        loadDownscaleSavedAggs(filters),
+      ]);
+      if (stale) return;
+      setDownscaleAggsResponse(channels);
+      setDownscaleEncoderAggsResponse(encoders);
+      setDownscaleSavedAggsResponse(saved);
     })();
-  }, [statusFilterFromUrl, refreshNonce]);
 
-  useEffect(() => {
-    (async () => {
-      const response = await loadDownscaleEncoderAggs(statusFilterFromUrl);
-      setDownscaleEncoderAggsResponse(response);
-    })();
-  }, [statusFilterFromUrl, refreshNonce]);
-
-  useEffect(() => {
-    (async () => {
-      const response = await loadDownscaleSavedAggs(statusFilterFromUrl);
-      setDownscaleSavedAggsResponse(response);
-    })();
-  }, [statusFilterFromUrl, refreshNonce]);
+    return () => {
+      stale = true;
+    };
+  }, [
+    statusFilterFromUrl,
+    channelFilterFromUrl,
+    searchInput,
+    sizeChangeFilterFromUrl,
+    encoderFilterFromUrl,
+    refreshNonce,
+  ]);
 
   useEffect(() => {
     if (!hasActiveJob) {

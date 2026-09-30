@@ -1,5 +1,6 @@
 import APIClient from '../../functions/APIClient';
 import { DownscaleStatus } from './loadDownscaleQueue';
+import { DownscaleSizeChange } from '../../configuration/constants/DownscaleSizeChange';
 
 type DownscaleAggsBucket = {
   key: string[];
@@ -33,29 +34,36 @@ export type DownscaleSavedAggsType = {
   buckets: DownscaleSavedAggsBucket[];
 };
 
-const loadDownscaleAggs = async (status: DownscaleStatus | null) => {
-  const searchParams = new URLSearchParams();
-  if (status) searchParams.append('status', status);
-
-  return APIClient<DownscaleAggsType>(
-    `/api/downscale/aggs/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`,
-  );
+export type DownscaleAggsFilters = {
+  status: DownscaleStatus | null;
+  channel: string | null;
+  search: string;
+  sizeChange: DownscaleSizeChange | null;
+  encoder: string | null;
 };
 
-export const loadDownscaleEncoderAggs = async (status: DownscaleStatus | null) => {
+const aggsEndpoint = (field: string, filters: DownscaleAggsFilters) => {
   const searchParams = new URLSearchParams();
-  searchParams.append('field', 'encoder');
-  if (status) searchParams.append('status', status);
+  searchParams.append('field', field);
+  if (filters.status) searchParams.append('status', filters.status);
+  if (filters.channel) searchParams.append('channel', filters.channel);
+  if (filters.search) searchParams.append('q', filters.search);
+  if (filters.sizeChange) searchParams.append('size_change', filters.sizeChange);
+  if (filters.encoder) searchParams.append('encoder', filters.encoder);
 
-  return APIClient<DownscaleEncoderAggsType>(`/api/downscale/aggs/?${searchParams.toString()}`);
+  return `/api/downscale/aggs/?${searchParams.toString()}`;
 };
 
-export const loadDownscaleSavedAggs = async (status: DownscaleStatus | null) => {
-  const searchParams = new URLSearchParams();
-  searchParams.append('field', 'saved');
-  if (status) searchParams.append('status', status);
+const loadDownscaleAggs = async (filters: DownscaleAggsFilters) => {
+  return APIClient<DownscaleAggsType>(aggsEndpoint('channel', filters));
+};
 
-  return APIClient<DownscaleSavedAggsType>(`/api/downscale/aggs/?${searchParams.toString()}`);
+export const loadDownscaleEncoderAggs = async (filters: DownscaleAggsFilters) => {
+  return APIClient<DownscaleEncoderAggsType>(aggsEndpoint('encoder', filters));
+};
+
+export const loadDownscaleSavedAggs = async (filters: DownscaleAggsFilters) => {
+  return APIClient<DownscaleSavedAggsType>(aggsEndpoint('saved', filters));
 };
 
 export default loadDownscaleAggs;
