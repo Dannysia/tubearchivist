@@ -475,7 +475,7 @@ but a superseded answer is dropped.
 - **Fixed.** `appsettings/views.py:478-484` - a disk-full multi-file upload raises
   `OSError`, the view catches only `ValueError` -> 500 and a half-staged
   batch. The sibling metadata endpoint catches `(ValueError, OSError)`.
-- `download/src/queue.py:240-242` - the new `extraction_failed` tracking
+- **Fixed.** `download/src/queue.py:240-242` - the new `extraction_failed` tracking
   misses the "no videos from channel" return, so a failed listing is deleted
   as resolved after `next_check` has moved. The fork added the flag to the
   three adjacent branches and missed this one.

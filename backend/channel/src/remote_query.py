@@ -96,8 +96,9 @@ def get_last_channel_videos(
     config: AppConfigType,
     limit: None | bool | int = None,
     query_filter: VideoTypeEnum | list[VideoTypeEnum] | None = None,
+    errors: list[str] | None = None,
 ) -> list[dict]:
-    """get a list of last videos from channel"""
+    """get a list of last videos from channel, failures appended to errors"""
 
     builder = VideoQueryBuilder(config, limit=limit)
 
@@ -127,7 +128,10 @@ def get_last_channel_videos(
             obs["playlist_items"] = f":{limit_amount}:1"
 
         url = f"https://www.youtube.com/channel/{channel_id}/{vid_type}"
-        channel_query, _ = YtWrap(obs, config).extract(url)
+        channel_query, error = YtWrap(obs, config).extract(url)
+        if error and errors is not None:
+            errors.append(f"{vid_type}: {error}")
+
         if not channel_query:
             continue
 

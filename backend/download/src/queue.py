@@ -233,12 +233,18 @@ class PendingList(PendingIndex):
             vid_type = getattr(VideoTypeEnum, vid_type.upper())
 
         limit = entry.get("limit")
+        errors: list[str] = []
         video_results = get_last_channel_videos(
             channel_id=url,
             config=self.config,
             limit=limit,
             query_filter=vid_type,
+            errors=errors,
         )
+        if errors:
+            print(f"{url}: channel listing failed: {'; '.join(errors)}")
+            self.extraction_failed = True
+
         if not video_results:
             print(f"{url}: no videos to add from channel, skipping")
             return
