@@ -497,7 +497,7 @@ but a superseded answer is dropped.
 - `channel/src/list_query.py:94-106` - the 10000-channel ceiling truncates
   silently and reports exactly 10000 as the total; ES's `relation: "gte"` is
   discarded. Low severity at current scale.
-- `download/src/extraction_queue.py:116` - `to_skip` is re-copied per entry,
+- **Fixed** (with T1.6's per-entry re-read). `download/src/extraction_queue.py:116` - `to_skip` is re-copied per entry,
   so a video reachable from two entries is fully re-extracted.
 - `task/tasks.py:145-147` - "Found N channels/playlists" counts one entry
   per channel per tab.
