@@ -124,6 +124,7 @@ def test_a_video_that_now_extracts_clears_its_failed_entry(
         _notify_done=lambda total: None,
         _notify_fail=lambda *a: None,
         _clear_failed_extractions=lambda ids: seen.extend(ids),
+        _queue_write_failed=lambda detail: None,
     )
 
     PendingList.add_to_pending(handler)

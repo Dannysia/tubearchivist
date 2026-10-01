@@ -581,22 +581,30 @@ class PendingList(PendingIndex):
         if status_code not in [200, 201]:
             print(response)
             self._notify_fail(status_code)
-        elif not response.get("errors", False):
+            self._queue_write_failed(f"es answered {status_code}")
+            return 0
+
+        if not response.get("errors", False):
             self._notify_done(total)
             self._clear_failed_extractions(
                 [i["youtube_id"] for i in self.missing_videos]
             )
-        else:
-            failed_video_ids = []
-            for item in response.get("items", []):
-                action, result = next(iter(item.items()))
-                if "error" in result:
-                    failed_video_ids.append(result.get("_id"))
+            return total
 
-            failed_video_ids_str = ",".join(failed_video_ids)
-            self._notify_fail(status_code, failed_video_ids_str)
+        failed_video_ids = []
+        for item in response.get("items", []):
+            _, result = next(iter(item.items()))
+            if "error" in result:
+                failed_video_ids.append(result.get("_id"))
 
-        return len(self.missing_videos)
+        failed_video_ids_str = ",".join(failed_video_ids)
+        self._notify_fail(status_code, failed_video_ids_str)
+        self._queue_write_failed(f"not queued: {failed_video_ids_str}")
+        return total - len(failed_video_ids)
+
+    def _queue_write_failed(self, detail: str) -> None:
+        self.extraction_failed = True
+        self.extraction_error = f"Adding videos to the queue failed, {detail}"
 
     @staticmethod
     def _clear_failed_extractions(youtube_ids: list[str]) -> None:

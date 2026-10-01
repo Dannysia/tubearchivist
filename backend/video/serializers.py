@@ -17,7 +17,7 @@ class VideoDownscaleSerializer(serializers.Serializer):
 
 
 class DownscaleQueuedResponseSerializer(serializers.Serializer):
-    """serialize a newly queued downscale job. No task_id here - whether"""
+    """serialize a newly queued downscale job"""
 
     doc_id = serializers.CharField()
 

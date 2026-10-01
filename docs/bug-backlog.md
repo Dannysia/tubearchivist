@@ -524,6 +524,18 @@ but a superseded answer is dropped.
   lists each video it could not extract as its own failed entry, so a
   large first scan can leave hundreds of them.
 
+## Fresh review (2026-10-01)
+
+A review of the code touched since `142a451b`, without the backlog:
+- **Fixed.** `download/src/queue.py` `add_to_pending` - a rejected or
+  partial `_bulk` into `ta_download` still returned every video as added
+  and left the entry clean, so `run_queue` resolved and deleted it.
+- **Fixed.** `downscale/src/downscale.py` `_reserve_slot` - a dispatch that
+  could not record its `task_id` left the job claimable, so two runners
+  could encode one job into the same tmp file.
+- **Fixed.** Five serializer docstrings the comment strip cut off
+  mid-sentence.
+
 ## Tests that pass for the wrong reason
 
 - **Fixed.** `video/tests/test_src/test_resolution.py:105-117` - both "reconcile" tests

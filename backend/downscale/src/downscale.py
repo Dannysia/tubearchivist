@@ -323,6 +323,14 @@ class DownscaleRunner:
 
         dispatch_pending_downscales()
 
+    def _still_ours(self) -> bool:
+        job, _ = DownscaleInteract(self.doc_id).get_item()
+        return bool(
+            job
+            and job.get("status") == "queued"
+            and job.get("task_id") in ("", self.task.request.id)
+        )
+
     def _reserve_slot(self, current_height: int, original_path: str) -> bool:
         lock = RedisBase().conn.lock(
             DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
@@ -338,6 +346,10 @@ class DownscaleRunner:
             raise self.task.retry()
 
         try:
+            if not self._still_ours():
+                print(f"{self.youtube_id}: job taken by another runner, skip")
+                return False
+
             if DownscaleInteract.get_active_for_video(
                 self.youtube_id, exclude_id=self.doc_id
             ):

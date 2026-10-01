@@ -207,7 +207,7 @@ class DownscaleAggsSerializer(serializers.Serializer):
 
 
 class DownscaleEncoderAggBucketSerializer(serializers.Serializer):
-    """serialize an encoder bucket - a plain single-field terms agg, so key"""
+    """serialize an encoder bucket, keyed by the encoder string"""
 
     key = serializers.CharField()
     doc_count = serializers.IntegerField()
@@ -222,14 +222,14 @@ class DownscaleEncoderAggsSerializer(serializers.Serializer):
 
 
 class DownscaleSavedAggBucketSerializer(serializers.Serializer):
-    """serialize one savings band - a range agg bucket, keyed by the band"""
+    """serialize one savings band bucket, keyed by the band name"""
 
     key = serializers.CharField()
     doc_count = serializers.IntegerField()
 
 
 class DownscaleSavedBandSerializer(serializers.Serializer):
-    """serialize one savings band, as from/to percentages and a count. `to`"""
+    """serialize one savings band, `to` is null on the top band"""
 
     def to_representation(self, instance):
         return {
@@ -248,6 +248,6 @@ class DownscaleSavedBandsSerializer(serializers.Serializer):
 
 
 class DownscaleSavedAggsSerializer(serializers.Serializer):
-    """serialize the raw savings band aggregation for the queue's size"""
+    """serialize the raw savings band aggregation"""
 
     buckets = DownscaleSavedAggBucketSerializer(many=True)

@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
 from downscale.src.downscale import CONCURRENCY_RETRY_DELAY, DownscaleRunner
 from downscale.src.queue_interact import DownscaleInteract
 
@@ -21,6 +22,15 @@ def _mock_lock(acquired=True):
     lock = MagicMock()
     lock.acquire.return_value = acquired
     return lock
+
+
+@pytest.fixture(autouse=True)
+def job_doc(monkeypatch):
+    doc = {"status": "queued", "task_id": "task-1"}
+    monkeypatch.setattr(
+        DownscaleInteract, "get_item", lambda self: (doc or None, 200)
+    )
+    return doc
 
 
 def test_concurrency_limit_retries_with_longer_countdown():
@@ -93,3 +103,46 @@ def test_dispatch_lock_contention_uses_default_retry_cadence():
             pass
 
     task.retry.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"status": "running", "task_id": ""},
+        {"status": "queued", "task_id": "task-2"},
+        None,
+    ],
+    ids=["claimed by a worker", "dispatched again", "deleted"],
+)
+def test_a_job_another_runner_holds_is_left_alone(job_doc, fields):
+    job_doc.clear()
+    if fields:
+        job_doc.update(fields)
+
+    task = _mock_task()
+    runner = _make_runner(task)
+
+    with patch(
+        "downscale.src.downscale.RedisBase"
+    ) as mock_redis_base, patch.object(
+        DownscaleInteract, "update"
+    ) as mock_update, patch.object(
+        DownscaleInteract, "delete_item"
+    ) as mock_delete:
+        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+
+        reserved = runner._reserve_slot(
+            current_height=1080, original_path="/x.mp4"
+        )
+
+    assert reserved is False
+    mock_update.assert_not_called()
+    mock_delete.assert_not_called()
+    task.retry.assert_not_called()
+
+
+def test_a_job_whose_task_id_was_never_recorded_is_still_ours(job_doc):
+    job_doc["task_id"] = ""
+    runner = _make_runner(_mock_task())
+
+    assert runner._still_ours() is True
