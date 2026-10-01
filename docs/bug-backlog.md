@@ -307,8 +307,9 @@ encode and all worker jobs collide on the empty-string key. (c) `:279-388`
 and `Extraction.tsx:89` change filters without resetting `page`, landing the
 user on an empty page 4. `SettingsLogs.tsx` calls `setPage(0)` correctly.
 
-### Tier 2 open follow-ups
-Low severity, not fixed:
+### Tier 2 follow-ups
+**Accepted** (2026-10-01): the behaviour below is acceptable as it is; not
+to be fixed.
 - T2.1: a stopped batch reports the same "Queued N" message as a
   finished one.
 - T2.2: `has_work` reads an ES error at boot as "nothing waiting", so that
@@ -444,7 +445,8 @@ but a superseded answer is dropped.
   says "Nothing logged yet".
 - `loadExtractionQueue.ts:18` double-encodes `q` and nothing sets it.
 
-### Tier 3 and 4 open follow-ups
+### Tier 3 and 4 follow-ups
+**Accepted** (2026-10-01): acceptable as it is; not to be fixed.
 - T3.4: a stats panel whose search fails now gets a 503 instead of zeros,
   but the dashboard and the channel page render any failed panel as
   "Loading..." indefinitely - the same as upstream's panels on any failed
@@ -512,6 +514,14 @@ but a superseded answer is dropped.
   checking whether the queue has work; `extrac_dl` dispatches it
   unconditionally. On the ~105k-video box that is a full scroll for nothing,
   under `--max-memory-per-child 150000`.
+- **Accepted** (2026-10-01). Failed video entries from a channel or
+  playlist scan share `_build_id` with entries queued by hand, so a bare
+  `/@handle` channel scan and a plain watch URL for the same video both map
+  to `video_<id>_unknown`, and the failed entry replaces the queued one.
+  The latest extraction error is the more useful state to keep.
+- **Accepted** (2026-10-01). A rate-limited full scan (429s, timeouts)
+  lists each video it could not extract as its own failed entry, so a
+  large first scan can leave hundreds of them.
 
 ## Tests that pass for the wrong reason
 
