@@ -127,13 +127,13 @@ class TestSilentWait:
 class TestPollsEvenWithPacingOff:
     @pytest.mark.parametrize("interval", [None, 0])
     def test_a_stop_is_seen_with_no_wait_to_step_through(
-        self, monkeypatch, clock, interval
+        self, clock, interval
     ):
-        set_interval(monkeypatch, 0)
+        config = {"downloads": {"sleep_interval": interval}}
         checks = []
         task = SimpleNamespace(is_stopped=lambda: checks.append(1) or True)
 
-        assert not countdown_sleep(CONFIG, task)
+        assert not countdown_sleep(config, task)
 
         assert len(checks) == 1, "must poll once even with nothing to wait"
         assert clock == [], "and must not invent a wait"

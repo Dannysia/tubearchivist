@@ -1,3 +1,4 @@
+import pytest
 from downscale.src.constants import DOWNSCALE_LADDER
 from video.src.resolution import (
     BELOW_KEY,
@@ -86,17 +87,42 @@ def test_parse_bucket():
     assert tier["duration_str"] == "3m"
 
 
-def test_panels_reconcile_with_each_other():
-    parsed = parse_resolution(build_response({"2160": 2, "720": 5}))
-    populated = [i["key"] for i in parsed if i["doc_count"]]
-    assert [i["key"] for i in parsed if i["media_size"]] == populated
-    assert [i["key"] for i in parsed if i["duration"]] == populated
+def _matches(clause: dict, height: int | None) -> bool:
+    if "exists" in clause:
+        return height is not None
+
+    if "range" in clause:
+        floor = clause["range"][HEIGHT_FIELD]["gte"]
+        return height is not None and height >= floor
+
+    query = clause["bool"]
+    return all(
+        _matches(i, height) for i in query.get("filter", [])
+    ) and not any(_matches(i, height) for i in query.get("must_not", []))
 
 
-def test_tiers_reconcile_with_the_video_count():
-    counts = {"2160": 4, "1080": 9, BELOW_KEY: 1, UNKNOWN_KEY: 6}
-    parsed = parse_resolution(build_response(counts))
-    assert sum(i["doc_count"] for i in parsed) == sum(counts.values())
+@pytest.mark.parametrize(
+    "height, expected",
+    [
+        (4320, "2160"),
+        (2160, "2160"),
+        (2159, "1440"),
+        (1440, "1440"),
+        (1080, "1080"),
+        (721, "720"),
+        (240, "240"),
+        (239, BELOW_KEY),
+        (0, BELOW_KEY),
+        (None, UNKNOWN_KEY),
+    ],
+)
+def test_every_height_lands_in_exactly_one_tier(height, expected):
+    tiers = [
+        key
+        for key, clause in resolution_filters().items()
+        if _matches(clause, height)
+    ]
+    assert tiers == [expected]
 
 
 def test_the_ladder_is_tallest_first():

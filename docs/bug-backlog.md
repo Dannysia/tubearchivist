@@ -515,16 +515,16 @@ but a superseded answer is dropped.
 
 ## Tests that pass for the wrong reason
 
-- `video/tests/test_src/test_resolution.py:105-117` - both "reconcile" tests
+- **Fixed.** `video/tests/test_src/test_resolution.py:105-117` - both "reconcile" tests
   build their input from the expected answer via `build_response(counts)`, so
   they hold whether or not the tiers are exclusive and exhaustive, which is
   the property the names claim.
-- `task/tests/test_src/test_config_schedule.py:134` -
+- **Fixed.** `task/tests/test_src/test_config_schedule.py:134` -
   `orphaned_schedules(TASK_CONFIG.keys(), TASK_CONFIG)` is `set(x) - set(x)`.
-- `common/tests/test_src/test_countdown_sleep.py:161-172` - parametrises
+- **Fixed.** `common/tests/test_src/test_countdown_sleep.py:161-172` - parametrises
   `[None, 0]` then hardcodes `set_interval(monkeypatch, 0)`, so both cases
   are identical and the `None` branch stays untested.
-- `test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched`
+- **Fixed with T3.3.** `test_max_concurrent_zero_blocks_a_local_job_that_still_got_dispatched`
   pins T3.3 as intended behaviour without noticing the wait cannot end.
 
 ## Rejected - do not re-raise

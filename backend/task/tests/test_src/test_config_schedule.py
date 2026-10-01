@@ -113,8 +113,8 @@ class TestOrphanedSchedules:
             "zeta",
         ]
 
-    def test_the_real_task_config_orphans_nothing_today(self):
-        assert orphaned_schedules(TASK_CONFIG.keys(), TASK_CONFIG) == []
+    def test_no_default_schedule_is_orphaned(self):
+        assert orphaned_schedules(ScheduleBuilder.SCHEDULES, TASK_CONFIG) == []
 
 
 def test_reindex_is_stoppable():
