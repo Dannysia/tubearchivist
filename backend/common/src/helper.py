@@ -14,7 +14,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 import requests
-from common.src.es_connect import IndexPaginate
+from common.src.es_connect import ElasticUnavailable, IndexPaginate
 from mutagen import MutagenError
 
 MEDIA_INDEX_ERRORS = (
@@ -25,7 +25,11 @@ MEDIA_INDEX_ERRORS = (
     MutagenError,
 )
 
-NETWORK_ERRORS = (requests.RequestException, ConnectionError)
+NETWORK_ERRORS = (
+    requests.RequestException,
+    ConnectionError,
+    ElasticUnavailable,
+)
 
 
 def ignore_filelist(filelist: list[str]) -> list[str]:

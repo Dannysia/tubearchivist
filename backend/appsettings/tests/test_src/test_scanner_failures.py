@@ -14,6 +14,7 @@ import pytest
 import requests
 from appsettings.src import filesystem
 from appsettings.src.filesystem import Scanner
+from common.src.es_connect import ElasticUnavailable
 from mutagen import MutagenError
 from video.src import index as video_index
 from video.src.index import index_new_video
@@ -175,6 +176,7 @@ NETWORK_FAILURES = [
     requests.ReadTimeout("timed out"),
     # what yt-dlp raises on a bot block or a dns failure
     ConnectionError("lost the internet, abort!"),
+    ElasticUnavailable("es answered 503, write not applied"),
 ]
 
 

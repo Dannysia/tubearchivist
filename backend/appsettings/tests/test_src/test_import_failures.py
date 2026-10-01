@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 import requests
 from appsettings.src.manual import ImportFolderScanner, ManualImport
+from common.src.es_connect import ElasticUnavailable
 from mutagen import MutagenError
 
 VIDEO_ID = "R6no2zOuCTB"
@@ -192,6 +193,7 @@ class TestBatchKeepsGoing:
             requests.ConnectionError("connection refused"),
             # what yt-dlp raises on a bot block or a dns failure
             ConnectionError("lost the internet, abort!"),
+            ElasticUnavailable("es answered 503, write not applied"),
         ],
     )
     def test_a_network_error_is_not_recorded_per_file(self, monkeypatch, err):

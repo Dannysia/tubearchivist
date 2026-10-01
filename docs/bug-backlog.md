@@ -124,10 +124,11 @@ raises on purpose on a DNS failure and on a bot block
 outage or a bot block stops the rescan instead of being counted against
 every remaining file.
 
-Still counted per file: an ES that is up but answering 503 or 429, because
-`ElasticWrap.put` turns that into a `ValueError`, the same type as "youtube
-has no metadata for this id". Telling them apart needs `put` to raise its
-own type.
+An ES that is up but answering 429 or a 5xx now stops the run too:
+`ElasticWrap.put` raises `ElasticUnavailable` for those, a `ValueError`
+subclass in `NETWORK_ERRORS`. A rejected document (400, 404, 409) stays a
+plain `ValueError` and is still counted per file. Other `ValueError`
+catchers, such as the channel index, are unchanged.
 Verified. `ignore_error` does not hold, because the `except` clauses miss
 what the upstream helpers actually raise. Three independent triggers:
 - A truncated or 0-byte mp4: `index_new_video` -> `build_json` ->

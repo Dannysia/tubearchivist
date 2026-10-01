@@ -13,6 +13,12 @@ import requests
 import urllib3
 from common.src.env_settings import EnvironmentSettings
 
+UNAVAILABLE_STATUSES = (429, 500, 502, 503, 504)
+
+
+class ElasticUnavailable(ValueError):
+    pass
+
 
 class ElasticWrap:
     """makes all calls to elastic search
@@ -110,6 +116,11 @@ class ElasticWrap:
         if not response.ok:
             print(response.text)
             print(data)
+            if response.status_code in UNAVAILABLE_STATUSES:
+                raise ElasticUnavailable(
+                    f"es answered {response.status_code}, write not applied"
+                )
+
             raise ValueError("failed to add item to index")
 
         return response.json(), response.status_code
