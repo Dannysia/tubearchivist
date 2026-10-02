@@ -11,11 +11,12 @@ import ToggleConfig from '../components/ToggleConfig';
 import queueStartFilesystemRescan from '../api/actions/queueStartFilesystemRescan';
 import queueManualImport from '../api/actions/queueManualImport';
 import ImportFiles from '../components/ImportFiles';
+import loadTaskById, { FINISHED_TASK_STATUSES } from '../api/loader/loadTaskById';
 
 const SettingsActions = () => {
   const [deleteIgnored, setDeleteIgnored] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
-  const [processingImports, setProcessingImports] = useState(false);
+  const [importTaskId, setImportTaskId] = useState<string>();
   const [reSyncMeta, setReSyncMeta] = useState(false);
   const [backupStarted, setBackupStarted] = useState(false);
   const [isRestoringBackup, setIsRestoringBackup] = useState(false);
@@ -41,6 +42,25 @@ const SettingsActions = () => {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!importTaskId) {
+      return;
+    }
+
+    const intervalId = setInterval(async () => {
+      const { data } = await loadTaskById(importTaskId);
+      if (data && FINISHED_TASK_STATUSES.includes(data.status)) {
+        clearInterval(intervalId);
+        setImportTaskId(undefined);
+        setImportFilesRefresh(current => current + 1);
+      }
+    }, 1000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [importTaskId]);
+
   return (
     <>
       <title>TA | Actions</title>
@@ -51,19 +71,15 @@ const SettingsActions = () => {
           update={
             deleteIgnored ||
             deletePending ||
-            processingImports ||
+            !!importTaskId ||
             reSyncMeta ||
             backupStarted ||
             isRestoringBackup ||
             reScanningFileSystem
           }
-          setShouldRefresh={isDone => {
+          setShouldRefresh={() => {
             setDeleteIgnored(false);
             setDeletePending(false);
-            if (isDone && processingImports) {
-              setImportFilesRefresh(current => current + 1);
-              setProcessingImports(false);
-            }
             setReSyncMeta(false);
             setBackupStarted(false);
             setIsRestoringBackup(false);
@@ -110,13 +126,13 @@ const SettingsActions = () => {
                 updateCallback={() => setManualIgnoreErrors(!manualIgnoreErrors)}
               />
             </div>
-            {processingImports && <p>Processing import</p>}
-            {!processingImports && (
+            {importTaskId && <p>Processing import</p>}
+            {!importTaskId && (
               <Button
                 label="Start import"
                 onClick={async () => {
-                  await queueManualImport(manualIgnoreErrors, manualPreferLocal);
-                  setProcessingImports(true);
+                  const response = await queueManualImport(manualIgnoreErrors, manualPreferLocal);
+                  setImportTaskId(response.data?.task_id);
                 }}
               />
             )}

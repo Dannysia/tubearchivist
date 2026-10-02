@@ -1,7 +1,11 @@
 import APIClient from '../../functions/APIClient';
 
+export type ManualImportResponseType = {
+  task_id: string;
+};
+
 const queueManualImport = async (ignore_error: boolean, prefer_local: boolean) => {
-  return APIClient('/api/appsettings/manual-import/', {
+  return APIClient<ManualImportResponseType>('/api/appsettings/manual-import/', {
     method: 'POST',
     body: { ignore_error, prefer_local },
   });
