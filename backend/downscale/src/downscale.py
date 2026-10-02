@@ -689,17 +689,16 @@ class DownscaleReview:
             return None
 
         task_id = job["task_id"]
-        if not task_id:
+        started = bool(task_id) and bool(TaskManager().get_task(task_id))
+        if started:
+            TaskCommand().stop(task_id)
+
+        if job["status"] == "queued" or not task_id:
             self.interact.delete_item()
             return None
 
-        if not TaskManager().get_task(task_id):
+        if not started:
             return "task not found, may not have started yet"
-
-        TaskCommand().stop(task_id)
-
-        if job["status"] == "queued":
-            self.interact.delete_item()
 
         return None
 

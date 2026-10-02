@@ -108,16 +108,29 @@ def test_cancel_stops_a_running_job_without_deleting_its_doc():
     mock_delete.assert_not_called()
 
 
-def test_cancel_fails_gracefully_when_task_not_yet_known():
+def test_cancel_deletes_a_queued_job_whose_task_has_not_started():
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
+        "task.src.task_manager.TaskRedis.get_single", return_value={}
+    ), patch(
         "downscale.src.downscale.TaskCommand"
-    ) as mock_task_command, patch(
-        "downscale.src.downscale.TaskManager"
-    ) as mock_task_manager:
-        mock_task_manager.return_value.get_task.return_value = {}
+    ) as mock_task_command:
+        error = DownscaleReview(DOC_ID).cancel()
 
+    assert error is None
+    mock_delete.assert_called_once()
+    mock_task_command.return_value.stop.assert_not_called()
+
+
+def test_cancel_reports_a_running_job_whose_task_is_unknown():
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
+    ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
+        "task.src.task_manager.TaskRedis.get_single", return_value={}
+    ), patch(
+        "downscale.src.downscale.TaskCommand"
+    ) as mock_task_command:
         error = DownscaleReview(DOC_ID).cancel()
 
     assert error == "task not found, may not have started yet"
