@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from common.src.queue_interact import QueueWriteError
+from common.src.queue_interact import QueueDocMissing, QueueWriteError
 from downscale.src.downscale import DownscaleRunner
 from downscale.src.queue_interact import DownscaleInteract
 
@@ -94,3 +94,87 @@ def test_mark_crashed_keeps_the_real_error_when_its_own_write_fails():
         runner._mark_crashed(RuntimeError("ffmpeg died"))
 
     mock_dispatch.assert_called_once()
+
+
+class Retry(Exception):
+    pass
+
+
+def _retrying_runner():
+    retries = []
+
+    def retry(countdown=None):
+        retries.append(countdown)
+        return Retry()
+
+    runner = DownscaleRunner(
+        task=SimpleNamespace(is_stopped=lambda: False, retry=retry),
+        youtube_id="video1",
+        target_height=480,
+        doc_id="doc1",
+    )
+    return runner, retries
+
+
+def test_a_failed_pre_flight_write_retries_the_job():
+    runner, retries = _retrying_runner()
+
+    with patch(
+        "downscale.src.downscale.YoutubeVideo", return_value=_video()
+    ), patch(
+        "downscale.src.downscale.os.path.exists", return_value=False
+    ), patch.object(
+        DownscaleInteract, "update", side_effect=QueueWriteError("es down")
+    ), patch.object(
+        DownscaleRunner, "_encode"
+    ) as mock_encode:
+        try:
+            runner.run()
+        except Retry:
+            pass
+
+    assert len(retries) == 1
+    mock_encode.assert_not_called()
+
+
+def test_a_failed_slot_reservation_write_retries_the_job():
+    runner, retries = _retrying_runner()
+
+    with patch(
+        "downscale.src.downscale.YoutubeVideo", return_value=_video()
+    ), patch(
+        "downscale.src.downscale.os.path.exists", return_value=True
+    ), patch(
+        "downscale.src.downscale._get_height", return_value=1080
+    ), patch.object(
+        DownscaleRunner,
+        "_reserve_slot",
+        side_effect=QueueWriteError("es down"),
+    ), patch.object(
+        DownscaleRunner, "_encode"
+    ) as mock_encode:
+        try:
+            runner.run()
+        except Retry:
+            pass
+
+    assert len(retries) == 1
+    mock_encode.assert_not_called()
+
+
+def test_a_job_deleted_under_the_runner_is_not_retried():
+    runner, retries = _retrying_runner()
+
+    with patch(
+        "downscale.src.downscale.YoutubeVideo", return_value=_video()
+    ), patch(
+        "downscale.src.downscale.os.path.exists", return_value=False
+    ), patch.object(
+        DownscaleInteract, "update", side_effect=QueueDocMissing("gone")
+    ), patch.object(
+        DownscaleRunner, "_encode"
+    ) as mock_encode:
+        runner.run()
+
+    assert retries == []
+    mock_encode.assert_not_called()

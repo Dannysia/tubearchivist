@@ -9,7 +9,7 @@ from datetime import datetime
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
 from common.src.index_generic import IndexWriteError
-from common.src.queue_interact import QueueWriteError
+from common.src.queue_interact import QueueDocMissing, QueueWriteError
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
 from redis.exceptions import LockError
@@ -261,16 +261,39 @@ class DownscaleRunner:
         self.cmd: list[str] | None = None
 
     def run(self) -> None:
+        try:
+            video = self._prepare()
+        except QueueDocMissing:
+            print(f"{self.youtube_id}: job is gone, skip downscale")
+            return
+        except QueueWriteError as err:
+            print(f"{self.youtube_id}: queue write failed, retrying: {err}")
+            raise self.task.retry(countdown=CONCURRENCY_RETRY_DELAY) from err
+
+        if not video:
+            return
+
+        try:
+            self._encode(
+                video["original_path"],
+                duration=video["duration"],
+                title=video["title"],
+            )
+        except Exception as err:  # pylint: disable=broad-except
+            print(f"{self.youtube_id}: downscale crashed: {err}")
+            self._mark_crashed(err)
+
+    def _prepare(self) -> dict | None:
         if self.task.is_stopped():
             DownscaleInteract(self.doc_id).delete_item()
-            return
+            return None
 
         video = YoutubeVideo(self.youtube_id)
         video.get_from_es()
         if not video.json_data:
             print(f"{self.youtube_id}: video not found, skip downscale")
             DownscaleInteract(self.doc_id).delete_item()
-            return
+            return None
 
         original_path = os.path.join(
             EnvironmentSettings.MEDIA_DIR, video.json_data["media_url"]
@@ -282,7 +305,7 @@ class DownscaleRunner:
                 message="source file missing",
                 updated=_now(),
             )
-            return
+            return None
 
         current_height = _get_height(original_path)
         if not current_height or self.target_height >= current_height:
@@ -295,22 +318,16 @@ class DownscaleRunner:
                 message="target height no longer below current height",
                 updated=_now(),
             )
-            return
+            return None
 
         if not self._reserve_slot(current_height, original_path):
-            return
+            return None
 
-        duration = video.json_data.get("player", {}).get("duration") or 0
-
-        try:
-            self._encode(
-                original_path,
-                duration=duration,
-                title=video.json_data["title"],
-            )
-        except Exception as err:  # pylint: disable=broad-except
-            print(f"{self.youtube_id}: downscale crashed: {err}")
-            self._mark_crashed(err)
+        return {
+            "original_path": original_path,
+            "duration": video.json_data.get("player", {}).get("duration") or 0,
+            "title": video.json_data["title"],
+        }
 
     def _mark_crashed(self, err: Exception) -> None:
         self._cleanup_tmp()
