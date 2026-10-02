@@ -597,6 +597,13 @@ class PendingList(PendingIndex):
             if "error" in result:
                 failed_video_ids.append(result.get("_id"))
 
+        self._clear_failed_extractions(
+            [
+                i["youtube_id"]
+                for i in self.missing_videos
+                if i["youtube_id"] not in failed_video_ids
+            ]
+        )
         failed_video_ids_str = ",".join(failed_video_ids)
         self._notify_fail(status_code, failed_video_ids_str)
         self._queue_write_failed(f"not queued: {failed_video_ids_str}")

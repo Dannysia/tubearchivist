@@ -62,7 +62,7 @@ def test_items_that_did_not_land_fail_the_entry(monkeypatch):
     assert handler.extraction_failed is True
     assert "vid2" in handler.extraction_error
     assert "vid1" not in handler.extraction_error
-    assert handler.cleared == []
+    assert handler.cleared == ["vid1"]
 
 
 @pytest.mark.parametrize("code", [200, 201])
