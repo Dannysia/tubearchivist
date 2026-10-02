@@ -4,7 +4,7 @@ import updateChannelSubscription from '../api/actions/updateChannelSubscription'
 import FormattedNumber from './FormattedNumber';
 import Button from './Button';
 import ChannelIcon from './ChannelIcon';
-import ChannelYouTubeLink from './ChannelYouTubeLink';
+import YouTubeLink from './YouTubeLink';
 import useIsAdmin from '../functions/useIsAdmin';
 
 type ChannelOverviewProps = {
@@ -66,7 +66,7 @@ const ChannelOverview = ({
                 />
               ))}
 
-            <ChannelYouTubeLink channelId={channelId} channelname={channelname} />
+            <YouTubeLink path={`channel/${channelId}`} title={`View ${channelname} on YouTube`} />
           </div>
         </div>
       </div>

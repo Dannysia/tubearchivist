@@ -7,7 +7,7 @@ import FormattedNumber from './FormattedNumber';
 import Button from './Button';
 import ChannelIcon from './ChannelIcon';
 import ChannelBanner from './ChannelBanner';
-import ChannelYouTubeLink from './ChannelYouTubeLink';
+import YouTubeLink from './YouTubeLink';
 import LoadingIndicator from './LoadingIndicator';
 import { useUserConfigStore } from '../stores/UserConfigStore';
 import useIsAdmin from '../functions/useIsAdmin';
@@ -101,9 +101,9 @@ const ChannelList = ({ channelList, refreshChannelList }: ChannelListProps) => {
                       />
                     )}
 
-                    <ChannelYouTubeLink
-                      channelId={channel.channel_id}
-                      channelname={channel.channel_name}
+                    <YouTubeLink
+                      path={`channel/${channel.channel_id}`}
+                      title={`View ${channel.channel_name} on YouTube`}
                     />
                   </div>
                 </div>

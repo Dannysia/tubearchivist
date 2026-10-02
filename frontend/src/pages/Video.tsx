@@ -19,6 +19,7 @@ import startDownscale from '../api/actions/startDownscale';
 import humanFileSize from '../functions/humanFileSize';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import ChannelOverview from '../components/ChannelOverview';
+import YouTubeLink from '../components/YouTubeLink';
 import deleteVideo from '../api/actions/deleteVideo';
 import capitalizeFirstLetter from '../functions/capitalizeFirstLetter';
 import formatDate from '../functions/formatDates';
@@ -307,6 +308,12 @@ const Video = () => {
                 </p>
               )}
               {!video.active && <p>Youtube: Deactivated</p>}
+              <div className="button-box">
+                <YouTubeLink
+                  path={`watch?v=${video.youtube_id}`}
+                  title={`View ${video.title} on YouTube`}
+                />
+              </div>
             </div>
           </div>
           <div className="info-box-item">
