@@ -101,3 +101,28 @@ def test_a_stop_ends_the_batch_and_still_dispatches(world):
 
     assert handler.queued == ["v0", "v1"]
     assert world["dispatched"] == 1
+
+
+@pytest.mark.parametrize("skip_inactive", [False, True])
+def test_skip_inactive_leaves_out_only_inactive_videos(
+    monkeypatch, skip_inactive
+):
+    seen = {}
+
+    class Paginate:
+        def __init__(self, index, data, **kwargs):
+            seen["query"] = data["query"]
+
+        def get_results(self):
+            return []
+
+    monkeypatch.setattr(channel_batch, "IndexPaginate", Paginate)
+
+    ChannelDownscale("UC1", 480, skip_inactive=skip_inactive)._get_videos()
+
+    query = seen["query"]["bool"]
+    assert query["must"] == [
+        {"term": {"channel.channel_id": {"value": "UC1"}}}
+    ]
+    expected = [{"term": {"active": False}}] if skip_inactive else None
+    assert query.get("must_not") == expected

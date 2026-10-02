@@ -5,10 +5,14 @@ export type ChannelDownscaleResponseType = {
   task_id: string;
 };
 
-const startChannelDownscale = async (channelId: string, targetHeight: number) => {
+const startChannelDownscale = async (
+  channelId: string,
+  targetHeight: number,
+  skipInactive: boolean,
+) => {
   return APIClient<ChannelDownscaleResponseType>(`/api/channel/${channelId}/downscale/`, {
     method: 'POST',
-    body: { target_height: targetHeight },
+    body: { target_height: targetHeight, skip_inactive: skipInactive },
   });
 };
 

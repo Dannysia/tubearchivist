@@ -5,10 +5,17 @@ from downscale.src.queue_interact import ALREADY_ACTIVE, DownscaleInteract
 
 
 class ChannelDownscale:
-    def __init__(self, channel_id: str, target_height: int, task=None):
+    def __init__(
+        self,
+        channel_id: str,
+        target_height: int,
+        task=None,
+        skip_inactive: bool = False,
+    ):
         self.channel_id = channel_id
         self.target_height = target_height
         self.task = task
+        self.skip_inactive = skip_inactive
         self.queued: list[str] = []
         self.skipped: list[str] = []
 
@@ -36,12 +43,21 @@ class ChannelDownscale:
             self.skipped.append(video["youtube_id"])
 
     def _get_videos(self) -> list[dict]:
-        data = {
-            "query": {
-                "term": {"channel.channel_id": {"value": self.channel_id}}
-            },
-            "_source": QUEUE_DOC_SOURCE_FIELDS,
+        query: dict = {
+            "bool": {
+                "must": [
+                    {
+                        "term": {
+                            "channel.channel_id": {"value": self.channel_id}
+                        }
+                    }
+                ]
+            }
         }
+        if self.skip_inactive:
+            query["bool"]["must_not"] = [{"term": {"active": False}}]
+
+        data = {"query": query, "_source": QUEUE_DOC_SOURCE_FIELDS}
         return IndexPaginate("ta_video", data).get_results()
 
     def _notify(self, idx: int, total: int) -> None:

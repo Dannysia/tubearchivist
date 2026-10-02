@@ -408,9 +408,13 @@ def delete_channel_videos(
 
 
 @shared_task(bind=True, name="downscale_channel", base=BaseTask)
-def downscale_channel(self, channel_id: str, target_height: int):
+def downscale_channel(
+    self, channel_id: str, target_height: int, skip_inactive: bool = False
+):
     TaskManager().init(self)
-    handler = ChannelDownscale(channel_id, target_height, task=self)
+    handler = ChannelDownscale(
+        channel_id, target_height, task=self, skip_inactive=skip_inactive
+    )
     handler.run()
 
     message = (

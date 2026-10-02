@@ -61,6 +61,7 @@ const ChannelAbout = () => {
   const [refresh, setRefresh] = useState(true);
   const [showDownscaleForm, setShowDownscaleForm] = useState(false);
   const [downscaleTargetHeight, setDownscaleTargetHeight] = useState(DOWNSCALE_LADDER[0]);
+  const [downscaleSkipInactive, setDownscaleSkipInactive] = useState(false);
   const [downscaleNotice, setDownscaleNotice] = useState<string | null>(null);
 
   const [channelResponse, setChannelResponse] = useState<ApiResponseType<ChannelResponseType>>();
@@ -332,6 +333,14 @@ const ChannelAbout = () => {
                             </option>
                           ))}
                         </select>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={downscaleSkipInactive}
+                            onChange={() => setDownscaleSkipInactive(!downscaleSkipInactive)}
+                          />{' '}
+                          Skip inactive videos
+                        </label>
                         <Button
                           label="Start"
                           onClick={async () => {
@@ -340,6 +349,7 @@ const ChannelAbout = () => {
                               const response = await startChannelDownscale(
                                 channelId,
                                 downscaleTargetHeight,
+                                downscaleSkipInactive,
                               );
                               started = !!response.data?.task_id;
                             } catch {

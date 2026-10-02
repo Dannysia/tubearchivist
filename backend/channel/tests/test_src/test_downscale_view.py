@@ -42,7 +42,18 @@ def test_the_batch_runs_as_a_task(monkeypatch):
 
     assert response.status_code == 202
     assert response.data["task_id"] == "task-1"
-    assert task.calls == [("UC1", 480)]
+    assert task.calls == [("UC1", 480, False)]
+
+
+def test_skip_inactive_reaches_the_task(monkeypatch):
+    view, task = _view(monkeypatch)
+
+    view.post(
+        SimpleNamespace(data={"target_height": 480, "skip_inactive": True}),
+        "UC1",
+    )
+
+    assert task.calls == [("UC1", 480, True)]
 
 
 def test_an_unknown_channel_starts_nothing(monkeypatch):

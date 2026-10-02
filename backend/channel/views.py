@@ -2,6 +2,7 @@
 
 from channel.serializers import (
     ChannelAggSerializer,
+    ChannelDownscaleSerializer,
     ChannelListQuerySerializer,
     ChannelListSerializer,
     ChannelNavSerializer,
@@ -34,7 +35,6 @@ from task.tasks import (
     index_channel_playlists,
     subscribe_to,
 )
-from video.serializers import VideoDownscaleSerializer
 
 
 class ChannelApiListView(ApiBaseView):
@@ -284,7 +284,7 @@ class ChannelDownscaleView(ApiBaseView):
     permission_classes = [AdminOnly]
 
     @extend_schema(
-        request=VideoDownscaleSerializer(),
+        request=ChannelDownscaleSerializer(),
         responses={
             202: OpenApiResponse(AsyncTaskResponseSerializer()),
             404: OpenApiResponse(
@@ -299,11 +299,13 @@ class ChannelDownscaleView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "channel not found"})
             return Response(error.data, status=404)
 
-        data_serializer = VideoDownscaleSerializer(data=request.data)
+        data_serializer = ChannelDownscaleSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
-        target_height = data_serializer.validated_data["target_height"]
+        validated = data_serializer.validated_data
 
-        task = downscale_channel.delay(channel_id, target_height)
+        task = downscale_channel.delay(
+            channel_id, validated["target_height"], validated["skip_inactive"]
+        )
         message = {
             "message": f"queueing downscale for {channel_id}",
             "task_id": task.id,

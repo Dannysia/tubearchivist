@@ -208,3 +208,10 @@ class ChannelVideoDeleteQuerySerializer(serializers.Serializer):
         choices=VideoTypeEnum.values_known(), required=True
     )
     ignore = serializers.BooleanField(required=False, default=False)
+
+
+class ChannelDownscaleSerializer(serializers.Serializer):
+    """serialize a batch downscale request for a channel"""
+
+    target_height = serializers.ChoiceField(choices=DOWNSCALE_LADDER)
+    skip_inactive = serializers.BooleanField(default=False)
