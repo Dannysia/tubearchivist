@@ -4,7 +4,6 @@ Functionality:
 - linked with ta_dowload index
 """
 
-import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -12,14 +11,20 @@ from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
 from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap, IndexPaginate
+from common.src.es_connect import (
+    ElasticWrap,
+    IndexPaginate,
+    IndexWriteError,
+    bulk_write,
+    rejected_ids,
+    write_failure,
+)
 from common.src.helper import (
     countdown_sleep,
     get_channels,
     get_duration_str,
     is_shorts,
 )
-from common.src.queue_interact import QueueWriteError
 from common.src.urlparser import ParsedURLType
 from download.serializers import DownloadItemSerializer
 from download.src.queue_interact import PendingInteract
@@ -214,7 +219,7 @@ class PendingList(PendingIndex):
                 PendingInteract(
                     youtube_id=url, status="priority"
                 ).update_status()
-            except QueueWriteError as err:
+            except IndexWriteError as err:
                 print(f"{url}: not moved to priority, {err}")
 
             return None
@@ -559,7 +564,7 @@ class PendingList(PendingIndex):
             return 0
 
         self._notify_start(total)
-        bulk_list = []
+        actions = []
         for video_entry in self.missing_videos:
             video_entry.update(
                 {
@@ -569,15 +574,9 @@ class PendingList(PendingIndex):
             )
             video_id = video_entry["youtube_id"]
             action = {"index": {"_index": "ta_download", "_id": video_id}}
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(video_entry))
+            actions.append((action, video_entry))
 
-        # add last newline
-        bulk_list.append("\n")
-        query_str = "\n".join(bulk_list)
-        response, status_code = ElasticWrap("_bulk?refresh=true").post(
-            query_str, ndjson=True
-        )
+        response, status_code = bulk_write(actions, refresh=True)
         if status_code not in [200, 201]:
             print(response)
             self._notify_fail(status_code)
@@ -591,11 +590,7 @@ class PendingList(PendingIndex):
             )
             return total
 
-        failed_video_ids = []
-        for item in response.get("items", []):
-            _, result = next(iter(item.items()))
-            if "error" in result:
-                failed_video_ids.append(result.get("_id"))
+        failed_video_ids = rejected_ids(response)
 
         self._clear_failed_extractions(
             [
@@ -627,9 +622,9 @@ class PendingList(PendingIndex):
             }
         }
         path = "ta_extraction/_delete_by_query?refresh=true"
-        _, status_code = ElasticWrap(path).post(data)
-        if status_code != 200:
-            print(f"failed extraction entries not cleared, es: {status_code}")
+        failure = write_failure(*ElasticWrap(path).post(data))
+        if failure:
+            print(f"failed extraction entries not cleared, {failure}")
 
     def _notify_add(
         self,

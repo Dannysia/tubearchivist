@@ -4,6 +4,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
+from common.src import es_connect
 from download.src import extraction_queue as eq
 from download.src import queue
 from download.src.extraction_queue import ExtractionQueue
@@ -68,6 +69,7 @@ def bulk(monkeypatch):
     BulkRecorder.status = 200
     monkeypatch.setattr(eq, "ElasticWrap", BulkRecorder)
     monkeypatch.setattr(queue, "ElasticWrap", BulkRecorder)
+    monkeypatch.setattr(es_connect, "ElasticWrap", BulkRecorder)
     return BulkRecorder
 
 
@@ -116,6 +118,8 @@ def test_a_video_that_now_extracts_clears_its_failed_entry(
             return ({"errors": False}, 200) if ok else ({"error": "x"}, 503)
 
     monkeypatch.setattr(queue, "ElasticWrap", Wrap)
+
+    monkeypatch.setattr(es_connect, "ElasticWrap", Wrap)
     handler = SimpleNamespace(
         missing_videos=[{"youtube_id": "vid1"}],
         auto_start=False,

@@ -6,7 +6,12 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from common.src.es_connect import ElasticWrap, IndexPaginate
+from common.src.es_connect import (
+    ElasticWrap,
+    IndexPaginate,
+    bulk_write,
+    write_failure,
+)
 
 ItemType = Literal["video", "channel", "playlist"]
 ValueType = Literal["string", "number", "bool", "json", "null", "missing"]
@@ -312,35 +317,21 @@ class HistoryTracker:
         return f"{self.item_id}-{self.timestamp}-{field_name}"
 
     def _upload(self, changes: list[dict]) -> None:
-        bulk_list = []
-        for change in changes:
-            action = {
-                "index": {
-                    "_index": INDEX_NAME,
-                    "_id": self._build_doc_id(change["field"]),
-                }
-            }
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(change))
-
-        # _bulk needs the trailing newline
-        bulk_list.append("\n")
-        data = "\n".join(bulk_list)
-        response, status_code = ElasticWrap("_bulk").post(
-            data=data, ndjson=True
-        )
-        if status_code not in [200, 201]:
-            print(f"{self.item_id}: failed to write history: {response}")
-            return
-
-        if response.get("errors"):
-            # a 200 from _bulk still reports per document failures
-            failed = [
-                i["index"]["error"]
-                for i in response.get("items", [])
-                if i.get("index", {}).get("error")
-            ]
-            print(f"{self.item_id}: history write errors: {failed}")
+        actions = [
+            (
+                {
+                    "index": {
+                        "_index": INDEX_NAME,
+                        "_id": self._build_doc_id(change["field"]),
+                    }
+                },
+                change,
+            )
+            for change in changes
+        ]
+        failure = write_failure(*bulk_write(actions))
+        if failure:
+            print(f"{self.item_id}: failed to write history, {failure}")
 
 
 def track_changes(
@@ -502,6 +493,6 @@ class HistoryQuery:
     def delete(self) -> None:
         data = {"query": self.build_query()}
         path = f"{INDEX_NAME}/_delete_by_query?refresh=true"
-        response, status_code = ElasticWrap(path).post(data)
-        if status_code not in [200, 201]:
-            print(f"failed to delete history: {response}")
+        failure = write_failure(*ElasticWrap(path).post(data))
+        if failure:
+            print(f"failed to delete history, {failure}")

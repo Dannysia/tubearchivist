@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 import pytest
+from common.src import es_connect
 from download.src import queue
 from download.src.queue import PendingList
 
@@ -16,6 +17,8 @@ def _handler(monkeypatch, answer):
             return answer
 
     monkeypatch.setattr(queue, "ElasticWrap", Wrap)
+
+    monkeypatch.setattr(es_connect, "ElasticWrap", Wrap)
     cleared = []
     handler = SimpleNamespace(
         missing_videos=[{"youtube_id": "vid1"}, {"youtube_id": "vid2"}],

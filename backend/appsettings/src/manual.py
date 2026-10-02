@@ -14,6 +14,7 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
+from common.src.es_connect import IndexWriteError
 from common.src.helper import (
     MEDIA_INDEX_ERRORS,
     NETWORK_ERRORS,
@@ -21,7 +22,6 @@ from common.src.helper import (
     ignore_filelist,
     is_missing,
 )
-from common.src.queue_interact import QueueWriteError
 from download.src.queue_interact import PendingInteract
 from download.src.thumbnails import ThumbManager
 from PIL import Image
@@ -655,7 +655,7 @@ class ManualImport:
         video_id = self.current_video["video_id"]
         try:
             PendingInteract(youtube_id=video_id).delete_item(print_error=False)
-        except QueueWriteError as err:
+        except IndexWriteError as err:
             print(f"{video_id}: queue entry not cleared: {err}")
 
 

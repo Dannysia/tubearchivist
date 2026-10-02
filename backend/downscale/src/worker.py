@@ -2,7 +2,7 @@ import os
 import shutil
 
 from common.src.env_settings import EnvironmentSettings
-from common.src.queue_interact import QueueWriteError
+from common.src.es_connect import IndexWriteError
 from common.src.ta_redis import RedisBase
 from downscale.src.downscale import (
     DISPATCH_LOCK_BLOCKING_TIMEOUT,
@@ -48,7 +48,7 @@ def _discard(doc_id: str, tmp_path: str | None) -> None:
     _cleanup_tmp_files(tmp_path)
     try:
         DownscaleInteract(doc_id).delete_item()
-    except QueueWriteError as err:
+    except IndexWriteError as err:
         print(f"{doc_id}: discard not recorded: {err}")
 
     dispatch_pending_downscales()
@@ -67,7 +67,7 @@ def claim(worker: str) -> dict | None:
         for job in DownscaleInteract.get_next_queued(None):
             try:
                 claimed = _try_claim_candidate(job, worker)
-            except QueueWriteError as err:
+            except IndexWriteError as err:
                 print(f"{job['id']}: candidate skipped, {err}")
                 continue
 
@@ -277,7 +277,7 @@ def reap_stale_leases() -> None:
                 stop_requested=False,
                 updated=_now(),
             )
-        except QueueWriteError as err:
+        except IndexWriteError as err:
             print(f"{doc_id}: lease not reaped, {err}")
 
     dispatch_pending_downscales()

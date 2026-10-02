@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 
-from common.src.index_generic import IndexWriteError
+from common.src.es_connect import IndexWriteError
 from downscale.src.downscale import DownscaleReview
 from downscale.src.queue_interact import DownscaleInteract
 

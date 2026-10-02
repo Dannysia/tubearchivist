@@ -4,7 +4,6 @@ functionality:
 - index and update in es
 """
 
-import json
 import os
 from datetime import datetime
 
@@ -14,7 +13,7 @@ from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import countdown_sleep
-from common.src.index_generic import IndexWriteError, YouTubeItem
+from common.src.index_generic import YouTubeItem
 from download.serializers import DownloadItemSerializer
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import YtWrap
@@ -445,8 +444,8 @@ class ChannelVideoTypeDelete:
             return True
 
         try:
-            self._write_ignore([doc])
-        except (IndexWriteError, requests.RequestException) as err:
+            self._write_ignore(doc)
+        except (ValueError, requests.RequestException) as err:
             print(f"{youtube_id}: kept, ignore entry failed: {err}")
             self.failed.append(youtube_id)
             return False
@@ -483,38 +482,9 @@ class ChannelVideoTypeDelete:
 
         return doc
 
-    def _write_ignore(self, docs: list[dict]) -> None:
-        if not docs:
-            return
-
-        bulk_list = []
-        for doc in docs:
-            action = {
-                "index": {"_index": "ta_download", "_id": doc["youtube_id"]}
-            }
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(doc))
-
-        bulk_list.append("\n")
-        query_str = "\n".join(bulk_list)
-        response, status_code = ElasticWrap("_bulk").post(
-            query_str, ndjson=True
-        )
-        if status_code not in [200, 201]:
-            raise IndexWriteError(
-                f"ignore entries failed, es answered {status_code}"
-            )
-
-        # a 200 from _bulk still reports per document failures in the body
-        if response.get("errors"):
-            rejected = [
-                i["index"]["error"]
-                for i in response.get("items", [])
-                if i.get("index", {}).get("error")
-            ]
-            raise IndexWriteError(
-                f"es rejected ignore entries: {rejected or response}"
-            )
+    @staticmethod
+    def _write_ignore(doc: dict) -> None:
+        ElasticWrap(f"ta_download/_doc/{doc['youtube_id']}").put(doc)
 
     def get_video_ids(self) -> list[str]:
         data = {

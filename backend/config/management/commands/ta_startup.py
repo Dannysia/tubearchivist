@@ -12,9 +12,8 @@ from appsettings.src.config import AppConfig, ReleaseVersion
 from appsettings.src.index_setup import ElasticIndexWrap
 from appsettings.src.snapshot import ElasticSnapshot
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import ElasticWrap, IndexWriteError
 from common.src.helper import clear_dl_cache
-from common.src.queue_interact import QueueWriteError
 from common.src.ta_redis import RedisArchivist
 from django.core.management.base import BaseCommand, CommandError
 from django_celery_beat.models import (
@@ -154,7 +153,7 @@ class Command(BaseCommand):
                         "job(s)"
                     )
                 )
-            except QueueWriteError as err:
+            except IndexWriteError as err:
                 self.stdout.write(
                     self.style.ERROR(f"    could not resume: {err}")
                 )

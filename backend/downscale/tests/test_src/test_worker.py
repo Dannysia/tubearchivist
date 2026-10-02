@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, mock_open, patch
 
-from common.src.queue_interact import QueueWriteError
+from common.src.es_connect import IndexWriteError
 from downscale.src import worker
 from downscale.src.queue_interact import DownscaleInteract
 
@@ -627,7 +627,7 @@ def test_claim_skips_a_candidate_whose_write_fails():
     ), patch.object(
         worker,
         "_try_claim_candidate",
-        side_effect=[QueueWriteError("es down"), claimed],
+        side_effect=[IndexWriteError("es down"), claimed],
     ):
         mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
 
@@ -647,7 +647,7 @@ def test_reap_continues_past_a_job_whose_write_fails():
     ), patch.object(
         DownscaleInteract,
         "update",
-        side_effect=[QueueWriteError("es down"), None],
+        side_effect=[IndexWriteError("es down"), None],
     ) as mock_update, patch(
         "downscale.src.worker.dispatch_pending_downscales"
     ) as mock_dispatch:

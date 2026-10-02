@@ -3,7 +3,8 @@
 import pytest
 import requests
 from common.src import index_generic
-from common.src.index_generic import IndexWriteError, YouTubeItem
+from common.src.es_connect import IndexWriteError
+from common.src.index_generic import YouTubeItem
 
 
 class Item(YouTubeItem):

@@ -20,6 +20,59 @@ class ElasticUnavailable(ValueError):
     pass
 
 
+class IndexWriteError(Exception):
+    pass
+
+
+def bulk_write(
+    actions: list[tuple[dict, dict]], refresh: bool = False
+) -> tuple[dict, int]:
+    lines = []
+    for action, doc in actions:
+        lines.append(json.dumps(action))
+        lines.append(json.dumps(doc))
+
+    lines.append("\n")
+    path = "_bulk?refresh=true" if refresh else "_bulk"
+    return ElasticWrap(path).post("\n".join(lines), ndjson=True)
+
+
+def write_failure(response: dict | None, status_code: int) -> str | None:
+    if status_code not in (200, 201):
+        return f"es answered {status_code}: {response}"
+
+    response = response or {}
+    if response.get("errors"):
+        rejected = [
+            result["error"]
+            for item in response.get("items", [])
+            for result in item.values()
+            if "error" in result
+        ]
+        return f"es rejected {len(rejected)} items: {rejected[:3]}"
+
+    if response.get("failures"):
+        failures = response["failures"]
+        return f"{len(failures)} documents unwritten: {failures[:3]}"
+
+    return None
+
+
+def check_write(response: dict | None, status_code: int, what: str) -> None:
+    failure = write_failure(response, status_code)
+    if failure:
+        raise IndexWriteError(f"{what} failed, {failure}")
+
+
+def rejected_ids(response: dict) -> list[str]:
+    return [
+        result.get("_id")
+        for item in response.get("items", [])
+        for result in item.values()
+        if "error" in result
+    ]
+
+
 class ElasticWrap:
     """makes all calls to elastic search
     returns response json and status code tuple

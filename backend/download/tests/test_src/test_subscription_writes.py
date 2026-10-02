@@ -1,9 +1,9 @@
 """test a subscription scan whose writes fail"""
 
 import pytest
-from common.src.index_generic import IndexWriteError
-from common.src.queue_interact import QueueWriteError
-from download.src import extraction_queue, subscriptions
+from common.src import es_connect
+from common.src.es_connect import IndexWriteError
+from download.src import extraction_queue
 from download.src.extraction_queue import ExtractionQueue
 from download.src.subscriptions import (
     _advance_next_check,
@@ -41,7 +41,7 @@ class FakeES:
 def _patch(monkeypatch, answers):
     es = FakeES(answers)
     monkeypatch.setattr(extraction_queue, "ElasticWrap", es.wrap())
-    monkeypatch.setattr(subscriptions, "ElasticWrap", es.wrap())
+    monkeypatch.setattr(es_connect, "ElasticWrap", es.wrap())
     return es
 
 
@@ -51,14 +51,14 @@ def _patch(monkeypatch, answers):
 def test_a_failed_enqueue_raises(monkeypatch, answer):
     _patch(monkeypatch, {"_bulk?refresh=true": answer})
 
-    with pytest.raises(QueueWriteError):
+    with pytest.raises(IndexWriteError):
         ExtractionQueue().add_to_queue([ENTRY])
 
 
 def test_a_failed_enqueue_does_not_advance(monkeypatch):
     es = _patch(monkeypatch, {"_bulk?refresh=true": ({"error": "x"}, 503)})
 
-    with pytest.raises(QueueWriteError):
+    with pytest.raises(IndexWriteError):
         _run_subscription_scan(
             None,
             CONFIG,

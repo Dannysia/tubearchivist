@@ -1,5 +1,4 @@
-from common.src.es_connect import ElasticWrap
-from common.src.queue_interact import QueueWriteError
+from common.src.es_connect import ElasticWrap, IndexWriteError
 from common.views_base import AdminOnly, ApiBaseView
 from downscale.serializers import (
     DownscaleAggsQuerySerializer,
@@ -132,7 +131,7 @@ class DownscaleApiListView(ApiBaseView):
             review = DownscaleReview(doc_id)
             try:
                 error = getattr(review, action)()
-            except QueueWriteError as err:
+            except IndexWriteError as err:
                 error = str(err)
 
             if error:

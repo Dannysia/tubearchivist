@@ -4,8 +4,8 @@ import pytest
 from common.src import queue_interact
 from common.src.queue_interact import (
     BaseQueueInteract,
+    IndexWriteError,
     QueueDocMissing,
-    QueueWriteError,
 )
 
 
@@ -53,7 +53,7 @@ def test_update_posts_a_partial_doc(fake_wrap):
 def test_update_raises_when_es_rejects_it(fake_wrap):
     fake_wrap.answer = ({"error": "circuit_breaking_exception"}, 429)
 
-    with pytest.raises(QueueWriteError) as err:
+    with pytest.raises(IndexWriteError) as err:
         Queue("doc1").update(status="finished")
 
     message = str(err.value)
@@ -72,7 +72,7 @@ def test_update_on_a_missing_doc_is_told_apart(fake_wrap):
 def test_a_missing_doc_is_still_a_write_error(fake_wrap):
     fake_wrap.answer = ({"error": "document_missing_exception"}, 404)
 
-    with pytest.raises(QueueWriteError):
+    with pytest.raises(IndexWriteError):
         Queue("doc1").update(status="finished")
 
 
@@ -85,14 +85,14 @@ def test_delete_item_accepts_404(fake_wrap):
 def test_delete_item_raises_on_anything_else(fake_wrap):
     fake_wrap.answer = ({"error": "unavailable_shards_exception"}, 503)
 
-    with pytest.raises(QueueWriteError):
+    with pytest.raises(IndexWriteError):
         Queue("doc1").delete_item()
 
 
 def test_update_by_query_raises_on_failures_inside_a_200(fake_wrap):
     fake_wrap.answer = ({"updated": 3, "failures": [{"id": "doc9"}]}, 200)
 
-    with pytest.raises(QueueWriteError) as err:
+    with pytest.raises(IndexWriteError) as err:
         Queue()._update_by_query([], [], "ctx._source.status = 'queued';")
 
     assert "1 documents unwritten" in str(err.value)
@@ -107,7 +107,7 @@ def test_update_by_query_passes_on_a_clean_200(fake_wrap):
 def test_delete_by_query_raises_on_failures_inside_a_200(fake_wrap):
     fake_wrap.answer = ({"deleted": 1, "failures": [{"id": "doc9"}]}, 200)
 
-    with pytest.raises(QueueWriteError):
+    with pytest.raises(IndexWriteError):
         Queue()._delete_by_query([])
 
 

@@ -1,8 +1,12 @@
-import json
 from datetime import datetime
 
-from common.src.es_connect import ElasticWrap
-from common.src.queue_interact import QueueDocMissing, QueueWriteError
+from common.src.es_connect import (
+    ElasticWrap,
+    IndexWriteError,
+    bulk_write,
+    check_write,
+)
+from common.src.queue_interact import QueueDocMissing
 from common.src.urlparser import ParsedURLType
 from download.src.extraction_interact import ExtractionInteract
 from download.src.queue import PendingList
@@ -58,7 +62,7 @@ class ExtractionQueue:
         ]
         try:
             self._write(docs)
-        except QueueWriteError as err:
+        except IndexWriteError as err:
             print(f"[extraction] failed videos not recorded, {err}")
             return 0
 
@@ -93,27 +97,26 @@ class ExtractionQueue:
         }
 
     def _write(self, docs: list[dict]) -> None:
-        bulk_list = []
-        for doc in docs:
-            extraction_id = self._build_id(
-                doc["item_type"], doc["youtube_id"], doc["vid_type"]
+        actions = [
+            (
+                {
+                    "index": {
+                        "_index": "ta_extraction",
+                        "_id": self._build_id(
+                            doc["item_type"],
+                            doc["youtube_id"],
+                            doc["vid_type"],
+                        ),
+                    }
+                },
+                doc,
             )
-            action = {
-                "index": {"_index": "ta_extraction", "_id": extraction_id}
-            }
-            bulk_list.append(json.dumps(action))
-            bulk_list.append(json.dumps(doc))
-
-        bulk_list.append("\n")
-        query_str = "\n".join(bulk_list)
-        response, status_code = ElasticWrap("_bulk?refresh=true").post(
-            query_str, ndjson=True
+            for doc in docs
+        ]
+        response, status_code = bulk_write(actions, refresh=True)
+        check_write(
+            response, status_code, f"ta_extraction: adding {len(docs)} entries"
         )
-        if status_code not in [200, 201] or response.get("errors"):
-            raise QueueWriteError(
-                f"ta_extraction: adding {len(docs)} entries failed, "
-                f"es answered {status_code}"
-            )
 
     @staticmethod
     def _build_id(item_type: str, youtube_id: str, vid_type) -> str:
@@ -203,7 +206,7 @@ class ExtractionQueue:
         except QueueDocMissing as err:
             print(f"[extraction] skipping, {err}")
             return False
-        except QueueWriteError as err:
+        except IndexWriteError as err:
             print(f"[extraction] stopping the run, {err}")
             raise _StopRun from err
 

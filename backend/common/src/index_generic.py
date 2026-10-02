@@ -7,13 +7,9 @@ import math
 
 import requests
 from appsettings.src.config import AppConfig
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import ElasticWrap, IndexWriteError
 from download.src.yt_dlp_base import YtWrap
 from user.src.user_config import UserConfig
-
-
-class IndexWriteError(Exception):
-    pass
 
 
 class YouTubeItem:

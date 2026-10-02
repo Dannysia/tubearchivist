@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from common.src import es_connect
 from download.src import queue
 from download.src.queue import PendingList
 
@@ -17,6 +18,8 @@ def test_the_bulk_write_refreshes(monkeypatch):
             return {"errors": False}, 200
 
     monkeypatch.setattr(queue, "ElasticWrap", Wrap)
+
+    monkeypatch.setattr(es_connect, "ElasticWrap", Wrap)
     handler = SimpleNamespace(
         missing_videos=[{"youtube_id": "video1"}],
         auto_start=False,

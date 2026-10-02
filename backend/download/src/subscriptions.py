@@ -4,7 +4,6 @@ Functionality:
 - handle playlist subscriptions
 """
 
-import json
 import random
 from datetime import datetime, timedelta
 from typing import Callable
@@ -12,9 +11,8 @@ from typing import Callable
 from appsettings.src.config import AppConfig
 from channel.src.index import YoutubeChannel
 from channel.src.remote_query import VideoQueryBuilder
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import bulk_write, check_write
 from common.src.helper import get_channels, get_playlists
-from common.src.index_generic import IndexWriteError
 from common.src.urlparser import ParsedURLType, Parser
 from download.src.extraction_queue import ExtractionQueue
 from playlist.src.index import YoutubePlaylist
@@ -51,20 +49,21 @@ def _advance_next_check(
     frequency_hours = config["subscriptions"].get("frequency_hours") or 24
     jitter_percent = config["subscriptions"].get("jitter_percent") or 0
 
-    bulk_list = []
-    for item in due_items:
-        next_check = _compute_next_check(frequency_hours, jitter_percent)
-        action = {"update": {"_id": item[id_field], "_index": index_name}}
-        bulk_list.append(json.dumps(action))
-        bulk_list.append(json.dumps({"doc": {next_check_field: next_check}}))
-
-    bulk_list.append("\n")
-    query_str = "\n".join(bulk_list)
-    response, status_code = ElasticWrap("_bulk").post(query_str, ndjson=True)
-    if status_code not in [200, 201] or response.get("errors"):
-        raise IndexWriteError(
-            f"{index_name}: next check not advanced, es answered {status_code}"
+    actions = [
+        (
+            {"update": {"_id": item[id_field], "_index": index_name}},
+            {
+                "doc": {
+                    next_check_field: _compute_next_check(
+                        frequency_hours, jitter_percent
+                    )
+                }
+            },
         )
+        for item in due_items
+    ]
+    response, status_code = bulk_write(actions)
+    check_write(response, status_code, f"{index_name}: advancing next check")
 
 
 def _run_subscription_scan(

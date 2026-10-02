@@ -7,14 +7,13 @@ import os
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import IndexPaginate
+from common.src.es_connect import IndexPaginate, IndexWriteError
 from common.src.helper import (
     MEDIA_INDEX_ERRORS,
     NETWORK_ERRORS,
     countdown_sleep,
     ignore_filelist,
 )
-from common.src.queue_interact import QueueWriteError
 from download.src.queue_interact import PendingInteract
 from video.src.comments import Comments
 from video.src.index import YoutubeVideo, index_new_video
@@ -178,7 +177,7 @@ class Scanner:
             PendingInteract(youtube_id=youtube_id).delete_item(
                 print_error=False
             )
-        except QueueWriteError as err:
+        except IndexWriteError as err:
             print(f"{youtube_id}: queue entry not cleared: {err}")
 
     def _notify(self, total, youtube_id, idx, waiting=None):

@@ -13,7 +13,7 @@ import pytest
 from channel.serializers import ChannelVideoDeleteQuerySerializer
 from channel.src import index as channel_index
 from channel.src.index import ChannelVideoTypeDelete
-from common.src.index_generic import IndexWriteError
+from common.src.es_connect import ElasticUnavailable, IndexPaginate
 
 
 class TestDeleteQuerySerializer:
@@ -224,7 +224,7 @@ class TestDeleteWithIgnore:
         monkeypatch.setattr(
             ChannelVideoTypeDelete,
             "_write_ignore",
-            lambda self, d: written.extend(d),
+            staticmethod(lambda d: written.append(d)),
         )
         handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
 
@@ -235,7 +235,9 @@ class TestDeleteWithIgnore:
     def test_nothing_refused_reports_nothing(self, monkeypatch):
         self._patch(monkeypatch, [VIDEO_DOC])
         monkeypatch.setattr(
-            ChannelVideoTypeDelete, "_write_ignore", lambda self, d: None
+            ChannelVideoTypeDelete,
+            "_write_ignore",
+            staticmethod(lambda d: None),
         )
         handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
         handler.delete()
@@ -251,7 +253,7 @@ class TestDeleteWithIgnore:
         monkeypatch.setattr(
             ChannelVideoTypeDelete,
             "_write_ignore",
-            lambda self, d: written.extend(d),
+            staticmethod(lambda d: written.append(d)),
         )
 
         handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
@@ -265,7 +267,7 @@ class TestDeleteWithIgnore:
         monkeypatch.setattr(
             ChannelVideoTypeDelete,
             "_write_ignore",
-            lambda self, d: written.extend(d),
+            staticmethod(lambda d: written.append(d)),
         )
 
         assert ChannelVideoTypeDelete("UC1", "shorts").delete() == 1
@@ -282,7 +284,7 @@ class TestDeleteWithIgnore:
         monkeypatch.setattr(
             ChannelVideoTypeDelete,
             "_write_ignore",
-            lambda self, d: written.extend(d),
+            staticmethod(lambda d: written.append(d)),
         )
 
         checks = iter([False, False, True])
@@ -298,51 +300,35 @@ class TestDeleteWithIgnore:
 
 
 class TestWriteIgnore:
-    def test_bulk_body_keys_on_youtube_id(self, monkeypatch):
+    def test_the_row_is_put_under_the_video_id(self, monkeypatch):
         captured = {}
 
         class FakeWrap:
             def __init__(self, path):
                 captured["path"] = path
 
-            def post(self, data, ndjson=False):
+            def put(self, data=False, refresh=False):
                 captured["data"] = data
-                captured["ndjson"] = ndjson
-                return {}, 200
+                return {}, 201
 
         monkeypatch.setattr(channel_index, "ElasticWrap", FakeWrap)
-
         doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
-        ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
 
-        assert captured["path"] == "_bulk"
-        assert captured["ndjson"] is True
-        lines = captured["data"].strip().split("\n")
-        import json as json_mod
+        ChannelVideoTypeDelete._write_ignore(doc)
 
-        assert json_mod.loads(lines[0]) == {
-            "index": {"_index": "ta_download", "_id": "abc"}
-        }
-        assert json_mod.loads(lines[1])["status"] == "ignore"
-
-    def test_no_docs_is_no_call(self, monkeypatch):
-        called = []
-        monkeypatch.setattr(
-            channel_index,
-            "ElasticWrap",
-            lambda path: called.append(path),
-        )
-        ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([])
-        assert called == []
+        assert captured["path"] == "ta_download/_doc/abc"
+        assert captured["data"]["status"] == "ignore"
 
 
 class TestDeleteOrdering:
     @staticmethod
-    def _patch(monkeypatch, ids, order, write=lambda self, docs: None):
+    def _patch(monkeypatch, ids, order, write=lambda doc: None):
         monkeypatch.setattr(
             ChannelVideoTypeDelete, "get_video_ids", lambda self: ids
         )
-        monkeypatch.setattr(ChannelVideoTypeDelete, "_write_ignore", write)
+        monkeypatch.setattr(
+            ChannelVideoTypeDelete, "_write_ignore", staticmethod(write)
+        )
         import video.src.index as video_index
 
         def deleter(youtube_id):
@@ -362,8 +348,8 @@ class TestDeleteOrdering:
     ):
         order = []
 
-        def write(self, docs):
-            order.extend(("write", d["youtube_id"]) for d in docs)
+        def write(doc):
+            order.append(("write", doc["youtube_id"]))
 
         self._patch(monkeypatch, ["a", "b"], order, write)
 
@@ -379,11 +365,11 @@ class TestDeleteOrdering:
     def test_a_video_whose_row_fails_is_kept(self, monkeypatch):
         order = []
 
-        def write(self, docs):
-            if docs[0]["youtube_id"] == "b":
-                raise IndexWriteError("es answered 503")
+        def write(doc):
+            if doc["youtube_id"] == "b":
+                raise ElasticUnavailable("es answered 503")
 
-            order.extend(("write", d["youtube_id"]) for d in docs)
+            order.append(("write", doc["youtube_id"]))
 
         self._patch(monkeypatch, ["a", "b", "c"], order, write)
         handler = ChannelVideoTypeDelete("UC1", "shorts", ignore=True)
@@ -440,69 +426,3 @@ class TestDeleteOrdering:
         assert handler.delete() == 1
         assert order == ["b"]
         assert handler.failed == ["a"]
-
-
-class TestWriteIgnoreChecksTheAnswer:
-    @staticmethod
-    def _wrap(monkeypatch, answer):
-        class FakeWrap:
-            def __init__(self, path):
-                pass
-
-            def post(self, data, ndjson=False):
-                return answer
-
-        monkeypatch.setattr(channel_index, "ElasticWrap", FakeWrap)
-
-    def test_a_rejected_status_raises(self, monkeypatch):
-        self._wrap(monkeypatch, ({"error": "unavailable_shards"}, 503))
-        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
-
-        with pytest.raises(IndexWriteError) as err:
-            ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
-
-        assert "503" in str(err.value)
-
-    def test_per_item_errors_inside_a_200_raise(self, monkeypatch):
-        self._wrap(
-            monkeypatch,
-            (
-                {
-                    "errors": True,
-                    "items": [
-                        {
-                            "index": {
-                                "_id": "abc",
-                                "error": {"type": "mapper_parsing_exception"},
-                            }
-                        }
-                    ],
-                },
-                200,
-            ),
-        )
-        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
-
-        with pytest.raises(IndexWriteError) as err:
-            ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
-
-        assert "mapper_parsing_exception" in str(err.value)
-
-    def test_an_unrecognised_error_shape_still_raises(self, monkeypatch):
-        self._wrap(monkeypatch, ({"errors": True, "items": []}, 200))
-        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
-
-        with pytest.raises(IndexWriteError):
-            ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])
-
-    def test_a_clean_bulk_answer_passes(self, monkeypatch):
-        self._wrap(
-            monkeypatch,
-            (
-                {"errors": False, "items": [{"index": {"result": "created"}}]},
-                200,
-            ),
-        )
-        doc = ChannelVideoTypeDelete._build_ignore_doc(VIDEO_DOC)
-
-        ChannelVideoTypeDelete("UC1", "shorts")._write_ignore([doc])

@@ -3,7 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from common.src.queue_interact import QueueDocMissing, QueueWriteError
+from common.src.es_connect import IndexWriteError
+from common.src.queue_interact import QueueDocMissing
 from downscale.src.downscale import DownscaleRunner
 from downscale.src.queue_interact import DownscaleInteract
 
@@ -40,7 +41,7 @@ def test_a_failed_status_write_frees_the_slot_and_says_why():
     ), patch.object(
         DownscaleRunner, "_reserve_slot", return_value=True
     ), patch.object(
-        DownscaleRunner, "_encode", side_effect=QueueWriteError("es down")
+        DownscaleRunner, "_encode", side_effect=IndexWriteError("es down")
     ), patch.object(
         DownscaleRunner, "_cleanup_tmp"
     ) as mock_cleanup, patch.object(
@@ -87,7 +88,7 @@ def test_mark_crashed_keeps_the_real_error_when_its_own_write_fails():
     runner = _runner()
 
     with patch.object(DownscaleRunner, "_cleanup_tmp"), patch.object(
-        DownscaleInteract, "update", side_effect=QueueWriteError("es down")
+        DownscaleInteract, "update", side_effect=IndexWriteError("es down")
     ), patch(
         "downscale.src.downscale.dispatch_pending_downscales"
     ) as mock_dispatch:
@@ -124,7 +125,7 @@ def test_a_failed_pre_flight_write_retries_the_job():
     ), patch(
         "downscale.src.downscale.os.path.exists", return_value=False
     ), patch.object(
-        DownscaleInteract, "update", side_effect=QueueWriteError("es down")
+        DownscaleInteract, "update", side_effect=IndexWriteError("es down")
     ), patch.object(
         DownscaleRunner, "_encode"
     ) as mock_encode:
@@ -149,7 +150,7 @@ def test_a_failed_slot_reservation_write_retries_the_job():
     ), patch.object(
         DownscaleRunner,
         "_reserve_slot",
-        side_effect=QueueWriteError("es down"),
+        side_effect=IndexWriteError("es down"),
     ), patch.object(
         DownscaleRunner, "_encode"
     ) as mock_encode:

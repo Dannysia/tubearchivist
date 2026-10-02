@@ -203,7 +203,7 @@ def test_bulk_item_errors_are_reported(video_doc, capsys):
     ):
         _tracker().track(video_doc, video_doc | {"title": "New"})
 
-    assert "history write errors" in capsys.readouterr().out
+    assert "document_parsing_exception" in capsys.readouterr().out
 
 
 def test_track_deactivation(video_doc, monkeypatch):

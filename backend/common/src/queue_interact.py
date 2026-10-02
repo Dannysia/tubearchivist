@@ -1,11 +1,7 @@
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import ElasticWrap, IndexWriteError, check_write
 
 
-class QueueWriteError(Exception):
-    pass
-
-
-class QueueDocMissing(QueueWriteError):
+class QueueDocMissing(IndexWriteError):
     pass
 
 
@@ -22,20 +18,7 @@ class BaseQueueInteract:
         return response.get("_source"), status_code
 
     def _check(self, response, status_code: int, what: str) -> None:
-        if status_code not in (200, 201):
-            raise QueueWriteError(
-                f"{self.INDEX_NAME}: {what} failed, "
-                f"es answered {status_code}: {response}"
-            )
-
-        # a by-query call answers 200 and reports per document failures
-        # in the body
-        failures = response.get("failures") if response else None
-        if failures:
-            raise QueueWriteError(
-                f"{self.INDEX_NAME}: {what} left {len(failures)} "
-                f"documents unwritten: {failures[:3]}"
-            )
+        check_write(response, status_code, f"{self.INDEX_NAME}: {what}")
 
     def delete_item(self, print_error: bool = True) -> None:
         path = f"{self.INDEX_NAME}/_doc/{self.doc_id}"

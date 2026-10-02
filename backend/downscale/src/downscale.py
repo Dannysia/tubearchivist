@@ -8,8 +8,8 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.index_generic import IndexWriteError
-from common.src.queue_interact import QueueDocMissing, QueueWriteError
+from common.src.es_connect import IndexWriteError
+from common.src.queue_interact import QueueDocMissing
 from common.src.ta_redis import RedisBase
 from downscale.src.queue_interact import DownscaleInteract
 from redis.exceptions import LockError
@@ -242,7 +242,7 @@ def dispatch_pending_downscales() -> None:
             )
             try:
                 DownscaleInteract(job["id"]).update(task_id=message["task_id"])
-            except QueueWriteError as err:
+            except IndexWriteError as err:
                 print(f"{job['id']}: task_id not recorded: {err}")
     finally:
         _release_lock(lock)
@@ -266,7 +266,7 @@ class DownscaleRunner:
         except QueueDocMissing:
             print(f"{self.youtube_id}: job is gone, skip downscale")
             return
-        except QueueWriteError as err:
+        except IndexWriteError as err:
             print(f"{self.youtube_id}: queue write failed, retrying: {err}")
             raise self.task.retry(countdown=CONCURRENCY_RETRY_DELAY) from err
 
@@ -335,7 +335,7 @@ class DownscaleRunner:
             DownscaleInteract(self.doc_id).update(
                 status="failed", message=str(err), updated=_now()
             )
-        except QueueWriteError as write_err:
+        except IndexWriteError as write_err:
             print(f"{self.youtube_id}: not marked failed: {write_err}")
 
         dispatch_pending_downscales()
@@ -461,7 +461,7 @@ class DownscaleRunner:
                 self._cleanup_tmp()
                 try:
                     DownscaleInteract(self.doc_id).delete_item()
-                except QueueWriteError as err:
+                except IndexWriteError as err:
                     print(f"{self.youtube_id}: stop not recorded: {err}")
 
                 dispatch_pending_downscales()

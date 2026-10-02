@@ -1,7 +1,8 @@
 """test what a failed state write does to the extraction run"""
 
 import pytest
-from common.src.queue_interact import QueueDocMissing, QueueWriteError
+from common.src.es_connect import IndexWriteError
+from common.src.queue_interact import QueueDocMissing
 from download.src import extraction_queue as eq
 from download.src.extraction_queue import ExtractionQueue
 
@@ -134,7 +135,7 @@ def test_an_entry_deleted_before_it_starts_is_skipped(monkeypatch):
 
 def test_a_write_failure_stops_the_run_without_raising(monkeypatch):
     queue, passes = _queue(monkeypatch, ["a", "b", "c"])
-    Recorder.raises[("mark_extracting", "b")] = QueueWriteError("es down")
+    Recorder.raises[("mark_extracting", "b")] = IndexWriteError("es down")
 
     resolved, failed, _ = queue.run_queue()
 
@@ -146,7 +147,7 @@ def test_a_write_failure_stops_the_run_without_raising(monkeypatch):
 
 def test_a_failed_delete_stops_the_run(monkeypatch):
     queue, passes = _queue(monkeypatch, ["a", "b"])
-    Recorder.raises[("delete_item", "a")] = QueueWriteError("es down")
+    Recorder.raises[("delete_item", "a")] = IndexWriteError("es down")
 
     resolved, _, _ = queue.run_queue()
 
