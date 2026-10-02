@@ -20,8 +20,8 @@ CANCELLED_ERROR = "job was cancelled"
 
 def _own_job(doc_id: str, worker: str) -> tuple[dict | None, str | None]:
     """returns (job, None), or (None, error)"""
-    job, status_code = DownscaleInteract(doc_id).get_item()
-    if status_code == 404 or not job:
+    job, _ = DownscaleInteract(doc_id).get_item()
+    if not job:
         return None, "job not found"
 
     if job.get("status") != "running" or job.get("worker") != worker:

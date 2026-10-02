@@ -1,11 +1,3 @@
-export type DownscaleEncoderType =
-  | 'h264'
-  | 'h264_vaapi'
-  | 'h265'
-  | 'h265_vaapi'
-  | 'av1'
-  | 'av1_vaapi';
-
 // local encoding only - keys match ENCODER_SETTINGS in
 // backend/downscale/src/downscale.py
 export const ENCODER_LABELS: Record<string, string> = {

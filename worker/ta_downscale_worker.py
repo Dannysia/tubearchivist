@@ -425,6 +425,10 @@ class LeaseHeartbeat:
     def aborted(self) -> bool:
         return self.abort_reason is not None
 
+    def raise_if_aborted(self) -> None:
+        if self.aborted:
+            raise WorkerAbandon(self.abort_reason, ack=self.ack)
+
     def _run(self) -> None:
         failure_since: float | None = None
         while not self._stop_event.wait(self._interval):
@@ -633,8 +637,7 @@ def deliver_result(
     progress_state["fraction"] = 1.0
 
     remuxed, remux_error = run_remux(config, encoded_path, out_path)
-    if pulse.aborted:
-        raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+    pulse.raise_if_aborted()
     if not remuxed:
         log(f"remux failed for {youtube_id}")
         report_fail(
@@ -646,8 +649,7 @@ def deliver_result(
 
     log(f"uploading {youtube_id}")
     upload_result(session, base_url, worker_name, job_id, out_path, pulse)
-    if pulse.aborted:
-        raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+    pulse.raise_if_aborted()
 
     log(f"finishing {youtube_id}")
     send_finish(
@@ -688,14 +690,12 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
     pulse.start()
     try:
         download_source(session, base_url, job, src_path)
-        if pulse.aborted:
-            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+        pulse.raise_if_aborted()
 
         source_hdr = probe_hdr_static_metadata(config, src_path)
         if source_hdr:
             log(f"{youtube_id}: source has {', '.join(sorted(source_hdr))}")
-        if pulse.aborted:
-            raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+        pulse.raise_if_aborted()
 
         cmd = build_handbrake_cmd(
             config, src_path, encoded_path, target_height
@@ -708,7 +708,7 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
             if pulse.aborted:
                 proc.kill()
                 proc.wait(timeout=10)
-                raise WorkerAbandon(pulse.abort_reason, ack=pulse.ack)
+                pulse.raise_if_aborted()
             time.sleep(0.5)
 
         if proc.returncode != 0:

@@ -584,8 +584,8 @@ class DownscaleReview:
 
     def accept(self) -> str | None:
         """returns an error message on failure, None on success"""
-        job, status_code = self.interact.get_item()
-        if status_code == 404 or not job:
+        job, _ = self.interact.get_item()
+        if not job:
             return "job not found"
 
         if job["status"] != "pending_review":
@@ -645,8 +645,8 @@ class DownscaleReview:
         return None
 
     def reject(self) -> str | None:
-        job, status_code = self.interact.get_item()
-        if status_code == 404 or not job:
+        job, _ = self.interact.get_item()
+        if not job:
             return "job not found"
 
         tmp_path = job.get("tmp_file_path")
@@ -657,8 +657,8 @@ class DownscaleReview:
         return None
 
     def retry(self) -> str | None:
-        job, status_code = self.interact.get_item()
-        if status_code == 404 or not job:
+        job, _ = self.interact.get_item()
+        if not job:
             return "job not found"
 
         if job["status"] != "failed":
@@ -677,8 +677,8 @@ class DownscaleReview:
         )
 
     def cancel(self) -> str | None:
-        job, status_code = self.interact.get_item()
-        if status_code == 404 or not job:
+        job, _ = self.interact.get_item()
+        if not job:
             return "job not found"
 
         if job["status"] not in ("queued", "running"):
