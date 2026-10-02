@@ -3,6 +3,7 @@
 import pytest
 from downscale.src import channel_batch
 from downscale.src.channel_batch import ChannelDownscale
+from downscale.src.queue_interact import DownscaleInteract
 
 
 def _video(youtube_id, height):
@@ -32,7 +33,7 @@ def world(monkeypatch):
         ChannelDownscale, "_get_videos", lambda self: list(state["videos"])
     )
 
-    class Interact:
+    class Interact(DownscaleInteract):
         @staticmethod
         def get_active_for_video(youtube_id):
             return (
@@ -45,6 +46,7 @@ def world(monkeypatch):
 
         def create(self, doc):
             state["created"].append(doc["youtube_id"])
+            return doc["youtube_id"]
 
     monkeypatch.setattr(channel_batch, "DownscaleInteract", Interact)
 

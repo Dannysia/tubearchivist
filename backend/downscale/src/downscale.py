@@ -4,6 +4,7 @@ import shlex
 import shutil
 import subprocess
 import time
+from contextlib import contextmanager
 from datetime import datetime
 
 from appsettings.src.config import AppConfig
@@ -11,7 +12,7 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import IndexWriteError
 from common.src.queue_interact import QueueDocMissing
 from common.src.ta_redis import RedisBase
-from downscale.src.queue_interact import DownscaleInteract
+from downscale.src.queue_interact import DownscaleInteract, max_video_height
 from redis.exceptions import LockError
 from task.src.task_manager import TaskCommand, TaskManager
 from video.src.index import YoutubeVideo
@@ -23,6 +24,21 @@ DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
 DISPATCH_LOCK_TIMEOUT = 30
 DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 CONCURRENCY_RETRY_DELAY = 60
+
+
+@contextmanager
+def dispatch_lock():
+    lock = RedisBase().conn.lock(
+        DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
+    )
+    acquired = lock.acquire(
+        blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
+    )
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            _release_lock(lock)
 
 
 def _release_lock(lock) -> None:
@@ -139,9 +155,46 @@ def _now() -> int:
 
 
 def _get_height(media_path: str) -> int | None:
-    streams = MediaStreamExtractor(media_path).extract_metadata()
-    heights = [s["height"] for s in streams if s["type"] == "video"]
-    return max(heights) if heights else None
+    return max_video_height(
+        MediaStreamExtractor(media_path).extract_metadata()
+    )
+
+
+def check_source(
+    doc_id: str, youtube_id: str, target_height: int
+) -> dict | None:
+    """None when the job was dropped or failed instead"""
+    video = YoutubeVideo(youtube_id)
+    video.get_from_es()
+    if not video.json_data:
+        print(f"{youtube_id}: video not found, skip downscale")
+        DownscaleInteract(doc_id).delete_item()
+        return None
+
+    original_path = os.path.join(
+        EnvironmentSettings.MEDIA_DIR, video.json_data["media_url"]
+    )
+    if not os.path.exists(original_path):
+        print(f"{youtube_id}: source file missing, skip downscale")
+        DownscaleInteract(doc_id).mark_failed("source file missing")
+        return None
+
+    current_height = _get_height(original_path)
+    if not current_height or target_height >= current_height:
+        print(
+            f"{youtube_id}: target height {target_height} not below "
+            f"current height {current_height}, skip downscale"
+        )
+        DownscaleInteract(doc_id).mark_failed(
+            "target height no longer below current height"
+        )
+        return None
+
+    return {
+        "json_data": video.json_data,
+        "original_path": original_path,
+        "current_height": current_height,
+    }
 
 
 def _encode_args(
@@ -208,44 +261,58 @@ def _build_ffmpeg_cmd(
     return cmd
 
 
+def finish_encode(doc_id: str, tmp_path: str, settings: dict, **fields):
+    interact = DownscaleInteract(doc_id)
+    if not _get_height(tmp_path):
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+        interact.mark_failed("ffmpeg finished but output is invalid", **fields)
+    else:
+        interact.update(
+            status="pending_review",
+            new_size=MediaStreamExtractor(tmp_path).get_file_size(),
+            updated=_now(),
+            **settings,
+            **fields,
+        )
+
+    dispatch_pending_downscales()
+
+
 def dispatch_pending_downscales() -> None:
-    lock = RedisBase().conn.lock(
-        DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
-    )
-    if not lock.acquire(
-        blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
-    ):
+    with dispatch_lock() as acquired:
+        if acquired:
+            _dispatch_queued()
+
+
+def _dispatch_queued() -> None:
+    max_concurrent = AppConfig().config["application"][
+        "downscale_max_concurrent"
+    ]
+    if max_concurrent is None:
+        free_slots = None
+    elif max_concurrent == 0:
+        # 0 disables local encoding, None means unlimited
         return
-
-    try:
-        max_concurrent = AppConfig().config["application"][
-            "downscale_max_concurrent"
-        ]
-        if max_concurrent is None:
-            free_slots = None
-        elif max_concurrent == 0:
-            # 0 disables local encoding, None means unlimited
+    else:
+        free_slots = max_concurrent - DownscaleInteract.count_running()
+        if free_slots <= 0:
             return
-        else:
-            free_slots = max_concurrent - DownscaleInteract.count_running()
-            if free_slots <= 0:
-                return
 
-        for job in DownscaleInteract.get_next_queued(free_slots):
-            message = TaskCommand().start(
-                "downscale_video",
-                {
-                    "youtube_id": job["youtube_id"],
-                    "target_height": job["target_height"],
-                    "doc_id": job["id"],
-                },
-            )
-            try:
-                DownscaleInteract(job["id"]).update(task_id=message["task_id"])
-            except IndexWriteError as err:
-                print(f"{job['id']}: task_id not recorded: {err}")
-    finally:
-        _release_lock(lock)
+    for job in DownscaleInteract.get_next_queued(free_slots):
+        message = TaskCommand().start(
+            "downscale_video",
+            {
+                "youtube_id": job["youtube_id"],
+                "target_height": job["target_height"],
+                "doc_id": job["id"],
+            },
+        )
+        try:
+            DownscaleInteract(job["id"]).update(task_id=message["task_id"])
+        except IndexWriteError as err:
+            print(f"{job['id']}: task_id not recorded: {err}")
 
 
 class DownscaleRunner:
@@ -288,53 +355,23 @@ class DownscaleRunner:
             DownscaleInteract(self.doc_id).delete_item()
             return None
 
-        video = YoutubeVideo(self.youtube_id)
-        video.get_from_es()
-        if not video.json_data:
-            print(f"{self.youtube_id}: video not found, skip downscale")
-            DownscaleInteract(self.doc_id).delete_item()
+        source = check_source(self.doc_id, self.youtube_id, self.target_height)
+        if not source or not self._reserve_slot(
+            source["current_height"], source["original_path"]
+        ):
             return None
 
-        original_path = os.path.join(
-            EnvironmentSettings.MEDIA_DIR, video.json_data["media_url"]
-        )
-        if not os.path.exists(original_path):
-            print(f"{self.youtube_id}: source file missing, skip downscale")
-            DownscaleInteract(self.doc_id).update(
-                status="failed",
-                message="source file missing",
-                updated=_now(),
-            )
-            return None
-
-        current_height = _get_height(original_path)
-        if not current_height or self.target_height >= current_height:
-            print(
-                f"{self.youtube_id}: target height {self.target_height} not "
-                f"below current height {current_height}, skip downscale"
-            )
-            DownscaleInteract(self.doc_id).update(
-                status="failed",
-                message="target height no longer below current height",
-                updated=_now(),
-            )
-            return None
-
-        if not self._reserve_slot(current_height, original_path):
-            return None
-
+        json_data = source["json_data"]
         return {
-            "original_path": original_path,
-            "duration": video.json_data.get("player", {}).get("duration") or 0,
-            "title": video.json_data["title"],
+            "original_path": source["original_path"],
+            "duration": json_data.get("player", {}).get("duration") or 0,
+            "title": json_data["title"],
         }
 
     def _mark_crashed(self, err: Exception) -> None:
         self._cleanup_tmp()
         try:
-            DownscaleInteract(self.doc_id).update(
-                status="failed", message=str(err), updated=_now()
-            )
+            DownscaleInteract(self.doc_id).mark_failed(str(err))
         except IndexWriteError as write_err:
             print(f"{self.youtube_id}: not marked failed: {write_err}")
 
@@ -349,74 +386,65 @@ class DownscaleRunner:
         )
 
     def _reserve_slot(self, current_height: int, original_path: str) -> bool:
-        lock = RedisBase().conn.lock(
-            DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
-        )
-        acquired = lock.acquire(
-            blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
-        )
-        if not acquired:
+        with dispatch_lock() as acquired:
+            if not acquired:
+                print(
+                    f"{self.youtube_id}: could not acquire downscale "
+                    "dispatch lock, retrying"
+                )
+                raise self.task.retry()
+
+            return self._reserve_locked(current_height, original_path)
+
+    def _reserve_locked(self, current_height: int, original_path: str) -> bool:
+        if not self._still_ours():
+            print(f"{self.youtube_id}: job taken by another runner, skip")
+            return False
+
+        if DownscaleInteract.get_active_for_video(
+            self.youtube_id, exclude_id=self.doc_id
+        ):
             print(
-                f"{self.youtube_id}: could not acquire downscale dispatch "
-                "lock, retrying"
+                f"{self.youtube_id}: already has another active "
+                "downscale job, skip"
             )
-            raise self.task.retry()
+            DownscaleInteract(self.doc_id).delete_item()
+            return False
 
-        try:
-            if not self._still_ours():
-                print(f"{self.youtube_id}: job taken by another runner, skip")
-                return False
+        max_concurrent = AppConfig().config["application"][
+            "downscale_max_concurrent"
+        ]
+        if max_concurrent == 0:
+            print(f"{self.youtube_id}: local encoding is disabled, requeue")
+            DownscaleInteract(self.doc_id).update(task_id="")
+            return False
 
-            if DownscaleInteract.get_active_for_video(
-                self.youtube_id, exclude_id=self.doc_id
-            ):
-                print(
-                    f"{self.youtube_id}: already has another active "
-                    "downscale job, skip"
-                )
-                DownscaleInteract(self.doc_id).delete_item()
-                return False
-
-            max_concurrent = AppConfig().config["application"][
-                "downscale_max_concurrent"
-            ]
-            if max_concurrent == 0:
-                print(
-                    f"{self.youtube_id}: local encoding is disabled, requeue"
-                )
-                DownscaleInteract(self.doc_id).update(task_id="")
-                return False
-
-            if (
-                max_concurrent is not None
-                and DownscaleInteract.count_running() >= max_concurrent
-            ):
-                print(
-                    f"{self.youtube_id}: max concurrent downscale jobs "
-                    f"({max_concurrent}) reached, waiting for a free slot"
-                )
-                raise self.task.retry(countdown=CONCURRENCY_RETRY_DELAY)
-
-            self.tmp_path = os.path.join(
-                EnvironmentSettings.CACHE_DIR,
-                "downscale",
-                f"{self.youtube_id}_{self.target_height}p.mp4",
+        if (
+            max_concurrent is not None
+            and DownscaleInteract.count_running() >= max_concurrent
+        ):
+            print(
+                f"{self.youtube_id}: max concurrent downscale jobs "
+                f"({max_concurrent}) reached, waiting for a free slot"
             )
-            os.makedirs(os.path.dirname(self.tmp_path), exist_ok=True)
+            raise self.task.retry(countdown=CONCURRENCY_RETRY_DELAY)
 
-            DownscaleInteract(self.doc_id).update(
-                status="running",
-                current_height=current_height,
-                original_size=MediaStreamExtractor(
-                    original_path
-                ).get_file_size(),
-                tmp_file_path=self.tmp_path,
-                task_id=self.task.request.id,
-                updated=_now(),
-            )
-            return True
-        finally:
-            _release_lock(lock)
+        self.tmp_path = os.path.join(
+            EnvironmentSettings.CACHE_DIR,
+            "downscale",
+            f"{self.youtube_id}_{self.target_height}p.mp4",
+        )
+        os.makedirs(os.path.dirname(self.tmp_path), exist_ok=True)
+
+        DownscaleInteract(self.doc_id).update(
+            status="running",
+            current_height=current_height,
+            original_size=MediaStreamExtractor(original_path).get_file_size(),
+            tmp_file_path=self.tmp_path,
+            task_id=self.task.request.id,
+            updated=_now(),
+        )
+        return True
 
     def _encode(self, original_path: str, duration: float, title: str) -> None:
         config = AppConfig().config["application"]
@@ -477,11 +505,7 @@ class DownscaleRunner:
             self._finish_success()
         else:
             self._cleanup_tmp()
-            DownscaleInteract(self.doc_id).update(
-                status="failed",
-                message=stderr[-2000:],
-                updated=_now(),
-            )
+            DownscaleInteract(self.doc_id).mark_failed(stderr)
             dispatch_pending_downscales()
 
     def _drain_pipes(
@@ -529,28 +553,16 @@ class DownscaleRunner:
             )
 
     def _finish_success(self) -> None:
-        new_height = _get_height(self.tmp_path)
-        if not new_height:
-            self._cleanup_tmp()
-            DownscaleInteract(self.doc_id).update(
-                status="failed",
-                message="ffmpeg exited cleanly but output is invalid",
-                updated=_now(),
-            )
-            dispatch_pending_downscales()
-            return
-
-        new_size = MediaStreamExtractor(self.tmp_path).get_file_size()
-        DownscaleInteract(self.doc_id).update(
-            status="pending_review",
-            new_size=new_size,
-            encoder=self.encoder_key,
-            quality=self.quality,
-            preset=self.preset,
-            ffmpeg_args=shlex.join(self.cmd) if self.cmd else "",
-            updated=_now(),
+        finish_encode(
+            self.doc_id,
+            self.tmp_path,
+            {
+                "encoder": self.encoder_key,
+                "quality": self.quality,
+                "preset": self.preset,
+                "ffmpeg_args": shlex.join(self.cmd) if self.cmd else "",
+            },
         )
-        dispatch_pending_downscales()
 
     def _terminate(self, process: subprocess.Popen) -> None:
         process.terminate()
@@ -581,7 +593,7 @@ class DownscaleReview:
 
         tmp_path = job["tmp_file_path"]
         if not os.path.exists(tmp_path):
-            self.interact.update(status="failed", message="tmp file missing")
+            self.interact.mark_failed("tmp file missing")
             return "downscaled file missing"
 
         video = YoutubeVideo(job["youtube_id"])
@@ -593,9 +605,7 @@ class DownscaleReview:
             EnvironmentSettings.MEDIA_DIR, video.json_data["media_url"]
         )
         if not os.path.exists(original_path):
-            self.interact.update(
-                status="failed", message="original file missing"
-            )
+            self.interact.mark_failed("original file missing")
             return "original file missing"
 
         existing = video.json_data.get("downscale") or {}
@@ -616,9 +626,8 @@ class DownscaleReview:
 
         video.add_streams(media_path=tmp_path)
         if not video.json_data.get("streams"):
-            self.interact.update(
-                status="failed",
-                message="the encode could not be probed, original kept",
+            self.interact.mark_failed(
+                "the encode could not be probed, original kept"
             )
             return "the encode could not be probed"
 
@@ -627,9 +636,8 @@ class DownscaleReview:
         try:
             video.upload_to_es(checked=True)
         except IndexWriteError as err:
-            self.interact.update(
-                status="failed",
-                message=f"file replaced, index not updated: {err}",
+            self.interact.mark_failed(
+                f"file replaced, index not updated: {err}"
             )
             return "file replaced but the index was not updated"
 

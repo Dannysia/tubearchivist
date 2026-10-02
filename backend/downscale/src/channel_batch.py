@@ -1,7 +1,7 @@
 from common.src.es_connect import IndexPaginate
 from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
 from downscale.src.downscale import dispatch_pending_downscales
-from downscale.src.queue_interact import DownscaleInteract
+from downscale.src.queue_interact import ALREADY_ACTIVE, DownscaleInteract
 
 
 class ChannelDownscale:
@@ -29,27 +29,11 @@ class ChannelDownscale:
             dispatch_pending_downscales()
 
     def _queue_one(self, video: dict) -> None:
-        youtube_id = video["youtube_id"]
-        streams = video.get("streams") or []
-        heights = [s["height"] for s in streams if s["type"] == "video"]
-        current_height = max(heights) if heights else None
-
-        if not current_height or self.target_height >= current_height:
-            return
-
-        if DownscaleInteract.get_active_for_video(youtube_id):
-            self.skipped.append(youtube_id)
-            return
-
-        DownscaleInteract().create(
-            DownscaleInteract.build_queued_doc(
-                youtube_id=youtube_id,
-                video_json_data=video,
-                current_height=current_height,
-                target_height=self.target_height,
-            )
-        )
-        self.queued.append(youtube_id)
+        doc_id, reason = DownscaleInteract.enqueue(video, self.target_height)
+        if doc_id:
+            self.queued.append(video["youtube_id"])
+        elif reason == ALREADY_ACTIVE:
+            self.skipped.append(video["youtube_id"])
 
     def _get_videos(self) -> list[dict]:
         data = {

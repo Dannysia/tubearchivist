@@ -319,31 +319,11 @@ class DownloadPostProcess(DownloaderBase):
 
         queued = 0
         for video in self._get_downscale_candidates(video_ids, targets):
-            youtube_id = video["youtube_id"]
             target_height = targets[video["channel"]["channel_id"]]
-            streams = video.get("streams") or []
-            heights = [s["height"] for s in streams if s["type"] == "video"]
-            current_height = max(heights) if heights else None
-
-            if not current_height or target_height >= current_height:
-                continue
-
-            if DownscaleInteract.get_active_for_video(youtube_id):
-                continue
-
-            print(
-                f"{youtube_id}: queue downscale "
-                f"{current_height}p -> {target_height}p"
-            )
-            DownscaleInteract().create(
-                DownscaleInteract.build_queued_doc(
-                    youtube_id=youtube_id,
-                    video_json_data=video,
-                    current_height=current_height,
-                    target_height=target_height,
-                )
-            )
-            queued += 1
+            doc_id, _ = DownscaleInteract.enqueue(video, target_height)
+            if doc_id:
+                print(f"{doc_id}: queued downscale to {target_height}p")
+                queued += 1
 
         if queued:
             dispatch_pending_downscales()

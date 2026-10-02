@@ -5,9 +5,49 @@ from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.queue_interact import BaseQueueInteract
 
+FAILED_MESSAGE_LIMIT = 2000
+TARGET_NOT_BELOW = "target_not_below"
+ALREADY_ACTIVE = "already_active"
+
+
+def max_video_height(streams: list[dict]) -> int | None:
+    heights = [s["height"] for s in streams if s["type"] == "video"]
+    return max(heights) if heights else None
+
 
 class DownscaleInteract(BaseQueueInteract):
     INDEX_NAME = "ta_downscale"
+
+    @classmethod
+    def enqueue(
+        cls, video_json_data: dict, target_height: int
+    ) -> tuple[str | None, str | None]:
+        """returns (doc_id, None), or (None, why it was not queued)"""
+        youtube_id = video_json_data["youtube_id"]
+        current_height = max_video_height(video_json_data.get("streams") or [])
+        if not current_height or target_height >= current_height:
+            return None, TARGET_NOT_BELOW
+
+        if cls.get_active_for_video(youtube_id):
+            return None, ALREADY_ACTIVE
+
+        doc_id = cls().create(
+            cls.build_queued_doc(
+                youtube_id=youtube_id,
+                video_json_data=video_json_data,
+                current_height=current_height,
+                target_height=target_height,
+            )
+        )
+        return doc_id, None
+
+    def mark_failed(self, message: str, **fields) -> None:
+        self.update(
+            status="failed",
+            message=message[-FAILED_MESSAGE_LIMIT:],
+            updated=int(datetime.now().timestamp()),
+            **fields,
+        )
 
     def create(self, doc: dict) -> str:
         doc_id = doc["youtube_id"]

@@ -6,7 +6,11 @@ from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from downscale.src.downscale import dispatch_pending_downscales
-from downscale.src.queue_interact import DownscaleInteract
+from downscale.src.queue_interact import (
+    ALREADY_ACTIVE,
+    TARGET_NOT_BELOW,
+    DownscaleInteract,
+)
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from playlist.src.index import YoutubePlaylist
 from rest_framework.response import Response
@@ -187,10 +191,10 @@ class VideoDownscaleView(ApiBaseView):
             error = ErrorResponseSerializer({"error": "video not found"})
             return Response(error.data, status=404)
 
-        streams = video.json_data.get("streams") or []
-        heights = [s["height"] for s in streams if s["type"] == "video"]
-        current_height = max(heights) if heights else None
-        if not current_height or target_height >= current_height:
+        doc_id, reason = DownscaleInteract.enqueue(
+            video.json_data, target_height
+        )
+        if reason == TARGET_NOT_BELOW:
             error = ErrorResponseSerializer(
                 {
                     "error": "target height must be below the "
@@ -199,7 +203,7 @@ class VideoDownscaleView(ApiBaseView):
             )
             return Response(error.data, status=400)
 
-        if DownscaleInteract.get_active_for_video(video_id):
+        if reason == ALREADY_ACTIVE:
             error = ErrorResponseSerializer(
                 {
                     "error": "a downscale job is already in "
@@ -208,14 +212,6 @@ class VideoDownscaleView(ApiBaseView):
             )
             return Response(error.data, status=409)
 
-        doc_id = DownscaleInteract().create(
-            DownscaleInteract.build_queued_doc(
-                youtube_id=video_id,
-                video_json_data=video.json_data,
-                current_height=current_height,
-                target_height=target_height,
-            )
-        )
         dispatch_pending_downscales()
         serializer = DownscaleQueuedResponseSerializer({"doc_id": doc_id})
 

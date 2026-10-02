@@ -27,7 +27,7 @@ def fake_interact(active=()):
     """returns (stand in, the list it records into)"""
     created = []
 
-    class FakeInteract:
+    class FakeInteract(DownscaleInteract):
         def create(self, doc):
             created.append(doc)
             return doc["youtube_id"]

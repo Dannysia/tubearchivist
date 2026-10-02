@@ -26,7 +26,7 @@ def _mock_lock(acquired=True):
 
 def test_claim_lock_contention_returns_none():
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued"
     ) as mock_get_next:
@@ -42,7 +42,7 @@ def test_claim_lock_contention_returns_none():
 
 def test_claim_nothing_queued_returns_none():
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued", return_value=[]
     ):
@@ -75,7 +75,7 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
     good_video.json_data = {"media_url": "video-good.mp4"}
 
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract,
         "get_next_queued",
@@ -87,14 +87,14 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
     ) as mock_update, patch.object(
         DownscaleInteract, "get_active_for_video", return_value=None
     ), patch(
-        "downscale.src.worker.YoutubeVideo",
+        "downscale.src.downscale.YoutubeVideo",
         side_effect=[missing_video, good_video],
     ), patch(
         "downscale.src.worker.os.path.exists", return_value=True
     ), patch(
         "downscale.src.worker.os.makedirs"
     ), patch(
-        "downscale.src.worker._get_height", return_value=1080
+        "downscale.src.downscale._get_height", return_value=1080
     ), patch(
         "downscale.src.worker.MediaStreamExtractor"
     ) as mock_extractor:
@@ -126,13 +126,13 @@ def test_claim_fails_candidate_when_source_file_missing():
     video.json_data = {"media_url": "video1.mp4"}
 
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued", return_value=[job]
     ), patch.object(
         DownscaleInteract, "update"
     ) as mock_update, patch(
-        "downscale.src.worker.YoutubeVideo", return_value=video
+        "downscale.src.downscale.YoutubeVideo", return_value=video
     ), patch(
         "downscale.src.worker.os.path.exists", return_value=False
     ):
@@ -157,17 +157,17 @@ def test_claim_fails_candidate_when_target_height_no_longer_valid():
     video.json_data = {"media_url": "video1.mp4"}
 
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued", return_value=[job]
     ), patch.object(
         DownscaleInteract, "update"
     ) as mock_update, patch(
-        "downscale.src.worker.YoutubeVideo", return_value=video
+        "downscale.src.downscale.YoutubeVideo", return_value=video
     ), patch(
         "downscale.src.worker.os.path.exists", return_value=True
     ), patch(
-        "downscale.src.worker._get_height", return_value=720
+        "downscale.src.downscale._get_height", return_value=720
     ):
         mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
 
@@ -190,7 +190,7 @@ def test_claim_deletes_candidate_with_another_active_job_for_the_video():
     video.json_data = {"media_url": "video1.mp4"}
 
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued", return_value=[job]
     ), patch.object(
@@ -200,11 +200,11 @@ def test_claim_deletes_candidate_with_another_active_job_for_the_video():
         "get_active_for_video",
         return_value={"id": "other-doc"},
     ), patch(
-        "downscale.src.worker.YoutubeVideo", return_value=video
+        "downscale.src.downscale.YoutubeVideo", return_value=video
     ), patch(
         "downscale.src.worker.os.path.exists", return_value=True
     ), patch(
-        "downscale.src.worker._get_height", return_value=1080
+        "downscale.src.downscale._get_height", return_value=1080
     ):
         mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
 
@@ -376,13 +376,13 @@ def test_finish_marks_failed_on_invalid_output():
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
-        "downscale.src.worker._get_height", return_value=None
+        "downscale.src.downscale._get_height", return_value=None
     ), patch(
         "downscale.src.worker.os.path.exists", return_value=True
     ), patch(
         "downscale.src.worker.os.remove"
     ) as mock_remove, patch(
-        "downscale.src.worker.dispatch_pending_downscales"
+        "downscale.src.downscale.dispatch_pending_downscales"
     ) as mock_dispatch:
         error = worker.finish(
             DOC_ID, WORKER, "av1_nvenc", 30, "p5", "ffmpeg …"
@@ -400,11 +400,11 @@ def test_finish_marks_pending_review_and_records_the_report():
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "update") as mock_update, patch(
-        "downscale.src.worker._get_height", return_value=720
+        "downscale.src.downscale._get_height", return_value=720
     ), patch(
-        "downscale.src.worker.MediaStreamExtractor"
+        "downscale.src.downscale.MediaStreamExtractor"
     ) as mock_extractor, patch(
-        "downscale.src.worker.dispatch_pending_downscales"
+        "downscale.src.downscale.dispatch_pending_downscales"
     ) as mock_dispatch:
         mock_extractor.return_value.get_file_size.return_value = 9999
 
@@ -432,7 +432,7 @@ def test_finish_discards_instead_of_pending_review_when_already_cancelled():
     ), patch.object(DownscaleInteract, "update") as mock_update, patch.object(
         DownscaleInteract, "delete_item"
     ) as mock_delete, patch(
-        "downscale.src.worker._get_height"
+        "downscale.src.downscale._get_height"
     ) as mock_get_height, patch(
         "downscale.src.worker.os.path.exists", return_value=True
     ), patch(
@@ -621,7 +621,7 @@ def test_claim_skips_a_candidate_whose_write_fails():
     claimed = {"id": "doc-good", "youtube_id": "video2"}
 
     with patch(
-        "downscale.src.worker.RedisBase"
+        "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued", return_value=jobs
     ), patch.object(

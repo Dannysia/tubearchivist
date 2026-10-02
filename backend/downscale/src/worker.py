@@ -1,20 +1,15 @@
 import os
 import shutil
 
-from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import IndexWriteError
-from common.src.ta_redis import RedisBase
 from downscale.src.downscale import (
-    DISPATCH_LOCK_BLOCKING_TIMEOUT,
-    DISPATCH_LOCK_KEY,
-    DISPATCH_LOCK_TIMEOUT,
-    _get_height,
     _now,
-    _release_lock,
+    check_source,
+    dispatch_lock,
     dispatch_pending_downscales,
+    finish_encode,
 )
 from downscale.src.queue_interact import DownscaleInteract
-from video.src.index import YoutubeVideo
 from video.src.media_streams import MediaStreamExtractor
 
 STALE_LEASE_SECONDS = 60
@@ -55,15 +50,10 @@ def _discard(doc_id: str, tmp_path: str | None) -> None:
 
 
 def claim(worker: str) -> dict | None:
-    lock = RedisBase().conn.lock(
-        DISPATCH_LOCK_KEY, timeout=DISPATCH_LOCK_TIMEOUT
-    )
-    if not lock.acquire(
-        blocking=True, blocking_timeout=DISPATCH_LOCK_BLOCKING_TIMEOUT
-    ):
-        return None
+    with dispatch_lock() as acquired:
+        if not acquired:
+            return None
 
-    try:
         for job in DownscaleInteract.get_next_queued(None):
             try:
                 claimed = _try_claim_candidate(job, worker)
@@ -75,8 +65,6 @@ def claim(worker: str) -> dict | None:
                 return claimed
 
         return None
-    finally:
-        _release_lock(lock)
 
 
 def _try_claim_candidate(job: dict, worker: str) -> dict | None:
@@ -84,29 +72,9 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
     doc_id = job["id"]
     youtube_id = job["youtube_id"]
 
-    video = YoutubeVideo(youtube_id)
-    video.get_from_es()
-    if not video.json_data:
-        DownscaleInteract(doc_id).delete_item()
-        return None
-
-    original_path = os.path.join(
-        EnvironmentSettings.MEDIA_DIR, video.json_data["media_url"]
-    )
-    if not os.path.exists(original_path):
-        DownscaleInteract(doc_id).update(
-            status="failed", message="source file missing", updated=_now()
-        )
-        return None
-
     target_height = job["target_height"]
-    current_height = _get_height(original_path)
-    if not current_height or target_height >= current_height:
-        DownscaleInteract(doc_id).update(
-            status="failed",
-            message="target height no longer below current height",
-            updated=_now(),
-        )
+    source = check_source(doc_id, youtube_id, target_height)
+    if not source:
         return None
 
     if DownscaleInteract.get_active_for_video(youtube_id, exclude_id=doc_id):
@@ -121,8 +89,10 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
         worker=worker,
         last_heartbeat=_now(),
         progress=0.0,
-        current_height=current_height,
-        original_size=MediaStreamExtractor(original_path).get_file_size(),
+        current_height=source["current_height"],
+        original_size=MediaStreamExtractor(
+            source["original_path"]
+        ).get_file_size(),
         tmp_file_path=tmp_path,
         updated=_now(),
     )
@@ -133,7 +103,7 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
         "title": job["title"],
         "target_height": target_height,
         # nginx's /youtube/ alias, not a django endpoint
-        "source_url": f"/youtube/{video.json_data['media_url']}",
+        "source_url": f"/youtube/{source['json_data']['media_url']}",
     }
 
 
@@ -189,35 +159,19 @@ def finish(
         _discard(doc_id, tmp_path)
         return None
 
-    new_height = _get_height(tmp_path)
-    if not new_height:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
-        DownscaleInteract(doc_id).update(
-            status="failed",
-            message="ffmpeg finished but output is invalid",
-            tmp_file_path=tmp_path,
-            worker="",
-            last_heartbeat=0,
-            updated=_now(),
-        )
-        dispatch_pending_downscales()
-        return None
-
-    new_size = MediaStreamExtractor(tmp_path).get_file_size()
-    DownscaleInteract(doc_id).update(
-        status="pending_review",
-        new_size=new_size,
+    finish_encode(
+        doc_id,
+        tmp_path,
+        {
+            "encoder": encoder,
+            "quality": quality,
+            "preset": preset,
+            "ffmpeg_args": ffmpeg_args,
+        },
         tmp_file_path=tmp_path,
-        encoder=encoder,
-        quality=quality,
-        preset=preset,
-        ffmpeg_args=ffmpeg_args,
         worker="",
         last_heartbeat=0,
-        updated=_now(),
     )
-    dispatch_pending_downscales()
     return None
 
 
@@ -230,13 +184,7 @@ def fail(doc_id: str, worker: str, message: str) -> str | None:
         _discard(doc_id, job.get("tmp_file_path"))
         return None
 
-    DownscaleInteract(doc_id).update(
-        status="failed",
-        message=message[-2000:],
-        worker="",
-        last_heartbeat=0,
-        updated=_now(),
-    )
+    DownscaleInteract(doc_id).mark_failed(message, worker="", last_heartbeat=0)
     return None
 
 
