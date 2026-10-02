@@ -112,10 +112,11 @@ def test_cancel_deletes_a_queued_job_whose_task_has_not_started():
     with patch.object(
         DownscaleInteract, "get_item", return_value=(QUEUED_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
-        "task.src.task_manager.TaskRedis.get_single", return_value={}
-    ), patch(
+        "task.src.task_manager.TaskRedis"
+    ) as mock_task_redis, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command:
+        mock_task_redis.return_value.get_single.return_value = {}
         error = DownscaleReview(DOC_ID).cancel()
 
     assert error is None
@@ -127,10 +128,11 @@ def test_cancel_reports_a_running_job_whose_task_is_unknown():
     with patch.object(
         DownscaleInteract, "get_item", return_value=(RUNNING_JOB, 200)
     ), patch.object(DownscaleInteract, "delete_item") as mock_delete, patch(
-        "task.src.task_manager.TaskRedis.get_single", return_value={}
-    ), patch(
+        "task.src.task_manager.TaskRedis"
+    ) as mock_task_redis, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command:
+        mock_task_redis.return_value.get_single.return_value = {}
         error = DownscaleReview(DOC_ID).cancel()
 
     assert error == "task not found, may not have started yet"
