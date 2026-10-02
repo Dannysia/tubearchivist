@@ -1,6 +1,6 @@
 """interact with queue items"""
 
-from common.src.es_connect import ElasticWrap
+from common.src.es_connect import ElasticWrap, IndexWriteError
 from common.src.queue_interact import BaseQueueInteract
 
 
@@ -11,6 +11,12 @@ class PendingInteract(BaseQueueInteract):
 
     def __init__(self, youtube_id=None, status=None):
         super().__init__(doc_id=youtube_id, status=status)
+
+    def clear_indexed(self) -> None:
+        try:
+            self.delete_item(print_error=False)
+        except IndexWriteError as err:
+            print(f"{self.doc_id}: queue entry not cleared: {err}")
 
     def delete_bulk(self, channel_id: str | None, vid_type: str | None):
         """delete all matching item by status"""

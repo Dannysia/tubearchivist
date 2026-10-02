@@ -7,7 +7,7 @@ import os
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import IndexPaginate, IndexWriteError
+from common.src.es_connect import IndexPaginate
 from common.src.helper import (
     MEDIA_INDEX_ERRORS,
     NETWORK_ERRORS,
@@ -123,7 +123,7 @@ class Scanner:
 
         try:
             index_new_video(youtube_id)
-            self._cleanup(youtube_id)
+            PendingInteract(youtube_id=youtube_id).clear_indexed()
             Comments(youtube_id, task=self.task).build_json(upload=True)
             YoutubeVideo(youtube_id).embed_metadata()
         except NETWORK_ERRORS:
@@ -166,19 +166,9 @@ class Scanner:
             file_path, use_user_conf=True, config=self.config
         ).run_index()
         if json_data:
-            self._cleanup(youtube_id)
+            PendingInteract(youtube_id=youtube_id).clear_indexed()
 
         return bool(json_data)
-
-    @staticmethod
-    def _cleanup(youtube_id: str) -> None:
-        """clean up from queue"""
-        try:
-            PendingInteract(youtube_id=youtube_id).delete_item(
-                print_error=False
-            )
-        except IndexWriteError as err:
-            print(f"{youtube_id}: queue entry not cleared: {err}")
 
     def _notify(self, total, youtube_id, idx, waiting=None):
         """send notification"""

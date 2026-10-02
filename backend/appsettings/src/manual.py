@@ -14,7 +14,6 @@ from datetime import datetime
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
-from common.src.es_connect import IndexWriteError
 from common.src.helper import (
     MEDIA_INDEX_ERRORS,
     NETWORK_ERRORS,
@@ -653,10 +652,7 @@ class ManualImport:
                 os.remove(subtitle_file)
 
         video_id = self.current_video["video_id"]
-        try:
-            PendingInteract(youtube_id=video_id).delete_item(print_error=False)
-        except IndexWriteError as err:
-            print(f"{video_id}: queue entry not cleared: {err}")
+        PendingInteract(youtube_id=video_id).clear_indexed()
 
 
 class ImportFolderFiles:

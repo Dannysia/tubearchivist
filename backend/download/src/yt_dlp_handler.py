@@ -21,6 +21,7 @@ from common.src.helper import (
     ignore_filelist,
 )
 from common.src.ta_redis import RedisQueue
+from download.src.queue_interact import PendingInteract
 from download.src.yt_dlp_base import YtWrap
 from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
 from downscale.src.downscale import dispatch_pending_downscales
@@ -93,7 +94,7 @@ class VideoDownloader(DownloaderBase):
 
             self._notify(video_data, "Move downloaded file to archive")
             self.move_to_archive(vid_dict)
-            self._delete_from_pending(youtube_id)
+            PendingInteract(youtube_id=youtube_id).clear_indexed()
             downloaded += 1
 
         # post processing
@@ -259,12 +260,6 @@ class VideoDownloader(DownloaderBase):
         shutil.move(old_path, new_path, copy_function=shutil.copyfile)
         if host_uid and host_gid:
             os.chown(new_path, host_uid, host_gid)
-
-    @staticmethod
-    def _delete_from_pending(youtube_id):
-        """delete downloaded video from pending index if its there"""
-        path = f"ta_download/_doc/{youtube_id}?refresh=true"
-        _, _ = ElasticWrap(path).delete()
 
     def _reset_auto(self):
         """reset autostart to defaults after queue stop"""

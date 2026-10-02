@@ -15,6 +15,7 @@ import requests
 from appsettings.src import filesystem
 from appsettings.src.filesystem import Scanner
 from common.src.es_connect import ElasticUnavailable
+from download.src.queue_interact import PendingInteract
 from mutagen import MutagenError
 from video.src import index as video_index
 from video.src.index import index_new_video
@@ -93,7 +94,9 @@ class TestEmbedFallbackCannotKillTheScan:
             "index_new_video",
             lambda youtube_id: reached.append(youtube_id),
         )
-        monkeypatch.setattr(Scanner, "_cleanup", lambda self, yt_id: None)
+        monkeypatch.setattr(
+            PendingInteract, "clear_indexed", lambda self: None
+        )
         monkeypatch.setattr(
             filesystem, "Comments", lambda *args, **kwargs: _NoComments()
         )
