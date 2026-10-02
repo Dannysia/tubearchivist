@@ -5,6 +5,7 @@ import {
   Fragment,
   SetStateAction,
   SyntheticEvent,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -14,6 +15,9 @@ import { useSearchParams } from 'react-router-dom';
 import getApiUrl from '../configuration/getApiUrl';
 import { useKeyPress } from '../functions/useKeypressHook';
 import { VideoResponseType } from '../api/loader/loadVideoById';
+import EraControls from './EraControls';
+import togglePlayback from '../functions/togglePlayback';
+import { YouTubeEra } from '../functions/youtubeEra';
 
 const VIDEO_PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3];
 
@@ -111,10 +115,12 @@ type VideoPlayerProps = {
   sponsorBlock?: SponsorBlockType;
   embed?: boolean;
   autoplay?: boolean;
+  startAt?: number;
   onWatchStateChanged?: (status: boolean) => void;
   onVideoEnd?: () => void;
   seekToTimestamp?: number;
   setSeekToTimestamp?: (timestamp: number | undefined) => void;
+  era?: YouTubeEra;
 };
 
 const VideoPlayer = ({
@@ -122,12 +128,20 @@ const VideoPlayer = ({
   sponsorBlock,
   embed,
   autoplay = false,
+  startAt,
   onWatchStateChanged,
   onVideoEnd,
   seekToTimestamp,
   setSeekToTimestamp,
+  era,
 }: VideoPlayerProps) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
+  const setVideoRef = useCallback((element: HTMLVideoElement | null) => {
+    videoRef.current = element;
+    setVideoElement(element);
+  }, []);
 
   useEffect(() => {
     if (seekToTimestamp === undefined || !videoRef.current) {
@@ -160,7 +174,6 @@ const VideoPlayer = ({
       : 3;
 
   const [skippedSegments, setSkippedSegments] = useState<SponsorSegmentsSkippedType>({});
-  const [isMuted, setIsMuted] = useState(false);
   const [playbackSpeedIndex, setPlaybackSpeedIndex] = useState(playBackSpeedIndex);
   const [lastSubtitleTack, setLastSubtitleTack] = useState(0);
   const [showHelpDialog, setShowHelpDialog] = useState(false);
@@ -181,6 +194,10 @@ const VideoPlayer = ({
     videoSrcProgress = searchParamVideoProgress;
   }
 
+  if (startAt !== undefined) {
+    videoSrcProgress = startAt;
+  }
+
   const infoDialog = (content: string) => {
     setInfoDialogContent(content);
     setShowInfoDialog(true);
@@ -192,14 +209,14 @@ const VideoPlayer = ({
   };
 
   useKeyPress('m', () => {
-    setIsMuted(current => !current);
+    if (videoRef.current) {
+      videoRef.current.muted = !videoRef.current.muted;
+    }
   });
 
   useKeyPress('p', () => {
-    if (videoRef.current?.paused) {
-      videoRef.current.play();
-    } else {
-      videoRef.current?.pause();
+    if (videoRef.current) {
+      togglePlayback(videoRef.current);
     }
   });
 
@@ -239,19 +256,28 @@ const VideoPlayer = ({
     }
   });
 
-  useKeyPress('f', () => {
-    if (videoRef.current && videoRef.current.requestFullscreen && !document.fullscreenElement) {
-      videoRef.current.requestFullscreen().catch(e => {
-        console.error(e);
-        infoDialog('Unable to enter fullscreen');
-      });
-    } else {
+  const toggleFullscreen = () => {
+    const target = era ? playerRef.current : videoRef.current;
+
+    if (document.fullscreenElement) {
       document.exitFullscreen().catch(e => {
         console.error(e);
         infoDialog('Unable to exit fullscreen');
       });
+    } else if (target?.requestFullscreen) {
+      target.requestFullscreen().catch(e => {
+        console.error(e);
+        infoDialog('Unable to enter fullscreen');
+      });
+    } else {
+      const video = videoRef.current as
+        | (HTMLVideoElement & { webkitEnterFullscreen?: () => void })
+        | null;
+      video?.webkitEnterFullscreen?.();
     }
-  });
+  };
+
+  useKeyPress('f', toggleFullscreen);
 
   useKeyPress('c', () => {
     if (!videoRef.current) {
@@ -376,9 +402,20 @@ const VideoPlayer = ({
         id="player"
         className={embed ? '' : `player-wrapper ${isTheaterMode ? 'theater-mode' : ''}`}
       >
-        <div className={embed ? '' : `video-main ${isTheaterMode ? 'theater-mode' : ''}`}>
+        <div
+          ref={playerRef}
+          className={[
+            !embed && 'video-main',
+            !embed && isTheaterMode && 'theater-mode',
+            era && 'era-player',
+            (era === 'material' || era === 'modern') && 'era-player-overlay',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           <video
-            ref={videoRef}
+            ref={setVideoRef}
+            onClick={era ? event => togglePlayback(event.currentTarget) : undefined}
             key={`${getApiUrl()}${videoUrl}`}
             poster={`${getApiUrl()}${videoThumbUrl}`}
             onVolumeChange={(videoTag: VideoTag) => {
@@ -415,11 +452,10 @@ const VideoPlayer = ({
               }
             }}
             autoPlay={autoplay}
-            controls
+            controls={!era}
             width="100%"
             playsInline
             id="video-item"
-            muted={isMuted}
           >
             <source
               src={`${getApiUrl()}${videoUrl}#t=${videoSrcProgress}`}
@@ -428,6 +464,14 @@ const VideoPlayer = ({
             />
             {videoSubtitles && <Subtitles subtitles={videoSubtitles} />}
           </video>
+          {era && (
+            <EraControls
+              era={era}
+              video={videoElement}
+              knownDuration={duration}
+              onFullscreen={toggleFullscreen}
+            />
+          )}
         </div>
       </div>
 

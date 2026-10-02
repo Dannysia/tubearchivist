@@ -54,6 +54,9 @@ import { ApiResponseType } from '../functions/APIClient';
 import VideoThumbnail from '../components/VideoThumbail';
 import { ViewStylesEnum, ViewStylesType } from '../configuration/constants/ViewStyle';
 import humanBitRate from '../functions/humanBitRate';
+import TimeMachineVideo from '../components/TimeMachineVideo';
+import useTimeMachine from '../functions/useTimeMachine';
+import youtubeEra, { publishedYear } from '../functions/youtubeEra';
 
 const isInPlaylist = (videoId: string, playlist: PlaylistType) => {
   return playlist.playlist_entries.some(entry => {
@@ -133,6 +136,16 @@ const Video = () => {
   const [showAddToPlaylist, setShowAddToPlaylist] = useState(false);
   const [refreshVideoList, setRefreshVideoList] = useState(false);
   const [reindex, setReindex] = useState(false);
+  const [timeMachine, setTimeMachine] = useTimeMachine();
+  const [resumeAt, setResumeAt] = useState<{
+    youtubeId: string;
+    seconds: number;
+    playing: boolean;
+  }>();
+
+  if (resumeAt && resumeAt.youtubeId !== videoId) {
+    setResumeAt(undefined);
+  }
 
   const [videoResponse, setVideoResponse] = useState<ApiResponseType<VideoResponseType>>();
   const [similarVideos, setSimilarVideos] = useState<ApiResponseType<VideoResponseType[]>>();
@@ -221,6 +234,57 @@ const Video = () => {
 
   const cast = appSettingsConfig.application.enable_cast;
 
+  const handleVideoEnd = () => {
+    if (!playlistAutoplay) {
+      return;
+    }
+
+    const playlist = videoPlaylistNavResponseData?.find(playlist => {
+      return playlist.playlist_meta.playlist_id === playlistIdForAutoplay;
+    });
+    const nextYoutubeId = playlist?.playlist_next?.youtube_id;
+
+    if (nextYoutubeId) {
+      navigate(Routes.Video(nextYoutubeId));
+    }
+  };
+
+  const switchTimeMachine = (enabled: boolean) => {
+    const player = document.getElementById('video-item') as HTMLVideoElement | null;
+    if (player && player.currentTime > 0) {
+      setResumeAt({ youtubeId: videoId, seconds: player.currentTime, playing: !player.paused });
+    }
+
+    setTimeMachine(enabled);
+    window.scrollTo(0, 0);
+  };
+
+  const autoplay = playlistAutoplay || Boolean(resumeAt?.playing);
+
+  if (timeMachine) {
+    return (
+      <>
+        <title>{`TA | ${video.title}`}</title>
+        <ScrollToTopOnNavigate />
+        <TimeMachineVideo
+          era={youtubeEra(video.published)}
+          video={video}
+          sponsorBlock={sponsorBlock}
+          similarVideos={similarVideosResponseData}
+          comments={comments}
+          autoplay={autoplay}
+          startAt={resumeAt?.seconds}
+          seekToTimestamp={seekToTimestamp}
+          setSeekToTimestamp={setSeekToTimestamp}
+          onTimestampClick={handleTimestampClick}
+          onVideoEnd={handleVideoEnd}
+          onRefresh={() => setRefreshVideoList(true)}
+          onExit={() => switchTimeMachine(false)}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <title>{`TA | ${video.title}`}</title>
@@ -229,26 +293,14 @@ const Video = () => {
       <VideoPlayer
         video={video}
         sponsorBlock={sponsorBlock}
-        autoplay={playlistAutoplay}
+        autoplay={autoplay}
+        startAt={resumeAt?.seconds}
         seekToTimestamp={seekToTimestamp}
         setSeekToTimestamp={setSeekToTimestamp}
         onWatchStateChanged={() => {
           setRefreshVideoList(true);
         }}
-        onVideoEnd={() => {
-          if (!playlistAutoplay) {
-            return;
-          }
-
-          const playlist = videoPlaylistNavResponseData?.find(playlist => {
-            return playlist.playlist_meta.playlist_id === playlistIdForAutoplay;
-          });
-          const nextYoutubeId = playlist?.playlist_next?.youtube_id;
-
-          if (nextYoutubeId) {
-            navigate(Routes.Video(nextYoutubeId));
-          }
-        }}
+        onVideoEnd={handleVideoEnd}
       />
 
       <div className="boxed-content">
@@ -312,6 +364,11 @@ const Video = () => {
                 <YouTubeLink
                   path={`watch?v=${video.youtube_id}`}
                   title={`View ${video.title} on YouTube`}
+                />
+                <Button
+                  label={`Time machine (${publishedYear(video.published)})`}
+                  title="Show this page the way YouTube looked when the video was published"
+                  onClick={() => switchTimeMachine(true)}
                 />
               </div>
             </div>
