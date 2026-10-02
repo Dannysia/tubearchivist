@@ -673,7 +673,19 @@ class DownscaleReview:
             os.remove(tmp_path)
 
         self.interact.update(
-            status="queued", message=None, task_id="", updated=_now()
+            status="queued",
+            message=None,
+            task_id="",
+            new_size=0,
+            progress=0.0,
+            encoder=None,
+            quality=None,
+            preset=None,
+            ffmpeg_args="",
+            worker="",
+            last_heartbeat=0,
+            stop_requested=False,
+            updated=_now(),
         )
 
     def cancel(self) -> str | None:

@@ -50,6 +50,34 @@ def test_retry_requeues_failed_job():
     assert kwargs["task_id"] == ""
 
 
+def test_retry_clears_what_the_failed_attempt_left():
+    job = {
+        **FAILED_JOB,
+        "new_size": 900,
+        "encoder": "h265",
+        "quality": 28,
+        "preset": "slow",
+        "ffmpeg_args": "ffmpeg -i x",
+        "progress": 1.0,
+    }
+    with patch.object(
+        DownscaleInteract, "get_item", return_value=(job, 200)
+    ), patch.object(DownscaleInteract, "update") as mock_update, patch(
+        "downscale.src.downscale.os.path.exists", return_value=False
+    ):
+        DownscaleReview(DOC_ID).retry()
+
+    kwargs = mock_update.call_args.kwargs
+    assert kwargs["new_size"] == 0
+    assert kwargs["progress"] == 0.0
+    assert kwargs["ffmpeg_args"] == ""
+    assert (kwargs["encoder"], kwargs["quality"], kwargs["preset"]) == (
+        None,
+        None,
+        None,
+    )
+
+
 def test_retry_cleans_up_leftover_tmp_file():
     with patch.object(
         DownscaleInteract, "get_item", return_value=(FAILED_JOB, 200)
