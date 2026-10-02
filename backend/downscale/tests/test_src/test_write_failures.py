@@ -7,15 +7,7 @@ from common.src.es_connect import IndexWriteError
 from common.src.queue_interact import QueueDocMissing
 from downscale.src.downscale import DownscaleRunner
 from downscale.src.queue_interact import DownscaleInteract
-
-
-def _runner():
-    return DownscaleRunner(
-        task=SimpleNamespace(is_stopped=lambda: False),
-        youtube_id="video1",
-        target_height=480,
-        doc_id="doc1",
-    )
+from downscale.tests.helpers import make_runner
 
 
 def _video():
@@ -30,7 +22,7 @@ def _video():
 
 
 def test_a_failed_status_write_frees_the_slot_and_says_why():
-    runner = _runner()
+    runner = make_runner(SimpleNamespace(is_stopped=lambda: False))
 
     with patch(
         "downscale.src.downscale.YoutubeVideo", return_value=_video()
@@ -58,7 +50,7 @@ def test_a_failed_status_write_frees_the_slot_and_says_why():
 
 
 def test_a_real_encode_failure_still_cleans_up_and_marks_it_failed():
-    runner = _runner()
+    runner = make_runner(SimpleNamespace(is_stopped=lambda: False))
 
     with patch(
         "downscale.src.downscale.YoutubeVideo", return_value=_video()
@@ -85,7 +77,7 @@ def test_a_real_encode_failure_still_cleans_up_and_marks_it_failed():
 
 
 def test_mark_crashed_keeps_the_real_error_when_its_own_write_fails():
-    runner = _runner()
+    runner = make_runner(SimpleNamespace(is_stopped=lambda: False))
 
     with patch.object(DownscaleRunner, "_cleanup_tmp"), patch.object(
         DownscaleInteract, "update", side_effect=IndexWriteError("es down")
@@ -108,11 +100,8 @@ def _retrying_runner():
         retries.append(countdown)
         return Retry()
 
-    runner = DownscaleRunner(
-        task=SimpleNamespace(is_stopped=lambda: False, retry=retry),
-        youtube_id="video1",
-        target_height=480,
-        doc_id="doc1",
+    runner = make_runner(
+        SimpleNamespace(is_stopped=lambda: False, retry=retry)
     )
     return runner, retries
 

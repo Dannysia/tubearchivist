@@ -5,21 +5,7 @@ from download.src import extraction_queue as eq
 from download.src import queue as queue_module
 from download.src.extraction_queue import ExtractionQueue
 from download.src.queue import PendingIndex
-
-MAX_PASSES = 25
-
-
-def _doc(name):
-    return {
-        "item_type": "channel",
-        "youtube_id": f"UC_{name}",
-        "vid_type": None,
-        "limit": None,
-        "auto_start": False,
-        "flat": False,
-        "force": False,
-        "target_status": "pending",
-    }
+from download.tests.extraction_helpers import queue_of
 
 
 class FakeES:
@@ -41,7 +27,6 @@ class FakePaginate:
 class FakePending(PendingIndex):
     extraction_failed = False
     extraction_error = None
-    videos_failed_count = 0
     failed_videos: list = []
     seen: list = []
     on_parse = None
@@ -83,26 +68,6 @@ def patched(monkeypatch):
     monkeypatch.setattr(queue_module, "IndexPaginate", FakePaginate)
     monkeypatch.setattr(eq, "PendingList", FakePending)
     monkeypatch.setattr(eq, "ExtractionInteract", Interact)
-    monkeypatch.setattr(
-        ExtractionQueue, "has_work", classmethod(lambda cls: True)
-    )
-
-
-def _queue(monkeypatch, entries: list[str]):
-    remaining = list(entries)
-    passes = {"n": 0}
-
-    def fake_next():
-        passes["n"] += 1
-        if passes["n"] > MAX_PASSES or not remaining:
-            return None, None
-
-        name = remaining.pop(0)
-        return name, _doc(name)
-
-    monkeypatch.setattr(ExtractionQueue, "_get_next", staticmethod(fake_next))
-
-    return ExtractionQueue()
 
 
 def _on_first_parse(action):
@@ -114,7 +79,7 @@ def _on_first_parse(action):
 
 
 def test_an_ignore_set_mid_run_reaches_the_next_entry(monkeypatch):
-    queue = _queue(monkeypatch, ["a", "b"])
+    queue, _ = queue_of(monkeypatch, ["a", "b"])
     FakePending.on_parse = _on_first_parse(
         lambda handler: FakeES.download.append(
             {"youtube_id": "ignored1", "status": "ignore"}
@@ -129,7 +94,7 @@ def test_an_ignore_set_mid_run_reaches_the_next_entry(monkeypatch):
 
 
 def test_a_failed_entry_still_refreshes_for_the_next(monkeypatch):
-    queue = _queue(monkeypatch, ["a", "b"])
+    queue, _ = queue_of(monkeypatch, ["a", "b"])
 
     def fail_and_ignore(handler):
         handler.extraction_failed = True
@@ -145,7 +110,7 @@ def test_a_failed_entry_still_refreshes_for_the_next(monkeypatch):
 
 def test_a_video_that_leaves_the_queue_mid_run_stays_skipped(monkeypatch):
     FakeES.download = [{"youtube_id": "queued1", "status": "pending"}]
-    queue = _queue(monkeypatch, ["a", "b"])
+    queue, _ = queue_of(monkeypatch, ["a", "b"])
     FakePending.on_parse = _on_first_parse(
         lambda handler: FakeES.download.clear()
     )
@@ -157,7 +122,7 @@ def test_a_video_that_leaves_the_queue_mid_run_stays_skipped(monkeypatch):
 
 def test_the_indexed_videos_survive_every_refresh(monkeypatch):
     FakeES.indexed = [{"youtube_id": "indexed1"}]
-    queue = _queue(monkeypatch, ["a", "b", "c"])
+    queue, _ = queue_of(monkeypatch, ["a", "b", "c"])
 
     queue.run_queue()
 

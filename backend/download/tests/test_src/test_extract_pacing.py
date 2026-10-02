@@ -5,20 +5,9 @@
 from types import SimpleNamespace
 
 import pytest
+from common.tests.helpers import capture_task
 from download.src import queue as queue_mod
 from download.src.queue import PendingList
-
-
-def capture_task():
-    """returns (the message lines sent, the task)"""
-    sent = []
-    task = SimpleNamespace(
-        is_stopped=lambda: False,
-        send_progress=lambda message_lines, progress=False: sent.append(
-            message_lines
-        ),
-    )
-    return sent, task
 
 
 class TestPace:

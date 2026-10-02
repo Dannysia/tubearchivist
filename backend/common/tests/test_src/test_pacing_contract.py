@@ -17,6 +17,7 @@ from appsettings.src import filesystem as filesystem_mod
 from appsettings.src.filesystem import Scanner
 from channel.src import index as channel_mod
 from channel.src.index import YoutubeChannel
+from common.tests.helpers import capture_task
 from download.src import queue as queue_mod
 from download.src import yt_dlp_handler as post_mod
 from download.src.queue import PendingList
@@ -25,17 +26,6 @@ from video.src import comments as comments_mod
 from video.src.comments import CommentList
 
 CONFIG = {"downloads": {"sleep_interval": 10}}
-
-
-def capture_task():
-    sent = []
-    task = SimpleNamespace(
-        is_stopped=lambda: False,
-        send_progress=lambda *a, **kw: sent.append(
-            a[0] if a else kw.get("message_lines")
-        ),
-    )
-    return sent, task
 
 
 def queue_of_one(length=1):

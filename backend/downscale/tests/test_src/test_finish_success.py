@@ -1,13 +1,11 @@
 from unittest.mock import patch
 
-from downscale.src.downscale import DownscaleRunner
 from downscale.src.queue_interact import DownscaleInteract
+from downscale.tests.helpers import make_runner
 
 
 def _make_runner():
-    runner = DownscaleRunner(
-        task=None, youtube_id="video1", target_height=480, doc_id="doc1"
-    )
+    runner = make_runner()
     runner.tmp_path = "/cache/downscale/video1_480p.mp4"
     runner.encoder_key = "h264"
     runner.quality = 23

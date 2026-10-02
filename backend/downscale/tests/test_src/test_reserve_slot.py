@@ -1,14 +1,9 @@
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
-from downscale.src.downscale import CONCURRENCY_RETRY_DELAY, DownscaleRunner
+from downscale.src.downscale import CONCURRENCY_RETRY_DELAY
 from downscale.src.queue_interact import DownscaleInteract
-
-
-def _make_runner(task):
-    return DownscaleRunner(
-        task=task, youtube_id="video1", target_height=480, doc_id="doc1"
-    )
+from downscale.tests.helpers import make_runner, mock_lock
 
 
 def _mock_task():
@@ -16,12 +11,6 @@ def _mock_task():
     task.request.id = "task-1"
     task.retry.side_effect = RuntimeError("retry raised")
     return task
-
-
-def _mock_lock(acquired=True):
-    lock = MagicMock()
-    lock.acquire.return_value = acquired
-    return lock
 
 
 @pytest.fixture(autouse=True)
@@ -35,7 +24,7 @@ def job_doc(monkeypatch):
 
 def test_concurrency_limit_retries_with_longer_countdown():
     task = _mock_task()
-    runner = _make_runner(task)
+    runner = make_runner(task)
 
     with patch(
         "downscale.src.downscale.RedisBase"
@@ -46,7 +35,7 @@ def test_concurrency_limit_retries_with_longer_countdown():
     ), patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": 1}
         }
@@ -61,7 +50,7 @@ def test_concurrency_limit_retries_with_longer_countdown():
 
 def test_max_concurrent_zero_hands_a_dispatched_job_back():
     task = _mock_task()
-    runner = _make_runner(task)
+    runner = make_runner(task)
 
     with patch(
         "downscale.src.downscale.RedisBase"
@@ -74,7 +63,7 @@ def test_max_concurrent_zero_hands_a_dispatched_job_back():
     ) as mock_update, patch(
         "downscale.src.downscale.AppConfig"
     ) as mock_app_config:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": 0}
         }
@@ -90,10 +79,10 @@ def test_max_concurrent_zero_hands_a_dispatched_job_back():
 
 def test_dispatch_lock_contention_uses_default_retry_cadence():
     task = _mock_task()
-    runner = _make_runner(task)
+    runner = make_runner(task)
 
     with patch("downscale.src.downscale.RedisBase") as mock_redis_base:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock(
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock(
             acquired=False
         )
 
@@ -120,7 +109,7 @@ def test_a_job_another_runner_holds_is_left_alone(job_doc, fields):
         job_doc.update(fields)
 
     task = _mock_task()
-    runner = _make_runner(task)
+    runner = make_runner(task)
 
     with patch(
         "downscale.src.downscale.RedisBase"
@@ -129,7 +118,7 @@ def test_a_job_another_runner_holds_is_left_alone(job_doc, fields):
     ) as mock_update, patch.object(
         DownscaleInteract, "delete_item"
     ) as mock_delete:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
 
         reserved = runner._reserve_slot(
             current_height=1080, original_path="/x.mp4"
@@ -143,6 +132,6 @@ def test_a_job_another_runner_holds_is_left_alone(job_doc, fields):
 
 def test_a_job_whose_task_id_was_never_recorded_is_still_ours(job_doc):
     job_doc["task_id"] = ""
-    runner = _make_runner(_mock_task())
+    runner = make_runner(_mock_task())
 
     assert runner._still_ours() is True

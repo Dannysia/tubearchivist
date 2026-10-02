@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, mock_open, patch
 from common.src.es_connect import IndexWriteError
 from downscale.src import worker
 from downscale.src.queue_interact import DownscaleInteract
+from downscale.tests.helpers import mock_lock
 
 WORKER = "gaming-pc"
 DOC_ID = "doc1"
@@ -18,19 +19,13 @@ RUNNING_JOB = {
 }
 
 
-def _mock_lock(acquired=True):
-    lock = MagicMock()
-    lock.acquire.return_value = acquired
-    return lock
-
-
 def test_claim_lock_contention_returns_none():
     with patch(
         "downscale.src.downscale.RedisBase"
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued"
     ) as mock_get_next:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock(
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock(
             acquired=False
         )
 
@@ -46,7 +41,7 @@ def test_claim_nothing_queued_returns_none():
     ) as mock_redis_base, patch.object(
         DownscaleInteract, "get_next_queued", return_value=[]
     ):
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
 
         result = worker.claim(WORKER)
 
@@ -98,7 +93,7 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
     ), patch(
         "downscale.src.worker.MediaStreamExtractor"
     ) as mock_extractor:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_extractor.return_value.get_file_size.return_value = 5000
 
         result = worker.claim(WORKER)
@@ -136,7 +131,7 @@ def test_claim_fails_candidate_when_source_file_missing():
     ), patch(
         "downscale.src.worker.os.path.exists", return_value=False
     ):
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
 
         result = worker.claim(WORKER)
 
@@ -169,7 +164,7 @@ def test_claim_fails_candidate_when_target_height_no_longer_valid():
     ), patch(
         "downscale.src.downscale._get_height", return_value=720
     ):
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
 
         result = worker.claim(WORKER)
 
@@ -206,7 +201,7 @@ def test_claim_deletes_candidate_with_another_active_job_for_the_video():
     ), patch(
         "downscale.src.downscale._get_height", return_value=1080
     ):
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
 
         result = worker.claim(WORKER)
 
@@ -629,7 +624,7 @@ def test_claim_skips_a_candidate_whose_write_fails():
         "_try_claim_candidate",
         side_effect=[IndexWriteError("es down"), claimed],
     ):
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
 
         result = worker.claim(WORKER)
 

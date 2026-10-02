@@ -1,16 +1,11 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
+from downscale.tests.helpers import mock_lock
 
 JOB_A = {"id": "doc-a", "youtube_id": "video-a", "target_height": 480}
 JOB_B = {"id": "doc-b", "youtube_id": "video-b", "target_height": 480}
-
-
-def _mock_lock(acquired=True):
-    lock = MagicMock()
-    lock.acquire.return_value = acquired
-    return lock
 
 
 def test_dispatches_up_to_the_number_of_free_slots():
@@ -25,7 +20,7 @@ def test_dispatches_up_to_the_number_of_free_slots():
     ) as mock_task_command, patch.object(
         DownscaleInteract, "update"
     ) as mock_update:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": 2}
         }
@@ -57,7 +52,7 @@ def test_no_free_slots_skips_the_query_entirely():
     ) as mock_get_next, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": 2}
         }
@@ -81,7 +76,7 @@ def test_unlimited_concurrency_dispatches_everything_queued():
     ) as mock_task_command, patch.object(
         DownscaleInteract, "update"
     ):
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": None}
         }
@@ -106,7 +101,7 @@ def test_max_concurrent_zero_disables_local_dispatch_entirely():
     ) as mock_get_next, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock()
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock()
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": 0}
         }
@@ -126,7 +121,7 @@ def test_lock_contention_does_nothing():
     ) as mock_count_running, patch(
         "downscale.src.downscale.TaskCommand"
     ) as mock_task_command:
-        mock_redis_base.return_value.conn.lock.return_value = _mock_lock(
+        mock_redis_base.return_value.conn.lock.return_value = mock_lock(
             acquired=False
         )
 
@@ -143,7 +138,7 @@ def test_lock_is_released_even_when_no_slots_are_free():
     ) as mock_app_config, patch.object(
         DownscaleInteract, "count_running", return_value=5
     ):
-        lock = _mock_lock()
+        lock = mock_lock()
         mock_redis_base.return_value.conn.lock.return_value = lock
         mock_app_config.return_value.config = {
             "application": {"downscale_max_concurrent": 1}

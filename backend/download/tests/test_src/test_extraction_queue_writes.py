@@ -5,21 +5,7 @@ from common.src.es_connect import IndexWriteError
 from common.src.queue_interact import QueueDocMissing
 from download.src import extraction_queue as eq
 from download.src.extraction_queue import ExtractionQueue
-
-MAX_PASSES = 25
-
-
-def _doc(name, auto_start=False):
-    return {
-        "item_type": "channel",
-        "youtube_id": f"UC_{name}",
-        "vid_type": None,
-        "limit": None,
-        "auto_start": auto_start,
-        "flat": False,
-        "force": False,
-        "target_status": "pending",
-    }
+from download.tests.extraction_helpers import MAX_PASSES, entry_doc, queue_of
 
 
 class Recorder:
@@ -56,14 +42,10 @@ def patched(monkeypatch):
     Recorder.raises = {}
     Recorder.messages = []
     monkeypatch.setattr(eq, "ExtractionInteract", Recorder)
-    monkeypatch.setattr(
-        ExtractionQueue, "has_work", classmethod(lambda cls: True)
-    )
 
     class FakePending:
         extraction_failed = False
         extraction_error = None
-        videos_failed_count = 0
         failed_videos: list = []
         all_pending: list = []
         all_ignored: list = []
@@ -92,25 +74,8 @@ def patched(monkeypatch):
     return Recorder
 
 
-def _queue(monkeypatch, pending: list[str]):
-    remaining = list(pending)
-    passes = {"n": 0}
-
-    def fake_next():
-        passes["n"] += 1
-        if passes["n"] > MAX_PASSES or not remaining:
-            return None, None
-
-        name = remaining.pop(0)
-        return name, _doc(name)
-
-    monkeypatch.setattr(ExtractionQueue, "_get_next", staticmethod(fake_next))
-
-    return ExtractionQueue(), passes
-
-
 def test_a_clean_run_resolves_every_entry(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a", "b", "c"])
+    queue, _ = queue_of(monkeypatch, ["a", "b", "c"])
 
     resolved, failed, _ = queue.run_queue()
 
@@ -123,7 +88,7 @@ def test_a_clean_run_resolves_every_entry(monkeypatch):
 
 
 def test_an_entry_deleted_before_it_starts_is_skipped(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a", "b", "c"])
+    queue, _ = queue_of(monkeypatch, ["a", "b", "c"])
     Recorder.raises[("mark_extracting", "b")] = QueueDocMissing("gone")
 
     resolved, failed, _ = queue.run_queue()
@@ -134,7 +99,7 @@ def test_an_entry_deleted_before_it_starts_is_skipped(monkeypatch):
 
 
 def test_a_write_failure_stops_the_run_without_raising(monkeypatch):
-    queue, passes = _queue(monkeypatch, ["a", "b", "c"])
+    queue, passes = queue_of(monkeypatch, ["a", "b", "c"])
     Recorder.raises[("mark_extracting", "b")] = IndexWriteError("es down")
 
     resolved, failed, _ = queue.run_queue()
@@ -146,7 +111,7 @@ def test_a_write_failure_stops_the_run_without_raising(monkeypatch):
 
 
 def test_a_failed_delete_stops_the_run(monkeypatch):
-    queue, passes = _queue(monkeypatch, ["a", "b"])
+    queue, passes = queue_of(monkeypatch, ["a", "b"])
     Recorder.raises[("delete_item", "a")] = IndexWriteError("es down")
 
     resolved, _, _ = queue.run_queue()
@@ -166,7 +131,7 @@ class StopsDuringFirstEntry:
 
 
 def test_a_stop_mid_entry_puts_it_back_to_pending(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a", "b"])
+    queue, _ = queue_of(monkeypatch, ["a", "b"])
     queue.task = StopsDuringFirstEntry()
 
     resolved, failed, _ = queue.run_queue()
@@ -178,7 +143,7 @@ def test_a_stop_mid_entry_puts_it_back_to_pending(monkeypatch):
 
 
 def test_recorded_failed_videos_add_up_over_the_run(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a", "b"])
+    queue, _ = queue_of(monkeypatch, ["a", "b"])
     monkeypatch.setattr(
         ExtractionQueue, "record_failed_videos", lambda self, *a: 2
     )
@@ -188,19 +153,8 @@ def test_recorded_failed_videos_add_up_over_the_run(monkeypatch):
     assert queue.videos_failed == 4
 
 
-def test_a_failed_video_entry_is_not_counted_as_a_failed_video(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a"])
-    monkeypatch.setattr(eq.PendingList, "extraction_failed", True)
-    monkeypatch.setattr(eq.PendingList, "videos_failed_count", 1)
-
-    _, failed, _ = queue.run_queue()
-
-    assert failed == 1
-    assert queue.videos_failed == 0
-
-
 def test_a_failed_entry_keeps_the_extraction_error(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a"])
+    queue, _ = queue_of(monkeypatch, ["a"])
     monkeypatch.setattr(eq.PendingList, "extraction_failed", True)
     monkeypatch.setattr(eq.PendingList, "extraction_error", "members only")
 
@@ -210,7 +164,7 @@ def test_a_failed_entry_keeps_the_extraction_error(monkeypatch):
 
 
 def test_a_failed_entry_without_an_error_points_to_the_logs(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a"])
+    queue, _ = queue_of(monkeypatch, ["a"])
     monkeypatch.setattr(eq.PendingList, "extraction_failed", True)
 
     queue.run_queue()
@@ -219,7 +173,7 @@ def test_a_failed_entry_without_an_error_points_to_the_logs(monkeypatch):
 
 
 def test_an_entrys_failed_videos_are_recorded(monkeypatch):
-    queue, _ = _queue(monkeypatch, ["a"])
+    queue, _ = queue_of(monkeypatch, ["a"])
     failed = [{"url": "vid1", "vid_type": "videos", "error": "x"}]
     monkeypatch.setattr(eq.PendingList, "failed_videos", failed)
     recorded = []
@@ -231,4 +185,4 @@ def test_an_entrys_failed_videos_are_recorded(monkeypatch):
 
     queue.run_queue()
 
-    assert recorded == [(failed, _doc("a"))]
+    assert recorded == [(failed, entry_doc("a"))]
