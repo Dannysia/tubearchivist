@@ -32,6 +32,27 @@ from video.src.constants import VideoTypeEnum
 from video.src.index import YoutubeVideo, index_new_video
 
 
+def downscale_targets(channel_overwrites: dict) -> dict[str, int]:
+    return {
+        channel_id: value["downscale_target_height"]
+        for channel_id, value in channel_overwrites.items()
+        if value.get("downscale_target_height")
+    }
+
+
+def queue_downscale(video: dict, targets: dict[str, int]) -> bool:
+    target_height = targets.get(video["channel"]["channel_id"])
+    if not target_height:
+        return False
+
+    doc_id, _ = DownscaleInteract.enqueue(video, target_height)
+    if not doc_id:
+        return False
+
+    print(f"{doc_id}: queued downscale to {target_height}p")
+    return True
+
+
 class DownloaderBase:
     """base class for shared config"""
 
@@ -95,12 +116,27 @@ class VideoDownloader(DownloaderBase):
             self._notify(video_data, "Move downloaded file to archive")
             self.move_to_archive(vid_dict)
             PendingInteract(youtube_id=youtube_id).clear_indexed()
+            self._auto_downscale(vid_dict)
             downloaded += 1
 
         # post processing
         DownloadPostProcess(self.task).run()
 
         return downloaded, failed
+
+    def _auto_downscale(self, vid_dict: dict) -> None:
+        if self.config["downloads"]["add_metadata"]:
+            return
+
+        targets = downscale_targets(get_channel_overwrites())
+        try:
+            queued = queue_downscale(vid_dict, targets)
+        except ValueError as err:
+            print(f"{vid_dict['youtube_id']}: downscale not queued: {err}")
+            return
+
+        if queued:
+            dispatch_pending_downscales()
 
     def _notify(self, video_data, message, progress=False):
         """send progress notification to task"""
@@ -300,11 +336,10 @@ class DownloadPostProcess(DownloaderBase):
         RedisQueue(self.VIDEO_QUEUE).clear()
 
     def auto_downscale(self) -> None:
-        targets = {
-            channel_id: value["downscale_target_height"]
-            for channel_id, value in self.channel_overwrites.items()
-            if value.get("downscale_target_height")
-        }
+        if not self.config["downloads"].get("add_metadata"):
+            return
+
+        targets = downscale_targets(self.channel_overwrites)
         if not targets:
             return
 
@@ -314,10 +349,7 @@ class DownloadPostProcess(DownloaderBase):
 
         queued = 0
         for video in self._get_downscale_candidates(video_ids, targets):
-            target_height = targets[video["channel"]["channel_id"]]
-            doc_id, _ = DownscaleInteract.enqueue(video, target_height)
-            if doc_id:
-                print(f"{doc_id}: queued downscale to {target_height}p")
+            if queue_downscale(video, targets):
                 queued += 1
 
         if queued:

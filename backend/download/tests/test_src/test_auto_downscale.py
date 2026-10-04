@@ -3,7 +3,7 @@
 from types import SimpleNamespace
 
 from download.src import yt_dlp_handler as handler_mod
-from download.src.yt_dlp_handler import DownloadPostProcess
+from download.src.yt_dlp_handler import DownloadPostProcess, VideoDownloader
 from downscale.src.constants import QUEUE_DOC_SOURCE_FIELDS
 from downscale.src.queue_interact import DownscaleInteract
 
@@ -50,7 +50,7 @@ def fake_interact(active=()):
     return FakeInteract, created
 
 
-def make_handler(overwrites, candidates):
+def make_handler(overwrites, candidates, add_metadata=True):
     """returns (stand in, the args the candidate query saw)"""
     seen_args = {}
 
@@ -60,6 +60,7 @@ def make_handler(overwrites, candidates):
         return candidates
 
     handler = SimpleNamespace(
+        config={"downloads": {"add_metadata": add_metadata}},
         channel_overwrites=overwrites,
         VIDEO_QUEUE=DownloadPostProcess.VIDEO_QUEUE,
         _get_downscale_candidates=_candidates,
@@ -242,6 +243,164 @@ class TestAutoDownscale:
 
         assert seen["video_ids"] == ["a", "b"]
         assert seen["targets"] == {"chan1": 1080}
+
+    def test_leaves_queuing_to_the_download_loop_without_embedding(
+        self, monkeypatch
+    ):
+        interact, created = fake_interact()
+        dispatched = patch_env(monkeypatch, interact)
+        handler, seen = make_handler(
+            {"chan1": {"downscale_target_height": 1080}},
+            [a_video("vid1", "chan1", 2160)],
+            add_metadata=False,
+        )
+
+        DownloadPostProcess.auto_downscale(handler)
+
+        assert created == []
+        assert dispatched == []
+        assert seen == {}
+
+
+def a_downloader(monkeypatch, overwrites, add_metadata=False):
+    monkeypatch.setattr(
+        handler_mod, "get_channel_overwrites", lambda: overwrites
+    )
+    return SimpleNamespace(
+        config={"downloads": {"add_metadata": add_metadata}},
+        channel_overwrites={},
+    )
+
+
+class TestQueueOnDownload:
+    def test_queues_the_video_as_soon_as_it_is_archived(self, monkeypatch):
+        interact, created = fake_interact()
+        dispatched = patch_env(monkeypatch, interact)
+        downloader = a_downloader(
+            monkeypatch, {"chan1": {"downscale_target_height": 720}}
+        )
+
+        VideoDownloader._auto_downscale(
+            downloader, a_video("vid1", "chan1", 1080)
+        )
+
+        assert [i["youtube_id"] for i in created] == ["vid1"]
+        assert created[0]["target_height"] == 720
+        assert dispatched == [True]
+
+    def test_waits_for_post_processing_when_embedding(self, monkeypatch):
+        interact, created = fake_interact()
+        dispatched = patch_env(monkeypatch, interact)
+        downloader = a_downloader(
+            monkeypatch,
+            {"chan1": {"downscale_target_height": 720}},
+            add_metadata=True,
+        )
+
+        VideoDownloader._auto_downscale(
+            downloader, a_video("vid1", "chan1", 1080)
+        )
+
+        assert created == []
+        assert dispatched == []
+
+    def test_skips_a_channel_without_a_target(self, monkeypatch):
+        interact, created = fake_interact()
+        dispatched = patch_env(monkeypatch, interact)
+        downloader = a_downloader(
+            monkeypatch, {"chan2": {"downscale_target_height": 720}}
+        )
+
+        VideoDownloader._auto_downscale(
+            downloader, a_video("vid1", "chan1", 1080)
+        )
+
+        assert created == []
+        assert dispatched == []
+
+    def test_skips_a_video_that_already_has_a_job(self, monkeypatch):
+        interact, created = fake_interact(active={"vid1"})
+        dispatched = patch_env(monkeypatch, interact)
+        downloader = a_downloader(
+            monkeypatch, {"chan1": {"downscale_target_height": 720}}
+        )
+
+        VideoDownloader._auto_downscale(
+            downloader, a_video("vid1", "chan1", 1080)
+        )
+
+        assert created == []
+        assert dispatched == []
+
+    def test_a_failed_queue_write_does_not_stop_the_download_run(
+        self, monkeypatch
+    ):
+        interact, _ = fake_interact()
+
+        class FailingInteract(interact):
+            def create(self, doc):
+                raise ValueError("failed to add item to index")
+
+        dispatched = patch_env(monkeypatch, FailingInteract)
+        downloader = a_downloader(
+            monkeypatch, {"chan1": {"downscale_target_height": 720}}
+        )
+
+        VideoDownloader._auto_downscale(
+            downloader, a_video("vid1", "chan1", 1080)
+        )
+
+        assert dispatched == []
+
+    def test_the_download_loop_queues_after_the_move(self, monkeypatch):
+        ran = []
+        items = iter(
+            [
+                {
+                    "youtube_id": "vid1",
+                    "channel_id": "chan1",
+                    "vid_type": "videos",
+                }
+            ]
+            + [False]
+        )
+        handler = SimpleNamespace(
+            config={},
+            task=SimpleNamespace(is_stopped=lambda: False),
+            _get_next=lambda auto_only: next(items),
+            _reset_auto=lambda: None,
+            _notify=lambda *a, **kw: None,
+            _dl_single_vid=lambda youtube_id, channel_id: True,
+            move_to_archive=lambda vid_dict: ran.append("move"),
+            _auto_downscale=lambda vid_dict: ran.append(
+                ("downscale", vid_dict["youtube_id"])
+            ),
+            CHANNEL_QUEUE="c",
+            VIDEO_QUEUE="v",
+        )
+        monkeypatch.setattr(
+            handler_mod,
+            "index_new_video",
+            lambda youtube_id, video_type: {"youtube_id": youtube_id},
+        )
+        monkeypatch.setattr(
+            handler_mod,
+            "RedisQueue",
+            lambda name: SimpleNamespace(add=lambda item: None),
+        )
+        monkeypatch.setattr(
+            handler_mod,
+            "PendingInteract",
+            lambda youtube_id: SimpleNamespace(clear_indexed=lambda: None),
+        )
+        monkeypatch.setattr(
+            handler_mod,
+            "DownloadPostProcess",
+            lambda task: SimpleNamespace(run=lambda: ran.append("post")),
+        )
+
+        assert VideoDownloader.run_queue(handler) == (1, 0)
+        assert ran == ["move", ("downscale", "vid1"), "post"]
 
 
 class TestCandidateQuery:
