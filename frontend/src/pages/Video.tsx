@@ -17,6 +17,7 @@ import VideoList from '../components/VideoList';
 import updateWatchedState from '../api/actions/updateWatchedState';
 import startDownscale from '../api/actions/startDownscale';
 import humanFileSize from '../functions/humanFileSize';
+import humanFileSizeMB from '../functions/humanFileSizeMB';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import ChannelOverview from '../components/ChannelOverview';
 import YouTubeLink from '../components/YouTubeLink';
@@ -639,8 +640,8 @@ const Video = () => {
               <p>
                 Downscaled: {video.downscale.original_height}p &rarr; {video.downscale.new_height}p
                 <span className="space-carrot">|</span>
-                {humanFileSize(video.downscale.original_size, useSiUnits)} &rarr;{' '}
-                {humanFileSize(video.downscale.new_size, useSiUnits)}
+                {humanFileSizeMB(video.downscale.original_size, useSiUnits)} &rarr;{' '}
+                {humanFileSizeMB(video.downscale.new_size, useSiUnits)}
                 {video.downscale.encoder && (
                   <>
                     <span className="space-carrot">|</span>

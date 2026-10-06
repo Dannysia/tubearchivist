@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import Routes from '../configuration/routes/RouteList';
 import Button from './Button';
 import VideoThumbnail from './VideoThumbail';
-import humanFileSize from '../functions/humanFileSize';
+import humanFileSizeMB from '../functions/humanFileSizeMB';
 import { DownscaleBulkAction } from '../api/actions/updateDownscaleQueueByIds';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
@@ -74,8 +74,8 @@ const DownscaleListItem = ({
           {job.original_size > 0 && (
             <span>
               {' '}
-              | {humanFileSize(job.original_size, useSiUnits)}
-              {job.new_size > 0 && <> → {humanFileSize(job.new_size, useSiUnits)}</>}
+              | {humanFileSizeMB(job.original_size, useSiUnits)}
+              {job.new_size > 0 && <> → {humanFileSizeMB(job.new_size, useSiUnits)}</>}
             </span>
           )}
           {isRunning && <span> | {Math.round((progress ?? 0) * 100)}% Complete</span>}
