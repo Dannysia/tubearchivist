@@ -18,6 +18,7 @@ import updateWatchedState from '../api/actions/updateWatchedState';
 import startDownscale from '../api/actions/startDownscale';
 import humanFileSize from '../functions/humanFileSize';
 import humanFileSizeMB from '../functions/humanFileSizeMB';
+import sizePercent from '../functions/sizePercent';
 import ScrollToTopOnNavigate from '../components/ScrollToTop';
 import ChannelOverview from '../components/ChannelOverview';
 import YouTubeLink from '../components/YouTubeLink';
@@ -642,6 +643,8 @@ const Video = () => {
                 <span className="space-carrot">|</span>
                 {humanFileSizeMB(video.downscale.original_size, useSiUnits)} &rarr;{' '}
                 {humanFileSizeMB(video.downscale.new_size, useSiUnits)}
+                {video.downscale.original_size > 0 &&
+                  ` (${sizePercent(video.downscale.original_size, video.downscale.new_size)})`}
                 {video.downscale.encoder && (
                   <>
                     <span className="space-carrot">|</span>

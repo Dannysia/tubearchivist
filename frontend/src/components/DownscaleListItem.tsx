@@ -4,6 +4,7 @@ import Routes from '../configuration/routes/RouteList';
 import Button from './Button';
 import VideoThumbnail from './VideoThumbail';
 import humanFileSizeMB from '../functions/humanFileSizeMB';
+import sizePercent from '../functions/sizePercent';
 import { DownscaleBulkAction } from '../api/actions/updateDownscaleQueueByIds';
 import { FileSizeUnits } from '../api/actions/updateUserConfig';
 import { useUserConfigStore } from '../stores/UserConfigStore';
@@ -75,7 +76,13 @@ const DownscaleListItem = ({
             <span>
               {' '}
               | {humanFileSizeMB(job.original_size, useSiUnits)}
-              {job.new_size > 0 && <> → {humanFileSizeMB(job.new_size, useSiUnits)}</>}
+              {job.new_size > 0 && (
+                <>
+                  {' '}
+                  → {humanFileSizeMB(job.new_size, useSiUnits)}
+                  {` (${sizePercent(job.original_size, job.new_size)})`}
+                </>
+              )}
             </span>
           )}
           {isRunning && <span> | {Math.round((progress ?? 0) * 100)}% Complete</span>}
