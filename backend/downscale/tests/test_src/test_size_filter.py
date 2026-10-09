@@ -1,12 +1,12 @@
 import pytest
 from downscale.src.constants import (
     LARGEST_GROWTH,
-    SAVED_BUCKET_EDGES,
+    SIZE_CHANGE_EDGES,
     SIZE_CHANGE_VALUES,
     saved_percent_agg,
     size_change_clause,
 )
-from downscale.views import _build_must_list
+from downscale.views import _build_aggs_query, _build_must_list
 
 
 def _source(value):
@@ -38,11 +38,13 @@ def test_every_rung_excludes_unfinished_jobs(value):
 @pytest.mark.parametrize(
     "value, factor",
     [
+        ("smaller_gt_2", 0.98),
         ("smaller_gt_5", 0.95),
         ("smaller_gt_10", 0.90),
         ("smaller_gt_20", 0.80),
         ("smaller_gt_30", 0.70),
         ("smaller_gt_50", 0.50),
+        ("smaller_lt_2", 0.98),
         ("smaller_lt_5", 0.95),
         ("smaller_lt_10", 0.90),
     ],
@@ -71,7 +73,14 @@ def test_every_rung_has_a_band_to_count_it():
         if value.startswith("smaller_")
     ]
 
-    assert set(thresholds) <= set(SAVED_BUCKET_EDGES)
+    assert set(thresholds) <= set(SIZE_CHANGE_EDGES)
+
+
+def test_queue_page_counts_use_the_size_change_edges():
+    _, agg = _build_aggs_query("saved")
+    edges = [band["from"] for band in agg["range"]["ranges"][1:]]
+
+    assert edges == SIZE_CHANGE_EDGES
 
 
 def test_unfinished_jobs_fall_outside_every_band():
@@ -118,6 +127,7 @@ def _evaluate(value: str, original: int, new: int) -> bool:
             500,
             {
                 "smaller",
+                "smaller_gt_2",
                 "smaller_gt_5",
                 "smaller_gt_10",
                 "smaller_gt_20",
@@ -125,8 +135,21 @@ def _evaluate(value: str, original: int, new: int) -> bool:
                 "smaller_gt_50",
             },
         ),
-        (1000, 960, {"smaller", "smaller_lt_5", "smaller_lt_10"}),
-        (1000, 900, {"smaller", "smaller_gt_5", "smaller_gt_10"}),
+        (
+            1000,
+            990,
+            {"smaller", "smaller_lt_2", "smaller_lt_5", "smaller_lt_10"},
+        ),
+        (
+            1000,
+            960,
+            {"smaller", "smaller_gt_2", "smaller_lt_5", "smaller_lt_10"},
+        ),
+        (
+            1000,
+            900,
+            {"smaller", "smaller_gt_2", "smaller_gt_5", "smaller_gt_10"},
+        ),
         (1000, 1000, set()),
         (1000, 1020, {"larger"}),
         (1000, 2000, {"larger"}),
@@ -143,7 +166,7 @@ def test_which_rungs_a_job_actually_matches(original, new, expected):
     assert matched == expected
 
 
-@pytest.mark.parametrize("threshold", [5, 10])
+@pytest.mark.parametrize("threshold", [2, 5, 10])
 def test_lt_rung_is_bounded_on_both_sides(threshold):
     assert _evaluate(f"smaller_lt_{threshold}", 1000, 999)
     assert not _evaluate(f"smaller_lt_{threshold}", 1000, 1001)

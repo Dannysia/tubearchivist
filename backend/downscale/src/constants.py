@@ -23,8 +23,10 @@ def downscaled_filter() -> dict:
 SIZE_CHANGE_VALUES = [
     "larger",
     "smaller",
+    "smaller_lt_2",
     "smaller_lt_5",
     "smaller_lt_10",
+    "smaller_gt_2",
     "smaller_gt_5",
     "smaller_gt_10",
     "smaller_gt_20",
@@ -33,6 +35,7 @@ SIZE_CHANGE_VALUES = [
 ]
 
 SAVED_BUCKET_EDGES = [0, 5, 10, 20, 30, 50]
+SIZE_CHANGE_EDGES = [0, 2, 5, 10, 20, 30, 50]
 
 
 QUEUE_SIZE_FIELDS = ("original_size", "new_size")
@@ -91,13 +94,14 @@ LARGEST_GROWTH = -1_000_000
 
 def saved_percent_agg(
     fields: tuple[str, str] = QUEUE_SIZE_FIELDS,
+    edges: list[int] = SAVED_BUCKET_EDGES,
 ) -> dict:
     original, new = fields
     ranges: list[dict] = [{"key": "larger", "from": LARGEST_GROWTH, "to": 0}]
-    for position, edge in enumerate(SAVED_BUCKET_EDGES):
+    for position, edge in enumerate(edges):
         entry: dict = {"key": str(edge), "from": edge}
-        if position + 1 < len(SAVED_BUCKET_EDGES):
-            entry["to"] = SAVED_BUCKET_EDGES[position + 1]
+        if position + 1 < len(edges):
+            entry["to"] = edges[position + 1]
         ranges.append(entry)
 
     return {

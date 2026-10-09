@@ -4,8 +4,10 @@ import { DownscaleSavedAggsType } from '../../api/loader/loadDownscaleAggs';
 export type DownscaleSizeChange =
   | 'larger'
   | 'smaller'
+  | 'smaller_lt_2'
   | 'smaller_lt_5'
   | 'smaller_lt_10'
+  | 'smaller_gt_2'
   | 'smaller_gt_5'
   | 'smaller_gt_10'
   | 'smaller_gt_20'
@@ -15,8 +17,10 @@ export type DownscaleSizeChange =
 export const DOWNSCALE_SIZE_CHANGES: { value: DownscaleSizeChange; label: string }[] = [
   { value: 'larger', label: 'got larger' },
   { value: 'smaller', label: 'got smaller' },
+  { value: 'smaller_lt_2', label: 'got smaller (<2%)' },
   { value: 'smaller_lt_5', label: 'got smaller (<5%)' },
   { value: 'smaller_lt_10', label: 'got smaller (<10%)' },
+  { value: 'smaller_gt_2', label: 'got smaller (>2%)' },
   { value: 'smaller_gt_5', label: 'got smaller (>5%)' },
   { value: 'smaller_gt_10', label: 'got smaller (>10%)' },
   { value: 'smaller_gt_20', label: 'got smaller (>20%)' },
@@ -43,8 +47,10 @@ export const countsBySizeChange = (
   return {
     larger,
     smaller: atLeast(0),
+    smaller_lt_2: atLeast(0) - atLeast(2),
     smaller_lt_5: atLeast(0) - atLeast(5),
     smaller_lt_10: atLeast(0) - atLeast(10),
+    smaller_gt_2: atLeast(2),
     smaller_gt_5: atLeast(5),
     smaller_gt_10: atLeast(10),
     smaller_gt_20: atLeast(20),

@@ -11,7 +11,11 @@ from downscale.serializers import (
     DownscaleListSerializer,
     DownscaleSavedAggsSerializer,
 )
-from downscale.src.constants import saved_percent_agg, size_change_clause
+from downscale.src.constants import (
+    SIZE_CHANGE_EDGES,
+    saved_percent_agg,
+    size_change_clause,
+)
 from downscale.src.downscale import (
     DownscaleReview,
     dispatch_pending_downscales,
@@ -175,7 +179,7 @@ def _build_aggs_query(field_filter: str) -> tuple[str, dict]:
         return ENCODER_AGGS_KEY, {"terms": {"field": "encoder", "size": 30}}
 
     if field_filter == "saved":
-        return SAVED_AGGS_KEY, saved_percent_agg()
+        return SAVED_AGGS_KEY, saved_percent_agg(edges=SIZE_CHANGE_EDGES)
 
     return CHANNEL_AGGS_KEY, {
         "multi_terms": {
