@@ -86,6 +86,7 @@ const DownscaleListItem = ({
             </span>
           )}
           {isRunning && <span> | {Math.round((progress ?? 0) * 100)}% Complete</span>}
+          {isRunning && <span> | worker: {job.worker || 'local'}</span>}
         </p>
 
         {isQueued && <p>Waiting for a free slot to start encoding...</p>}
