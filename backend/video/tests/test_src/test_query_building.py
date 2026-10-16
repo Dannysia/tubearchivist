@@ -83,6 +83,38 @@ def test_parse_downscale_encoder():
     }
 
 
+def test_parse_active():
+    qb = QueryBuilder(user_id=1, active=True)
+    assert qb.parse_active(True) == {"match": {"active": True}}
+    assert qb.parse_active(False) == {"match": {"active": False}}
+
+
+def test_build_query_active_false_is_not_skipped():
+    qb = QueryBuilder(user_id=1, active=False)
+    must_list = qb.build_query()["bool"]["must"]
+    assert must_list == [{"match": {"active": False}}]
+
+
+def test_build_query_without_active():
+    qb = QueryBuilder(user_id=1, type="videos")
+    assert qb.build_query()["bool"]["must"] == [
+        {"match": {"vid_type": "videos"}}
+    ]
+
+
+def test_build_query_active_combined():
+    qb = QueryBuilder(
+        user_id=1,
+        channel="test_channel",
+        active=True,
+    )
+    must_list = qb.build_query()["bool"]["must"]
+    assert must_list == [
+        {"match": {"channel.channel_id": "test_channel"}},
+        {"match": {"active": True}},
+    ]
+
+
 def test_build_query_downscale_false_is_not_skipped():
     qb = QueryBuilder(user_id=1, downscale=False)
     must_list = qb.build_query()["bool"]["must"]

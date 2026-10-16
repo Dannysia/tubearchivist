@@ -25,6 +25,7 @@ class UserConfigType(TypedDict, total=False):
     vid_type_filter: str | None
     downscale_filter: bool | None
     downscale_encoder_filter: str | None
+    active_filter: bool | None
     grid_items: int
     hide_watched: bool | None
     hide_watched_channel: bool | None
@@ -56,6 +57,7 @@ class UserConfig:
         vid_type_filter=None,
         downscale_filter=None,
         downscale_encoder_filter=None,
+        active_filter=None,
         grid_items=3,
         hide_watched=False,
         hide_watched_channel=None,

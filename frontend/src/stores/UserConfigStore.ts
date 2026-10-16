@@ -23,6 +23,7 @@ export const useUserConfigStore = create<UserConfigState>(set => ({
     vid_type_filter: null,
     downscale_filter: null,
     downscale_encoder_filter: null,
+    active_filter: null,
     grid_items: 3,
     hide_watched: null,
     hide_watched_channel: null,

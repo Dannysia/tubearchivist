@@ -58,6 +58,10 @@ class QueryBuilder:
         if downscale_encoder:
             must_list.append(self.parse_downscale_encoder(downscale_encoder))
 
+        active = self.request_params.get("active")
+        if active is not None:
+            must_list.append(self.parse_active(active))
+
         query = {"bool": {"must": must_list}}
 
         return query
@@ -113,6 +117,10 @@ class QueryBuilder:
     @staticmethod
     def parse_downscale_encoder(encoder: str):
         return {"term": {"downscale.encoder": {"value": encoder}}}
+
+    @staticmethod
+    def parse_active(active: bool):
+        return {"match": {"active": active}}
 
     def parse_sort(self) -> dict | None:
         """build sort key"""

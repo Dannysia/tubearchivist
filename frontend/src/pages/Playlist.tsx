@@ -96,6 +96,7 @@ const Playlist = () => {
         height: filterHeight,
         downscale: userConfig.downscale_filter,
         downscaleEncoder: userConfig.downscale_encoder_filter,
+        active: userConfig.active_filter,
       });
 
       setPlaylistResponse(playlist);
@@ -116,6 +117,7 @@ const Playlist = () => {
     userConfig.vid_type_filter,
     userConfig.downscale_filter,
     userConfig.downscale_encoder_filter,
+    userConfig.active_filter,
     filterHeight,
     refresh,
     currentPage,

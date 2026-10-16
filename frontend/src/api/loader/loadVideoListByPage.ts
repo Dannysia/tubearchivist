@@ -54,6 +54,7 @@ type FilterType = {
   height?: string;
   downscale?: boolean | null;
   downscaleEncoder?: string | null;
+  active?: boolean | null;
 };
 
 const loadVideoListByFilter = async (filter: FilterType) => {
@@ -76,6 +77,9 @@ const loadVideoListByFilter = async (filter: FilterType) => {
   }
   if (filter.downscaleEncoder) {
     searchParams.append('downscale_encoder', filter.downscaleEncoder);
+  }
+  if (filter.active !== undefined && filter.active !== null) {
+    searchParams.append('active', filter.active.toString());
   }
 
   const endpoint = `/api/video/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;

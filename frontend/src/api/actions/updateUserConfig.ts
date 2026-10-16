@@ -37,6 +37,7 @@ export type UserConfigType = {
   vid_type_filter: VideoTypes | null;
   downscale_filter: boolean | null;
   downscale_encoder_filter: string | null;
+  active_filter: boolean | null;
   grid_items: number;
   hide_watched: boolean | null;
   hide_watched_channel: boolean | null;

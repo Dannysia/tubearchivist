@@ -45,6 +45,7 @@ class VideoApiListView(ApiBaseView):
     - height:int=px
     - downscale:bool=true|false
     - downscale_encoder:str=<encoder>
+    - active:bool=true|false
     """
 
     search_base = "ta_video/_search/"

@@ -162,6 +162,7 @@ const Home = () => {
         height: filterHeight,
         downscale: userConfig.downscale_filter,
         downscaleEncoder: userConfig.downscale_encoder_filter,
+        active: userConfig.active_filter,
       });
 
       try {
@@ -184,6 +185,7 @@ const Home = () => {
     userConfig.vid_type_filter,
     userConfig.downscale_filter,
     userConfig.downscale_encoder_filter,
+    userConfig.active_filter,
     filterHeight,
     currentPage,
     pagination?.current_page,

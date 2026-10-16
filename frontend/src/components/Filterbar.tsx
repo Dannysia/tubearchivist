@@ -188,6 +188,19 @@ const Filterbar = ({
                 <option value="true">Downscaled only</option>
                 <option value="false">Not downscaled only</option>
               </select>
+              <select
+                value={userConfig.active_filter === null ? '' : userConfig.active_filter.toString()}
+                onChange={event => {
+                  handleUserConfigUpdate({
+                    active_filter:
+                      event.target.value === '' ? null : event.target.value === 'true',
+                  });
+                }}
+              >
+                <option value="">All active state</option>
+                <option value="true">Active only</option>
+                <option value="false">Inactive only</option>
+              </select>
               {downscaleEncoders.length > 0 && (
                 <select
                   value={userConfig.downscale_encoder_filter ?? ''}

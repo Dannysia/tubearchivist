@@ -48,6 +48,7 @@ class UserMeConfigSerializer(serializers.Serializer):
     downscale_encoder_filter = serializers.CharField(
         allow_null=True, allow_blank=True
     )
+    active_filter = serializers.BooleanField(allow_null=True)
     grid_items = serializers.IntegerField(max_value=7, min_value=3)
     hide_watched = serializers.BooleanField(allow_null=True)
     hide_watched_channel = serializers.BooleanField(allow_null=True)

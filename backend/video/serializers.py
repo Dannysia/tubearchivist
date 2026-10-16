@@ -171,6 +171,7 @@ class VideoListQuerySerializer(serializers.Serializer):
     height = serializers.IntegerField(required=False)
     downscale = serializers.BooleanField(required=False, allow_null=True)
     downscale_encoder = serializers.CharField(required=False)
+    active = serializers.BooleanField(required=False, allow_null=True)
 
 
 class VideoDownscaleEncoderBucketSerializer(serializers.Serializer):
