@@ -192,8 +192,7 @@ const Filterbar = ({
                 value={userConfig.active_filter === null ? '' : userConfig.active_filter.toString()}
                 onChange={event => {
                   handleUserConfigUpdate({
-                    active_filter:
-                      event.target.value === '' ? null : event.target.value === 'true',
+                    active_filter: event.target.value === '' ? null : event.target.value === 'true',
                   });
                 }}
               >
