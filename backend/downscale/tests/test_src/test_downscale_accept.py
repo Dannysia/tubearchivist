@@ -1,3 +1,4 @@
+from contextlib import ExitStack, contextmanager
 from unittest.mock import MagicMock, patch
 
 from common.src.es_connect import IndexWriteError
@@ -35,18 +36,55 @@ def _mock_video(json_data, streams=None):
     return video
 
 
+@contextmanager
+def _accepting(video, job=PENDING_JOB, verify_error=None, replace=None):
+    mocks = {}
+    with ExitStack() as stack:
+        stack.enter_context(patch("downscale.src.downscale.RedisBase"))
+        stack.enter_context(
+            patch.object(
+                DownscaleInteract, "get_item", return_value=(job, 200)
+            )
+        )
+        mocks["delete"] = stack.enter_context(
+            patch.object(DownscaleInteract, "delete_item")
+        )
+        mocks["update"] = stack.enter_context(
+            patch.object(DownscaleInteract, "update")
+        )
+        stack.enter_context(
+            patch("downscale.src.downscale.os.path.exists", return_value=True)
+        )
+        stack.enter_context(
+            patch("downscale.src.downscale.YoutubeVideo", return_value=video)
+        )
+        mocks["verify"] = stack.enter_context(
+            patch(
+                "downscale.src.downscale.verify_encode",
+                return_value=verify_error,
+            )
+        )
+        mocks["replace"] = stack.enter_context(
+            patch.object(
+                DownscaleReview,
+                "_replace",
+                return_value="/youtube/.abc123.downscale-backup",
+                side_effect=replace,
+            )
+        )
+        mocks["remove"] = stack.enter_context(
+            patch("downscale.src.downscale._remove_quietly")
+        )
+        mocks["os_replace"] = stack.enter_context(
+            patch("downscale.src.downscale.os.replace")
+        )
+        yield mocks
+
+
 def test_accept_copies_ffmpeg_args_onto_the_video():
     video = _mock_video({"media_url": "video1.mp4"})
 
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(PENDING_JOB, 200)
-    ), patch.object(DownscaleInteract, "delete_item"), patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move"
-    ):
+    with _accepting(video):
         error = DownscaleReview(DOC_ID).accept()
 
     assert error is None
@@ -62,15 +100,7 @@ def test_accept_preserves_missing_ffmpeg_args_as_none():
     del job["ffmpeg_args"]
     video = _mock_video({"media_url": "video1.mp4"})
 
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(job, 200)
-    ), patch.object(DownscaleInteract, "delete_item"), patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move"
-    ):
+    with _accepting(video, job=job):
         error = DownscaleReview(DOC_ID).accept()
 
     assert error is None
@@ -80,15 +110,7 @@ def test_accept_preserves_missing_ffmpeg_args_as_none():
 def test_accept_probes_the_encode_and_not_the_moved_file():
     video = _mock_video({"media_url": "video1.mp4"})
 
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(PENDING_JOB, 200)
-    ), patch.object(DownscaleInteract, "delete_item"), patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move"
-    ):
+    with _accepting(video):
         error = DownscaleReview(DOC_ID).accept()
 
     assert error is None
@@ -98,29 +120,48 @@ def test_accept_probes_the_encode_and_not_the_moved_file():
     video.upload_to_es.assert_called_once_with(checked=True)
 
 
+def test_a_successful_accept_cleans_up_the_backup_and_the_encode():
+    video = _mock_video({"media_url": "video1.mp4"})
+
+    with _accepting(video) as mocks:
+        DownscaleReview(DOC_ID).accept()
+
+    removed = [call.args[0] for call in mocks["remove"].call_args_list]
+    assert removed == [
+        "/youtube/.abc123.downscale-backup",
+        PENDING_JOB["tmp_file_path"],
+    ]
+    mocks["delete"].assert_called_once()
+
+
 def test_an_unprobeable_encode_never_replaces_the_original():
     video = _mock_video({"media_url": "video1.mp4"}, streams=[])
 
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(PENDING_JOB, 200)
-    ), patch.object(
-        DownscaleInteract, "delete_item"
-    ) as mock_delete, patch.object(
-        DownscaleInteract, "update"
-    ) as mock_update, patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move"
-    ) as mock_move:
+    with _accepting(video) as mocks:
         error = DownscaleReview(DOC_ID).accept()
 
     assert error == "the encode could not be probed"
-    mock_move.assert_not_called()
+    mocks["replace"].assert_not_called()
     video.upload_to_es.assert_not_called()
-    mock_delete.assert_not_called()
-    assert mock_update.call_args.kwargs["status"] == "failed"
+    mocks["delete"].assert_not_called()
+    assert mocks["update"].call_args.kwargs["status"] == "failed"
+
+
+def test_a_failed_verification_never_replaces_the_original():
+    video = _mock_video({"media_url": "video1.mp4"})
+
+    with _accepting(
+        video, verify_error="the encode is truncated, original kept"
+    ) as mocks:
+        error = DownscaleReview(DOC_ID).accept()
+
+    assert error == "the encode is truncated, original kept"
+    mocks["verify"].assert_called_once_with(
+        PENDING_JOB["tmp_file_path"], "/youtube/video1.mp4", 1000
+    )
+    mocks["replace"].assert_not_called()
+    mocks["delete"].assert_not_called()
+    assert mocks["update"].call_args.kwargs["status"] == "failed"
 
 
 def test_the_probe_happens_before_the_move():
@@ -133,21 +174,31 @@ def test_the_probe_happens_before_the_move():
 
     video.add_streams.side_effect = probe
 
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(PENDING_JOB, 200)
-    ), patch.object(DownscaleInteract, "delete_item"), patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move", side_effect=lambda *a: order.append("move")
-    ):
+    def replace(*args):
+        order.append("move")
+        return "/youtube/.abc123.downscale-backup"
+
+    with _accepting(video, replace=replace):
         DownscaleReview(DOC_ID).accept()
 
     assert order == ["probe", "move"]
 
 
-def test_a_failed_index_write_keeps_the_job_and_reports_it():
+def test_a_failed_replace_keeps_the_job_for_another_try():
+    video = _mock_video({"media_url": "video1.mp4"})
+
+    with _accepting(
+        video, replace=OSError(28, "No space left on device")
+    ) as mocks:
+        error = DownscaleReview(DOC_ID).accept()
+
+    assert error.startswith("could not replace the original, original kept")
+    video.upload_to_es.assert_not_called()
+    mocks["delete"].assert_not_called()
+    mocks["update"].assert_not_called()
+
+
+def test_a_failed_index_write_restores_the_original_and_keeps_the_job():
     video = _mock_video({"media_url": "video1.mp4"})
 
     def only_when_checked(checked=False):
@@ -156,22 +207,44 @@ def test_a_failed_index_write_keeps_the_job_and_reports_it():
 
     video.upload_to_es.side_effect = only_when_checked
 
-    with patch.object(
-        DownscaleInteract, "get_item", return_value=(PENDING_JOB, 200)
-    ), patch.object(
-        DownscaleInteract, "delete_item"
-    ) as mock_delete, patch.object(
-        DownscaleInteract, "update"
-    ) as mock_update, patch(
-        "downscale.src.downscale.os.path.exists", return_value=True
-    ), patch(
-        "downscale.src.downscale.YoutubeVideo", return_value=video
-    ), patch.object(
-        DownscaleReview, "_move"
-    ):
+    with _accepting(video) as mocks:
         error = DownscaleReview(DOC_ID).accept()
 
-    assert error == "file replaced but the index was not updated"
-    mock_delete.assert_not_called()
-    assert mock_update.call_args.kwargs["status"] == "failed"
-    assert "503" in mock_update.call_args.kwargs["message"]
+    assert error == "the index was not updated, original kept: es answered 503"
+    mocks["os_replace"].assert_called_once_with(
+        "/youtube/.abc123.downscale-backup", "/youtube/video1.mp4"
+    )
+    mocks["delete"].assert_not_called()
+    mocks["update"].assert_not_called()
+    mocks["remove"].assert_not_called()
+
+
+def test_a_failed_restore_marks_the_job_failed_with_the_backup_path():
+    video = _mock_video({"media_url": "video1.mp4"})
+    video.upload_to_es.side_effect = IndexWriteError("es answered 503")
+
+    with _accepting(video) as mocks:
+        mocks["os_replace"].side_effect = OSError("read-only file system")
+        error = DownscaleReview(DOC_ID).accept()
+
+    assert error == (
+        "the index was not updated and the original could not be restored"
+    )
+    message = mocks["update"].call_args.kwargs["message"]
+    assert mocks["update"].call_args.kwargs["status"] == "failed"
+    assert "/youtube/.abc123.downscale-backup" in message
+
+
+def test_a_held_lock_refuses_a_second_accept():
+    video = _mock_video({"media_url": "video1.mp4"})
+
+    with _accepting(video) as mocks, patch(
+        "downscale.src.downscale.RedisBase"
+    ) as redis_base:
+        redis_base.return_value.conn.lock.return_value.acquire.return_value = (
+            False
+        )
+        error = DownscaleReview(DOC_ID).accept()
+
+    assert error == "this job is already being accepted"
+    mocks["replace"].assert_not_called()

@@ -1,3 +1,4 @@
+import json
 import os
 import select
 import shlex
@@ -24,6 +25,8 @@ DISPATCH_LOCK_KEY = "downscale:dispatch-lock"
 DISPATCH_LOCK_TIMEOUT = 30
 DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 CONCURRENCY_RETRY_DELAY = 60
+ACCEPT_LOCK_TIMEOUT = 120
+COPY_CHUNK_SIZE = 64 * 1024 * 1024
 
 
 @contextmanager
@@ -46,7 +49,7 @@ def _release_lock(lock) -> None:
     try:
         lock.release()
     except LockError:
-        print(f"downscale: lock {DISPATCH_LOCK_KEY} already expired")
+        print(f"downscale: lock {lock.name} already expired")
 
 
 ENCODER_SETTINGS = {
@@ -158,6 +161,94 @@ def _get_height(media_path: str) -> int | None:
     return max_video_height(
         MediaStreamExtractor(media_path).extract_metadata()
     )
+
+
+def _get_timing(media_path: str) -> tuple[str, str] | None:
+    """(duration, video frame count) as ffprobe prints them"""
+    cmd = [
+        "ffprobe",
+        "-v",
+        "quiet",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "format=duration:stream=nb_frames",
+        "-of",
+        "json",
+        media_path,
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        probed = json.loads(result.stdout)
+        duration = probed["format"]["duration"]
+        frames = probed["streams"][0]["nb_frames"]
+    except (ValueError, KeyError, IndexError):
+        return None
+
+    return duration, frames
+
+
+def _boxes_fill_file(media_path: str) -> bool:
+    """an mp4's top level boxes tile the file exactly unless truncated"""
+    file_size = os.path.getsize(media_path)
+    position = 0
+    with open(media_path, "rb") as media_file:
+        while position < file_size:
+            media_file.seek(position)
+            header = media_file.read(16)
+            if len(header) < 8:
+                return False
+
+            box_size = int.from_bytes(header[:4], "big")
+            if box_size == 1:
+                if len(header) < 16:
+                    return False
+                box_size = int.from_bytes(header[8:16], "big")
+            elif box_size == 0:
+                return True
+
+            if box_size < 8:
+                return False
+
+            position += box_size
+
+    return position == file_size
+
+
+def verify_encode(
+    tmp_path: str, original_path: str, expected_size: int
+) -> str | None:
+    """None if the encode is safe to replace the original with"""
+    tmp_size = os.path.getsize(tmp_path)
+    if tmp_size != expected_size:
+        return (
+            f"the encode changed since it finished, {tmp_size} bytes "
+            f"instead of {expected_size}, original kept"
+        )
+
+    if not _boxes_fill_file(tmp_path):
+        return "the encode is truncated, original kept"
+
+    original_timing = _get_timing(original_path)
+    tmp_timing = _get_timing(tmp_path)
+    if original_timing is None or tmp_timing is None:
+        return "could not read the frame count and duration, original kept"
+
+    original_duration, original_frames = original_timing
+    tmp_duration, tmp_frames = tmp_timing
+    if tmp_frames != original_frames:
+        return (
+            f"the encode has {tmp_frames} frames but the original has "
+            f"{original_frames}, original kept"
+        )
+
+    if tmp_duration != original_duration:
+        return (
+            f"the encode is {tmp_duration}s long but the original is "
+            f"{original_duration}s, original kept"
+        )
+
+    return None
 
 
 def check_source(
@@ -581,9 +672,25 @@ class DownscaleReview:
     def __init__(self, doc_id: str):
         self.doc_id = doc_id
         self.interact = DownscaleInteract(doc_id)
+        self._keep_alive = lambda: None
 
     def accept(self) -> str | None:
         """returns an error message on failure, None on success"""
+        lock = RedisBase().conn.lock(
+            f"downscale:accept:{self.doc_id}", timeout=ACCEPT_LOCK_TIMEOUT
+        )
+        if not lock.acquire(blocking=False):
+            return "this job is already being accepted"
+
+        self._keep_alive = lambda: lock.extend(
+            ACCEPT_LOCK_TIMEOUT, replace_ttl=True
+        )
+        try:
+            return self._accept()
+        finally:
+            _release_lock(lock)
+
+    def _accept(self) -> str | None:
         job, _ = self.interact.get_item()
         if not job:
             return "job not found"
@@ -608,6 +715,11 @@ class DownscaleReview:
             self.interact.mark_failed("original file missing")
             return "original file missing"
 
+        error = verify_encode(tmp_path, original_path, job["new_size"])
+        if error:
+            self.interact.mark_failed(error)
+            return error
+
         existing = video.json_data.get("downscale") or {}
         video.json_data["downscale"] = {
             "original_height": existing.get(
@@ -631,17 +743,22 @@ class DownscaleReview:
             )
             return "the encode could not be probed"
 
-        self._move(tmp_path, original_path)
+        return self._swap_in(video, tmp_path, original_path)
+
+    def _swap_in(self, video, tmp_path: str, original_path: str) -> str | None:
+        try:
+            backup_path = self._replace(tmp_path, original_path)
+        except (OSError, LockError) as err:
+            return f"could not replace the original, original kept: {err}"
 
         try:
             video.upload_to_es(checked=True)
         except IndexWriteError as err:
-            self.interact.mark_failed(
-                f"file replaced, index not updated: {err}"
-            )
-            return "file replaced but the index was not updated"
+            return self._roll_back(backup_path, original_path, err)
 
+        _remove_quietly(backup_path)
         self.interact.delete_item()
+        _remove_quietly(tmp_path)
         return None
 
     def reject(self) -> str | None:
@@ -714,9 +831,89 @@ class DownscaleReview:
 
         return None
 
-    @staticmethod
-    def _move(src: str, dst: str) -> None:
+    def _replace(self, src: str, dst: str) -> str:
+        """atomically swap src in for dst, returns dst's backup path"""
+        dst_dir = os.path.dirname(dst)
+        backup_path = os.path.join(dst_dir, f".{self.doc_id}.downscale-backup")
+        staging_path = os.path.join(
+            dst_dir, f".{self.doc_id}.downscale-staging"
+        )
+        _recover_backup(backup_path, dst)
+        _make_backup(dst, backup_path, self._keep_alive)
         try:
-            os.replace(src, dst)
-        except OSError:
-            shutil.move(src, dst)
+            _copy_durably(src, staging_path, self._keep_alive)
+            _copy_ownership(dst, staging_path)
+            os.replace(staging_path, dst)
+        except (OSError, LockError):
+            _remove_quietly(staging_path)
+            _remove_quietly(backup_path)
+            raise
+
+        return backup_path
+
+    def _roll_back(
+        self, backup_path: str, original_path: str, err: Exception
+    ) -> str:
+        try:
+            os.replace(backup_path, original_path)
+        except OSError as restore_err:
+            self.interact.mark_failed(
+                f"index not updated: {err}, and the original could not be "
+                f"restored from {backup_path}: {restore_err}"
+            )
+            return (
+                "the index was not updated and the original could not be "
+                "restored"
+            )
+
+        return f"the index was not updated, original kept: {err}"
+
+
+def _recover_backup(backup_path: str, original_path: str) -> None:
+    """undo what an interrupted accept left behind"""
+    if not os.path.exists(backup_path):
+        return
+
+    if os.path.samefile(backup_path, original_path):
+        os.remove(backup_path)
+    else:
+        os.replace(backup_path, original_path)
+
+
+def _make_backup(original_path: str, backup_path: str, keep_alive) -> None:
+    try:
+        os.link(original_path, backup_path)
+    except OSError:
+        partial_path = f"{backup_path}.partial"
+        _copy_durably(original_path, partial_path, keep_alive)
+        os.replace(partial_path, backup_path)
+
+
+def _copy_durably(src: str, dst: str, keep_alive) -> None:
+    try:
+        with open(src, "rb") as src_file, open(dst, "wb") as dst_file:
+            while chunk := src_file.read(COPY_CHUNK_SIZE):
+                dst_file.write(chunk)
+                keep_alive()
+            dst_file.flush()
+            os.fsync(dst_file.fileno())
+    except (OSError, LockError):
+        _remove_quietly(dst)
+        raise
+
+
+def _copy_ownership(reference: str, path: str) -> None:
+    shutil.copymode(reference, path)
+    stat_result = os.stat(reference)
+    try:
+        os.chown(path, stat_result.st_uid, stat_result.st_gid)
+    except PermissionError:
+        pass
+
+
+def _remove_quietly(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError as err:
+        if os.path.exists(path):
+            print(f"downscale: could not remove {path}: {err}")
