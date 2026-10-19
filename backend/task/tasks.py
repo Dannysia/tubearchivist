@@ -22,6 +22,7 @@ from download.src.extraction_queue import ExtractionQueue
 from download.src.subscriptions import SubscriptionHandler, SubscriptionScanner
 from download.src.thumbnails import ThumbValidator
 from download.src.yt_dlp_handler import VideoDownloader
+from downscale.src.bulk import run_bulk
 from downscale.src.channel_batch import ChannelDownscale
 from downscale.src.downscale import DownscaleRunner
 from downscale.src.worker import reap_stale_leases
@@ -455,6 +456,12 @@ def version_check():
 @shared_task(name="downscale_reap_leases")
 def downscale_reap_leases():
     reap_stale_leases()
+
+
+@shared_task(name="downscale_bulk", bind=True, base=BaseTask)
+def downscale_bulk(self, ids: list[str], action: str):
+    TaskManager().init(self)
+    return run_bulk(self, ids, action)
 
 
 @shared_task(name="log_cleanup", bind=True, base=BaseTask)

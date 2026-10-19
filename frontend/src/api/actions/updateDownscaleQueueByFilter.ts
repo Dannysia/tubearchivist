@@ -1,5 +1,5 @@
 import APIClient from '../../functions/APIClient';
-import { DownscaleBulkAction, DownscaleBulkResultType } from './updateDownscaleQueueByIds';
+import { DownscaleBulkAction, DownscaleBulkResponseType } from './updateDownscaleQueueByIds';
 import { DownscaleStatus } from '../loader/loadDownscaleQueue';
 import { DownscaleSizeChange } from '../../configuration/constants/DownscaleSizeChange';
 
@@ -20,7 +20,7 @@ const updateDownscaleQueueByFilter = async (
 
   const endpoint = `/api/downscale/${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
 
-  return APIClient<DownscaleBulkResultType>(endpoint, {
+  return APIClient<DownscaleBulkResponseType>(endpoint, {
     method: 'POST',
     body: { action },
   });

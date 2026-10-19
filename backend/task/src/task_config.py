@@ -145,6 +145,13 @@ DOWNSCALE_REAP_LEASES: TaskItemConfig = {
     "api_stop": False,
 }
 
+DOWNSCALE_BULK: TaskItemConfig = {
+    "title": "Bulk Downscale Review",
+    "group": "review:downscale",
+    "api_start": False,
+    "api_stop": True,
+}
+
 LOG_CLEANUP: TaskItemConfig = {
     "title": "Prune Log Entries",
     "group": "",
@@ -171,6 +178,7 @@ TASK_CONFIG: dict[str, TaskItemConfig] = {
     "version_check": VERSION_CHECK,
     "downscale_video": DOWNSCALE_VIDEO,
     "downscale_reap_leases": DOWNSCALE_REAP_LEASES,
+    "downscale_bulk": DOWNSCALE_BULK,
     "log_cleanup": LOG_CLEANUP,
 }
 

@@ -23,10 +23,14 @@ import {
 } from '../configuration/constants/DownscaleSizeChange';
 import updateDownscaleQueueByIds, {
   DownscaleBulkAction,
+  DownscaleBulkResponseType,
   DownscaleBulkResultType,
+  DownscaleBulkStateType,
 } from '../api/actions/updateDownscaleQueueByIds';
 import updateDownscaleQueueByFilter from '../api/actions/updateDownscaleQueueByFilter';
 import loadNotifications from '../api/loader/loadNotifications';
+import loadDownscaleBulk from '../api/loader/loadDownscaleBulk';
+import stopTaskByName from '../api/actions/stopTaskByName';
 import { ApiResponseType } from '../functions/APIClient';
 
 export type DownscaleJob = {
@@ -49,6 +53,17 @@ export type DownscaleJob = {
   updated: number;
   message?: string;
   progress?: number | null;
+};
+
+const bulkNotice = (state: DownscaleBulkStateType) => {
+  const progress = `${state.done} of ${state.total} jobs`;
+  if (state.status === 'failed') {
+    return `Bulk ${state.action} stopped unexpectedly after ${progress}: ${state.failure}`;
+  }
+  if (state.stopped) {
+    return `Bulk ${state.action} stopped after ${progress}.`;
+  }
+  return `Bulk ${state.action} finished: ${state.done - state.failed.length} of ${state.total} jobs succeeded.`;
 };
 
 export type DownscaleResponseType = {
@@ -81,6 +96,9 @@ const Downscale = () => {
     useState<ApiResponseType<DownscaleSavedAggsType>>();
   const [progressByTaskId, setProgressByTaskId] = useState<Record<string, number>>({});
   const [actionFailures, setActionFailures] = useState<DownscaleBulkResultType['failed']>([]);
+  const [bulkState, setBulkState] = useState<DownscaleBulkStateType | null>(null);
+  const [bulkStopRequested, setBulkStopRequested] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   const { data: downscaleResponseData } = downscaleResponse ?? {};
   const { data: downscaleAggsResponseData } = downscaleAggsResponse ?? {};
@@ -113,6 +131,41 @@ const Downscale = () => {
   const refreshQueue = () => {
     setRefreshNonce(current => current + 1);
   };
+
+  const bulkTaskId = bulkState?.task_id;
+
+  useEffect(() => {
+    (async () => {
+      const response = await loadDownscaleBulk();
+      if (response?.data) setBulkState(response.data);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!bulkTaskId) {
+      return;
+    }
+
+    const intervalId = setInterval(async () => {
+      const response = await loadDownscaleBulk(bulkTaskId);
+      const state = response?.data;
+      if (state?.status === 'queued' || state?.status === 'running') {
+        setBulkState(state);
+        return;
+      }
+
+      clearInterval(intervalId);
+      setBulkState(null);
+      setBulkStopRequested(false);
+      if (state) {
+        setActionFailures(state.failed);
+        setBulkMessage(bulkNotice(state));
+      }
+      refreshQueue();
+    }, 1000);
+
+    return () => clearInterval(intervalId);
+  }, [bulkTaskId]);
 
   useEffect(() => {
     let stale = false;
@@ -259,11 +312,25 @@ const Downscale = () => {
     }
   };
 
-  const recordResult = async (request: Promise<ApiResponseType<DownscaleBulkResultType>>) => {
+  const recordResult = async (request: Promise<ApiResponseType<DownscaleBulkResponseType>>) => {
     try {
       const response = await request;
+      if (response.status === 202 && response.data) {
+        setActionFailures([]);
+        setBulkMessage(null);
+        setBulkState(response.data as DownscaleBulkStateType);
+        return;
+      }
+
+      if (response.status === 409) {
+        const active = await loadDownscaleBulk();
+        if (active?.data) setBulkState(active.data);
+        setActionFailures([{ id: '', error: response.error?.error ?? 'request failed' }]);
+        return;
+      }
+
       if (response.data) {
-        setActionFailures(response.data.failed);
+        setActionFailures((response.data as DownscaleBulkResultType).failed);
         return;
       }
 
@@ -530,6 +597,40 @@ const Downscale = () => {
                 onClick={handleBulkCancel}
               />
             )}
+          </div>
+        )}
+
+        {bulkState && (
+          <div className="settings-current">
+            <p>
+              {bulkState.status === 'queued'
+                ? `Bulk ${bulkState.action} of ${bulkState.total} jobs is waiting to start.`
+                : `Bulk ${bulkState.action}: ${bulkState.done} of ${bulkState.total} jobs done.`}
+            </p>
+            {bulkState.status === 'running' && (
+              <>
+                <progress value={bulkState.done} max={bulkState.total} />
+                {bulkStopRequested ? (
+                  <p>Stopping after the current job.</p>
+                ) : (
+                  <Button
+                    label="Stop"
+                    className="danger-button"
+                    onClick={async () => {
+                      await stopTaskByName(bulkState.task_id);
+                      setBulkStopRequested(true);
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {bulkMessage && (
+          <div className="settings-current">
+            <p>{bulkMessage}</p>
+            <Button label="Dismiss" onClick={() => setBulkMessage(null)} />
           </div>
         )}
 

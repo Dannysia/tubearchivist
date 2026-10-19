@@ -8,6 +8,16 @@ urlpatterns = [
         name="api-downscale-list",
     ),
     path(
+        "bulk/",
+        views.DownscaleBulkApiView.as_view(),
+        name="api-downscale-bulk",
+    ),
+    path(
+        "bulk/<str:task_id>/",
+        views.DownscaleBulkTaskApiView.as_view(),
+        name="api-downscale-bulk-task",
+    ),
+    path(
         "aggs/",
         views.DownscaleAggsApiView.as_view(),
         name="api-downscale-aggs",

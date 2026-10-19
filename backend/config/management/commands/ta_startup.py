@@ -22,6 +22,7 @@ from django_celery_beat.models import (
     PeriodicTasks,
 )
 from download.src.extraction_queue import ExtractionQueue
+from downscale.src.bulk import clear_queued_bulks
 from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import DownscaleInteract
 from task.models import CustomPeriodicTask
@@ -112,6 +113,7 @@ class Command(BaseCommand):
         """clear tasks and messages"""
         self.stdout.write("[3] clear task leftovers")
         TaskManager().fail_pending()
+        clear_queued_bulks()
         redis_con = RedisArchivist()
         to_delete = redis_con.list_keys("message:")
         if to_delete:

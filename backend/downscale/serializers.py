@@ -113,6 +113,21 @@ class DownscaleBulkResultSerializer(serializers.Serializer):
     failed = DownscaleBulkResultItemSerializer(many=True)
 
 
+class DownscaleBulkStateSerializer(serializers.Serializer):
+    """serialize the progress of an async bulk accept/reject"""
+
+    task_id = serializers.CharField()
+    action = serializers.ChoiceField(choices=["accept", "reject"])
+    total = serializers.IntegerField()
+    done = serializers.IntegerField()
+    failed = DownscaleBulkResultItemSerializer(many=True)
+    status = serializers.ChoiceField(
+        choices=["queued", "running", "done", "failed"]
+    )
+    stopped = serializers.BooleanField()
+    failure = serializers.CharField(allow_null=True)
+
+
 class DownscaleEncoderTestSerializer(serializers.Serializer):
     """serialize a single hardware encoder capability test result"""
 

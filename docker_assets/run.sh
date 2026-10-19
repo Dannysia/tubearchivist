@@ -38,6 +38,12 @@ celery -A task.celery worker \
     --max-tasks-per-child 5 \
     --max-memory-per-child 150000 &
 
+celery -A task.celery worker \
+    --loglevel=$LOGLEVEL \
+    --queues downscale_review \
+    --hostname review@%h \
+    --concurrency 1 &
+
 ./beat_auto_spawn.sh &
 
 python backend_start.py

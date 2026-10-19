@@ -26,3 +26,4 @@ app.config_from_object(
 )
 app.autodiscover_tasks()
 app.conf.timezone = EnvironmentSettings.TZ
+app.conf.task_routes = {"downscale_bulk": {"queue": "downscale_review"}}

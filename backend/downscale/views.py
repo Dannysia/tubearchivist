@@ -1,3 +1,4 @@
+from common.serializers import ErrorResponseSerializer
 from common.src.es_connect import ElasticWrap, IndexWriteError
 from common.views_base import AdminOnly, ApiBaseView
 from downscale.serializers import (
@@ -5,11 +6,18 @@ from downscale.serializers import (
     DownscaleAggsSerializer,
     DownscaleBulkActionSerializer,
     DownscaleBulkResultSerializer,
+    DownscaleBulkStateSerializer,
     DownscaleEncoderAggsSerializer,
     DownscaleEncoderTestSerializer,
     DownscaleListQuerySerializer,
     DownscaleListSerializer,
     DownscaleSavedAggsSerializer,
+)
+from downscale.src.bulk import (
+    BULK_ACTIONS,
+    get_active_bulk,
+    get_bulk,
+    queue_bulk,
 )
 from downscale.src.constants import (
     SIZE_CHANGE_EDGES,
@@ -116,10 +124,14 @@ class DownscaleApiListView(ApiBaseView):
     @extend_schema(
         request=DownscaleBulkActionSerializer(),
         parameters=[DownscaleListQuerySerializer()],
-        responses={200: OpenApiResponse(DownscaleBulkResultSerializer())},
+        responses={
+            200: OpenApiResponse(DownscaleBulkResultSerializer()),
+            202: OpenApiResponse(DownscaleBulkStateSerializer()),
+            409: OpenApiResponse(ErrorResponseSerializer()),
+        },
     )
     def post(self, request):
-        """bulk accept/reject/retry/cancel downscale jobs"""
+        """act on downscale jobs, queueing accept/reject of several"""
         data_serializer = DownscaleBulkActionSerializer(data=request.data)
         data_serializer.is_valid(raise_exception=True)
         validated_data = data_serializer.validated_data
@@ -128,6 +140,9 @@ class DownscaleApiListView(ApiBaseView):
         ids = validated_data.get("ids")
         if ids is None:
             ids = self._get_ids_by_filter(request)
+
+        if action in BULK_ACTIONS and len(ids) > 1:
+            return self._queue_bulk(ids, action)
 
         success: list[str] = []
         failed: list[dict] = []
@@ -153,6 +168,17 @@ class DownscaleApiListView(ApiBaseView):
         return Response(response_serializer.data)
 
     @staticmethod
+    def _queue_bulk(ids: list[str], action: str) -> Response:
+        if get_active_bulk():
+            error = ErrorResponseSerializer(
+                {"error": "a bulk accept or reject is already running"}
+            )
+            return Response(error.data, status=409)
+
+        state = DownscaleBulkStateSerializer(queue_bulk(ids, action))
+        return Response(state.data, status=202)
+
+    @staticmethod
     def _get_ids_by_filter(request) -> list[str]:
         query_serializer = DownscaleListQuerySerializer(
             data=request.query_params
@@ -167,6 +193,51 @@ class DownscaleApiListView(ApiBaseView):
 
         response, _ = ElasticWrap("ta_downscale/_search").get(data=data)
         return [hit["_id"] for hit in response.get("hits", {}).get("hits", [])]
+
+
+class DownscaleBulkApiView(ApiBaseView):
+    """resolves to /api/downscale/bulk/
+    GET: the bulk accept/reject that is queued or running, if any
+    """
+
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(DownscaleBulkStateSerializer()),
+            204: OpenApiResponse(description="no bulk action running"),
+        },
+    )
+    def get(self, request):
+        """get the active bulk accept/reject"""
+        state = get_active_bulk()
+        if not state:
+            return Response(status=204)
+
+        return Response(DownscaleBulkStateSerializer(state).data)
+
+
+class DownscaleBulkTaskApiView(ApiBaseView):
+    """resolves to /api/downscale/bulk/<task_id>/
+    GET: progress of a bulk accept/reject
+    """
+
+    permission_classes = [AdminOnly]
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(DownscaleBulkStateSerializer()),
+            404: OpenApiResponse(ErrorResponseSerializer()),
+        },
+    )
+    def get(self, request, task_id):
+        """get a bulk accept/reject's progress"""
+        state = get_bulk(task_id)
+        if not state:
+            error = ErrorResponseSerializer({"error": "bulk action not found"})
+            return Response(error.data, status=404)
+
+        return Response(DownscaleBulkStateSerializer(state).data)
 
 
 CHANNEL_AGGS_KEY = "channel_downscale"
