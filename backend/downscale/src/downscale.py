@@ -7,6 +7,7 @@ import subprocess
 import time
 from contextlib import contextmanager
 from datetime import datetime
+from fractions import Fraction
 
 from appsettings.src.config import AppConfig
 from common.src.env_settings import EnvironmentSettings
@@ -27,6 +28,9 @@ DISPATCH_LOCK_BLOCKING_TIMEOUT = 10
 CONCURRENCY_RETRY_DELAY = 60
 ACCEPT_LOCK_TIMEOUT = 120
 COPY_CHUNK_SIZE = 64 * 1024 * 1024
+# a dropped or added frame moves the video duration by a whole frame
+# interval, timestamp rounding between containers by less
+DURATION_TOLERANCE_FRAMES = 0.9
 
 
 @contextmanager
@@ -163,8 +167,7 @@ def _get_height(media_path: str) -> int | None:
     )
 
 
-def _get_timing(media_path: str) -> tuple[str, str] | None:
-    """(duration, video frame count) as ffprobe prints them"""
+def _get_video_timing(media_path: str) -> dict | None:
     cmd = [
         "ffprobe",
         "-v",
@@ -172,20 +175,22 @@ def _get_timing(media_path: str) -> tuple[str, str] | None:
         "-select_streams",
         "v:0",
         "-show_entries",
-        "format=duration:stream=nb_frames",
+        "stream=nb_frames,r_frame_rate,duration",
         "-of",
         "json",
         media_path,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=False)
     try:
-        probed = json.loads(result.stdout)
-        duration = probed["format"]["duration"]
-        frames = probed["streams"][0]["nb_frames"]
-    except (ValueError, KeyError, IndexError):
+        stream = json.loads(result.stdout)["streams"][0]
+        return {
+            "frames": stream["nb_frames"],
+            "rate": stream["r_frame_rate"],
+            "duration": float(stream["duration"]),
+            "frame_interval": 1 / Fraction(stream["r_frame_rate"]),
+        }
+    except (ValueError, KeyError, IndexError, ZeroDivisionError):
         return None
-
-    return duration, frames
 
 
 def _boxes_fill_file(media_path: str) -> bool:
@@ -229,23 +234,28 @@ def verify_encode(
     if not _boxes_fill_file(tmp_path):
         return "the encode is truncated, original kept"
 
-    original_timing = _get_timing(original_path)
-    tmp_timing = _get_timing(tmp_path)
-    if original_timing is None or tmp_timing is None:
-        return "could not read the frame count and duration, original kept"
+    original = _get_video_timing(original_path)
+    encode = _get_video_timing(tmp_path)
+    if original is None or encode is None:
+        return "could not read the video frame count and rate, original kept"
 
-    original_duration, original_frames = original_timing
-    tmp_duration, tmp_frames = tmp_timing
-    if tmp_frames != original_frames:
+    if encode["frames"] != original["frames"]:
         return (
-            f"the encode has {tmp_frames} frames but the original has "
-            f"{original_frames}, original kept"
+            f"the encode has {encode['frames']} frames but the original has "
+            f"{original['frames']}, original kept"
         )
 
-    if tmp_duration != original_duration:
+    if encode["rate"] != original["rate"]:
         return (
-            f"the encode is {tmp_duration}s long but the original is "
-            f"{original_duration}s, original kept"
+            f"the encode runs at {encode['rate']} fps but the original at "
+            f"{original['rate']}, original kept"
+        )
+
+    tolerance = DURATION_TOLERANCE_FRAMES * original["frame_interval"]
+    if abs(encode["duration"] - original["duration"]) > tolerance:
+        return (
+            f"the encode's video is {encode['duration']:.6f}s long but the "
+            f"original's is {original['duration']:.6f}s, original kept"
         )
 
     return None

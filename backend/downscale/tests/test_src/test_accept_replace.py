@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+from fractions import Fraction
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -119,19 +120,60 @@ def test_a_short_encode_fails(tmp_path, clip):
     )
 
 
+def _timing(frames, rate, duration):
+    return {
+        "frames": frames,
+        "rate": rate,
+        "duration": duration,
+        "frame_interval": 1 / Fraction(rate),
+    }
+
+
 @pytest.mark.parametrize(
-    "encode_timing, expected",
+    "original, encode, expected",
     [
-        (("3600.000000", "86400"), None),
-        (("3600.000000", "86399"), "86399 frames"),
-        (("3600.001000", "86400"), "3600.001000s long"),
-        (None, "could not read the frame count"),
+        (
+            _timing("24506", "60/1", 408.433333),
+            _timing("24506", "60/1", 408.433000),
+            None,
+        ),
+        (
+            _timing("14664", "30000/1001", 489.288800),
+            _timing("14664", "30000/1001", 489.288000),
+            None,
+        ),
+        (
+            _timing("31615", "25/1", 1264.600000),
+            _timing("31615", "25/1", 1264.600000),
+            None,
+        ),
+        (
+            _timing("6000", "60/1", 100.0),
+            _timing("6000", "60/1", 100.0 + 0.85 / 60),
+            None,
+        ),
+        (
+            _timing("6000", "60/1", 100.0),
+            _timing("6000", "60/1", 100.0 - 0.95 / 60),
+            "video is 99.984167s long",
+        ),
+        (
+            _timing("6000", "60/1", 100.0),
+            _timing("5999", "60/1", 100.0 - 1 / 60),
+            "5999 frames",
+        ),
+        (
+            _timing("3000", "30000/1001", 100.1),
+            _timing("3000", "30/1", 100.0),
+            "runs at 30/1 fps",
+        ),
+        (_timing("3000", "30/1", 100.0), None, "could not read"),
     ],
 )
-def test_frames_and_duration_must_match_exactly(encode_timing, expected):
-    timings = {"original": ("3600.000000", "86400"), "encode": encode_timing}
+def test_frames_rate_and_video_duration(original, encode, expected):
+    timings = {"original": original, "encode": encode}
     with patch(
-        "downscale.src.downscale._get_timing",
+        "downscale.src.downscale._get_video_timing",
         side_effect=lambda path: timings[path],
     ), patch(
         "downscale.src.downscale._boxes_fill_file", return_value=True
