@@ -175,7 +175,7 @@ def probe_hdr_static_metadata(config: dict, path: str) -> set[str]:
 
 
 def build_remux_cmd(
-    config: dict, encoded_path: str, out_path: str
+    config: dict, encoded_path: str, src_path: str, out_path: str
 ) -> list[str]:
     return [
         config["encode"]["ffmpeg_path"],
@@ -184,10 +184,12 @@ def build_remux_cmd(
         "-y",
         "-i",
         _win_path_arg(encoded_path),
+        "-i",
+        _win_path_arg(src_path),
         "-map",
         "0:v:0",
         "-map",
-        "0:a?",
+        "1:a?",
         "-c",
         "copy",
         "-movflags",
@@ -197,10 +199,10 @@ def build_remux_cmd(
 
 
 def run_remux(
-    config: dict, encoded_path: str, out_path: str
+    config: dict, encoded_path: str, src_path: str, out_path: str
 ) -> tuple[bool, str]:
     """returns (ok, error_output)"""
-    cmd = build_remux_cmd(config, encoded_path, out_path)
+    cmd = build_remux_cmd(config, encoded_path, src_path, out_path)
     log(f"remuxing: {shlex.join(cmd)}")
     try:
         result = subprocess.run(
@@ -258,6 +260,8 @@ def build_handbrake_cmd(
         "--height",
         str(target_height),
         "--non-anamorphic",
+        "--audio",
+        "none",
     ]
     if encode.get("preset"):
         cmd += ["--encoder-preset", str(encode["preset"])]
@@ -623,6 +627,7 @@ def deliver_result(
     session,
     base_url: str,
     config: dict,
+    src_path: str,
     encoded_path: str,
     out_path: str,
     encode_args: str,
@@ -636,7 +641,9 @@ def deliver_result(
     log(f"encoded {youtube_id}, remuxing to {OUTPUT_CONTAINER}")
     progress_state["fraction"] = 1.0
 
-    remuxed, remux_error = run_remux(config, encoded_path, out_path)
+    remuxed, remux_error = run_remux(
+        config, encoded_path, src_path, out_path
+    )
     pulse.raise_if_aborted()
     if not remuxed:
         log(f"remux failed for {youtube_id}")
@@ -722,6 +729,7 @@ def handle_job(job: dict, session, base_url: str, config: dict) -> None:
             session,
             base_url,
             config,
+            src_path,
             encoded_path,
             out_path,
             encode_args,
