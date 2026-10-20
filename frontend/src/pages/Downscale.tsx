@@ -55,6 +55,8 @@ export type DownscaleJob = {
   progress?: number | null;
 };
 
+const BULK_REFRESH_INTERVAL = 5000;
+
 const bulkNotice = (state: DownscaleBulkStateType) => {
   const progress = `${state.done} of ${state.total} jobs`;
   if (state.status === 'failed') {
@@ -146,11 +148,19 @@ const Downscale = () => {
       return;
     }
 
+    let refreshedDone = 0;
+    let refreshedAt = Date.now();
+
     const intervalId = setInterval(async () => {
       const response = await loadDownscaleBulk(bulkTaskId);
       const state = response?.data;
       if (state?.status === 'queued' || state?.status === 'running') {
         setBulkState(state);
+        if (state.done > refreshedDone && Date.now() - refreshedAt >= BULK_REFRESH_INTERVAL) {
+          refreshedDone = state.done;
+          refreshedAt = Date.now();
+          refreshQueue();
+        }
         return;
       }
 
