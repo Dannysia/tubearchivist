@@ -253,3 +253,27 @@ class VideoProgressUpdateSerializer(serializers.Serializer):
     """serialize progress update data"""
 
     position = serializers.FloatField(default=0)
+
+
+class VideoHistoryTextSerializer(serializers.Serializer):
+    """serialize one past or current value of a video text field"""
+
+    value = serializers.CharField(allow_null=True)
+    first_seen = serializers.IntegerField(allow_null=True)
+    replaced = serializers.IntegerField(allow_null=True)
+
+
+class VideoHistoryImageSerializer(serializers.Serializer):
+    """serialize one past or current video thumbnail"""
+
+    image_url = serializers.CharField(allow_null=True)
+    first_seen = serializers.IntegerField(allow_null=True)
+    replaced = serializers.IntegerField(allow_null=True)
+
+
+class VideoHistorySerializer(serializers.Serializer):
+    """serialize the title, description and thumbnail history of a video"""
+
+    title = VideoHistoryTextSerializer(many=True)
+    description = VideoHistoryTextSerializer(many=True)
+    thumbnail = VideoHistoryImageSerializer(many=True)

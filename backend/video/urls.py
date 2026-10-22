@@ -17,6 +17,11 @@ urlpatterns = [
         name="api-video",
     ),
     path(
+        "<slug:video_id>/history/",
+        views.VideoHistoryView.as_view(),
+        name="api-video-history",
+    ),
+    path(
         "<slug:video_id>/nav/",
         views.VideoApiNavView.as_view(),
         name="api-video-nav",

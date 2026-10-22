@@ -8,6 +8,7 @@ from common.src.history import (
     decode_change,
     decode_value,
     encode_value,
+    field_versions,
     track_changes,
     track_deactivation,
 )
@@ -299,6 +300,64 @@ def test_no_time_range_without_cutoffs():
 
 def test_query_without_filters():
     assert HistoryQuery().build_query() == {"match_all": {}}
+
+
+def _change(field, old, new, timestamp):
+    return {
+        "field": field,
+        "old_value": old,
+        "new_value": new,
+        "timestamp": timestamp,
+    }
+
+
+def test_field_versions_lists_every_value_newest_first():
+    changes = [
+        _change("title", "First", "Second", 200),
+        _change("title", "Second", "Third", 300),
+    ]
+    with mock.patch.object(
+        HistoryQuery, "get_all_changes", return_value=changes
+    ):
+        versions = field_versions("vid1", "title", first_seen=100)
+
+    assert versions == [
+        {"value": "Third", "first_seen": 300, "replaced": None},
+        {"value": "Second", "first_seen": 200, "replaced": 300},
+        {"value": "First", "first_seen": 100, "replaced": 200},
+    ]
+
+
+def test_field_versions_shows_what_was_there_before_each_change():
+    changes = [
+        _change("title", "First", "Second", 200),
+        _change("title", "Edited outside a refresh", "Third", 300),
+    ]
+    with mock.patch.object(
+        HistoryQuery, "get_all_changes", return_value=changes
+    ):
+        versions = field_versions("vid1", "title", first_seen=100)
+
+    assert [i["value"] for i in versions] == [
+        "Third",
+        "Edited outside a refresh",
+        "First",
+    ]
+
+
+def test_field_versions_is_empty_without_changes():
+    with mock.patch.object(HistoryQuery, "get_all_changes", return_value=[]):
+        assert field_versions("vid1", "title", first_seen=100) == []
+
+
+def test_field_versions_reports_a_missing_value_as_none():
+    changes = [_change("description", MISSING, "Added later", 200)]
+    with mock.patch.object(
+        HistoryQuery, "get_all_changes", return_value=changes
+    ):
+        versions = field_versions("vid1", "description")
+
+    assert versions[-1] == {"value": None, "first_seen": None, "replaced": 200}
 
 
 def test_a_thumbnail_image_change_is_tracked(video_doc):

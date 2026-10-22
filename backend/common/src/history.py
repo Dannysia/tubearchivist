@@ -498,3 +498,31 @@ class HistoryQuery:
         failure = write_failure(*ElasticWrap(path).post(data))
         if failure:
             print(f"failed to delete history, {failure}")
+
+
+def field_versions(
+    item_id: str, field: str, first_seen: int | None = None
+) -> list[dict]:
+    """every value the field has had, newest first"""
+    changes = HistoryQuery(item_id=item_id, fields=[field]).get_all_changes()
+    if not changes:
+        return []
+
+    versions = []
+    seen_since = first_seen
+    for change in changes:
+        versions.append(
+            _version(change["old_value"], seen_since, change["timestamp"])
+        )
+        seen_since = change["timestamp"]
+
+    versions.append(_version(changes[-1]["new_value"], seen_since, None))
+    return versions[::-1]
+
+
+def _version(value: Any, first_seen: int | None, replaced: int | None):
+    return {
+        "value": None if value is MISSING else value,
+        "first_seen": first_seen,
+        "replaced": replaced,
+    }

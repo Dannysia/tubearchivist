@@ -43,6 +43,8 @@ import {
 } from '../configuration/constants/DownscaleEncoders';
 import getApiUrl from '../configuration/getApiUrl';
 import loadVideoNav, { VideoNavResponseType } from '../api/loader/loadVideoNav';
+import loadVideoHistory, { VideoHistoryType } from '../api/loader/loadVideoHistory';
+import FieldHistory from '../components/FieldHistory';
 import useIsAdmin from '../functions/useIsAdmin';
 import ToggleConfig from '../components/ToggleConfig';
 import { PlaylistType } from '../api/loader/loadPlaylistById';
@@ -130,6 +132,7 @@ const Video = () => {
     localStorage.getItem('playlistIdForAutoplay') ?? '',
   );
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [videoHistory, setVideoHistory] = useState<VideoHistoryType>();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRedownloadConfirm, setShowRedownloadConfirm] = useState(false);
   const [redownloadQueued, setRedownloadQueued] = useState(false);
@@ -170,12 +173,18 @@ const Video = () => {
   useEffect(() => {
     (async () => {
       if (refreshVideoList || videoId !== videoResponseData?.youtube_id) {
+        if (videoId !== videoResponseData?.youtube_id) {
+          setVideoHistory(undefined);
+        }
+
         const videoByIdResponse = await loadVideoById(videoId);
         setVideoResponse(videoByIdResponse);
 
         const similarVideosResponse = await loadSimilarVideosById(videoId);
         const customPlaylistsResponse = await loadPlaylistList({ type: 'custom' });
         const videoNavResponse = await loadVideoNav(videoId);
+        const videoHistoryResponse = await loadVideoHistory(videoId);
+        setVideoHistory(videoHistoryResponse?.data);
 
         try {
           const commentsResponse = await loadCommentsbyVideoId(videoId);
@@ -319,6 +328,13 @@ const Video = () => {
             />
           )}
           <h1 id="video-title">{video.title}</h1>
+          <FieldHistory key={`title-${videoId}`} label="Title" versions={videoHistory?.title} />
+          <FieldHistory
+            key={`thumbnail-${videoId}`}
+            label="Thumbnail"
+            kind="image"
+            versions={videoHistory?.thumbnail}
+          />
         </div>
         <div className="info-box info-box-3">
           <ChannelOverview
@@ -672,19 +688,28 @@ const Video = () => {
           </div>
         )}
 
-        {video.description && (
+        {(!!video.description || !!videoHistory?.description.length) && (
           <div className="description-box">
-            <p
-              id={descriptionExpanded ? 'text-expand-expanded' : 'text-expand'}
-              className="description-text"
-            >
-              <Linkify onTimestampClick={handleTimestampClick}>{video.description}</Linkify>
-            </p>
+            {video.description && (
+              <>
+                <p
+                  id={descriptionExpanded ? 'text-expand-expanded' : 'text-expand'}
+                  className="description-text"
+                >
+                  <Linkify onTimestampClick={handleTimestampClick}>{video.description}</Linkify>
+                </p>
 
-            <Button
-              label={descriptionExpanded ? 'Show less' : 'Show more'}
-              id="text-expand-button"
-              onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                <Button
+                  label={descriptionExpanded ? 'Show less' : 'Show more'}
+                  id="text-expand-button"
+                  onClick={() => setDescriptionExpanded(!descriptionExpanded)}
+                />
+              </>
+            )}
+            <FieldHistory
+              key={`description-${videoId}`}
+              label="Description"
+              versions={videoHistory?.description}
             />
           </div>
         )}

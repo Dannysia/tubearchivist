@@ -1859,3 +1859,36 @@ video:-webkit-full-screen {
     transform: rotate(360deg);
   }
 }
+
+.field-history-toggle {
+  margin: 0 5px 5px 0;
+}
+
+#text-expand-button + .field-history-toggle {
+  margin-left: 5px;
+}
+
+.field-history {
+  margin: 10px 0;
+  border-left: 2px solid var(--accent-font-light);
+  padding-left: 12px;
+}
+
+.field-history-version {
+  margin-bottom: 14px;
+}
+
+.field-history-dates {
+  font-size: 0.85em;
+  opacity: 0.8;
+  margin-bottom: 4px;
+}
+
+.field-history-text {
+  white-space: pre-wrap;
+}
+
+.field-history-version img {
+  max-width: 320px;
+  width: 100%;
+}
