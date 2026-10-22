@@ -15,7 +15,11 @@ from channel.src.remote_query import get_last_channel_videos
 from common.src.env_settings import EnvironmentSettings
 from common.src.es_connect import ElasticWrap, IndexPaginate
 from common.src.helper import countdown_sleep
-from common.src.history import track_changes, track_deactivation
+from common.src.history import (
+    VIDEO_THUMB_IMAGE,
+    track_changes,
+    track_deactivation,
+)
 from common.src.ta_redis import RedisArchivist, RedisQueue
 from download.src.thumbnails import ThumbManager
 from download.src.yt_dlp_base import CookieHandler
@@ -402,8 +406,15 @@ class Reindex(ReindexBase):
         if not is_redownload and es_meta.get("downscale"):
             video.json_data["downscale"] = es_meta.get("downscale")
 
+        old_thumb, new_thumb = ThumbManager(youtube_id).refresh_video_thumb(
+            video.json_data["vid_thumb_url"]
+        )
         track_changes(
-            "video", youtube_id, es_meta, video.json_data, source=source
+            "video",
+            youtube_id,
+            {**es_meta, VIDEO_THUMB_IMAGE: old_thumb},
+            {**video.json_data, VIDEO_THUMB_IMAGE: new_thumb},
+            source=source,
         )
         video.upload_to_es()
         self.processed["videos"] += 1
@@ -412,10 +423,6 @@ class Reindex(ReindexBase):
 
     def _reindex_video_related(self, video: YoutubeVideo) -> None:
         """reindex video related metadata and fields"""
-        thumb_handler = ThumbManager(video.youtube_id)
-        thumb_handler.delete_video_thumb()
-        thumb_handler.download_video_thumb(video.json_data["vid_thumb_url"])
-
         Comments(
             video.youtube_id, config=self.config, task=self.task
         ).reindex_comments()

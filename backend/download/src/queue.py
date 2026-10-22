@@ -432,7 +432,9 @@ class PendingList(PendingIndex):
         if not to_add:
             return None
 
-        ThumbManager(item_id=url).download_video_thumb(to_add["vid_thumb_url"])
+        ThumbManager(item_id=url).download_video_thumb(
+            to_add["vid_thumb_url"], skip_existing=True
+        )
 
         return to_add
 

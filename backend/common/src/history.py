@@ -17,6 +17,7 @@ ItemType = Literal["video", "channel", "playlist"]
 ValueType = Literal["string", "number", "bool", "json", "null", "missing"]
 
 INDEX_NAME = "ta_history"
+VIDEO_THUMB_IMAGE = "vid_thumb_image"
 
 ACTIVE_KEYS: dict[str, str] = {
     "video": "active",
@@ -148,6 +149,7 @@ TRACKED_FIELDS: dict[str, list[FieldSpec]] = {
         _spec("stats.dislike_count"),
         _spec("stats.average_rating"),
         _spec("vid_thumb_url", normalize=_stable_url),
+        _spec(VIDEO_THUMB_IMAGE),
     ],
     "channel": [
         _spec("channel_name"),

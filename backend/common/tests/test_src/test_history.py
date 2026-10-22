@@ -299,3 +299,13 @@ def test_no_time_range_without_cutoffs():
 
 def test_query_without_filters():
     assert HistoryQuery().build_query() == {"match_all": {}}
+
+
+def test_a_thumbnail_image_change_is_tracked(video_doc):
+    old = {**video_doc, "vid_thumb_image": "aaa"}
+    new = {**video_doc, "vid_thumb_image": "bbb"}
+
+    changes = HistoryTracker("video", "vid1").build_changes(old, new)
+
+    assert [i["field"] for i in changes] == ["vid_thumb_image"]
+    assert changes[0]["old_value"] == "aaa"

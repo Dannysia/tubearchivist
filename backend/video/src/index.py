@@ -570,13 +570,14 @@ def index_new_video(youtube_id, video_type=VideoTypeEnum.VIDEOS):
         )
     else:
         video.build_json()
+        if video.json_data:
+            url = video.json_data["vid_thumb_url"]
+            ThumbManager(item_id=youtube_id).download_video_thumb(url=url)
 
     if not video or not video.json_data:
         raise ValueError("failed to get metadata for " + youtube_id)
 
     video.check_subtitles()
-    url = video.json_data["vid_thumb_url"]
-    ThumbManager(item_id=video.youtube_id).download_video_thumb(url=url)
     video.upload_to_es()
 
     return video.json_data
