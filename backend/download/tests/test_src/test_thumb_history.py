@@ -202,16 +202,24 @@ def test_a_failed_refresh_keeps_the_current_thumbnail(cache, monkeypatch):
     assert _cached(cache) == current
 
 
-def test_a_failed_first_refresh_still_writes_the_fallback(cache, monkeypatch):
-    written = []
+def test_a_failed_first_refresh_writes_the_fallback_after_one_fetch(
+    cache, monkeypatch
+):
     monkeypatch.setattr(
         ThumbManager,
-        "download_video_thumb",
-        lambda self, url, skip_existing=False: written.append(url),
+        "get_fallback",
+        lambda self: Image.new("RGB", (1280, 720), "grey"),
     )
+    fetched = []
+    manager = ThumbManager(VIDEO_ID)
+    monkeypatch.setattr(manager, "fetch_bytes", fetched.append)
 
-    assert _refresh(monkeypatch, None) == (None, None)
-    assert len(written) == 1
+    old_new = manager.refresh_video_thumb("https://i.ytimg.com/vi/x/a.jpg")
+
+    assert old_new == (None, None)
+    assert len(fetched) == 1
+    assert Image.open(_cached_path(cache)).size == (1280, 720)
+    assert thumbnails._video_thumb_source(_cached(cache)) is None
 
 
 class _Response:
@@ -240,7 +248,7 @@ def test_a_complete_download_is_returned_as_is():
     assert thumbnails._response_bytes(response, "url") == data
 
 
-def test_overlapping_writes_to_one_thumbnail_both_land(tmp_path, monkeypatch):
+def test_overlapping_writes_leave_no_partial_file(tmp_path, monkeypatch):
     path = str(tmp_path / f"{VIDEO_ID}.jpg")
     real_replace = os.replace
     overlapped = []

@@ -503,7 +503,6 @@ class HistoryQuery:
 def field_versions(
     item_id: str, field: str, first_seen: int | None = None
 ) -> list[dict]:
-    """every value the field has had, newest first"""
     changes = HistoryQuery(item_id=item_id, fields=[field]).get_all_changes()
     if not changes:
         return []

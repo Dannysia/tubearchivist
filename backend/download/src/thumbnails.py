@@ -143,15 +143,10 @@ class ThumbManagerBase:
 
     def download_raw(self, url):
         """download thumbnail for video"""
-        return self.fetch(url) or self.get_fallback()
-
-    def fetch(self, url) -> Image.Image | None:
-        """None when the image could not be downloaded"""
         data = self.fetch_bytes(url)
-        return Image.open(io.BytesIO(data)) if data else None
+        return Image.open(io.BytesIO(data)) if data else self.get_fallback()
 
     def fetch_bytes(self, url) -> bytes | None:
-        """None when the image could not be downloaded"""
         if not url:
             return None
 
@@ -239,21 +234,20 @@ class ThumbManager(ThumbManagerBase):
 
         source = self.fetch_bytes(url)
         if source is None:
-            _crop_video_thumb(self.get_fallback()).save(thumb_path)
+            self._write_fallback_thumb(thumb_path)
             return
 
         archive_image(source)
         _write_atomic(thumb_path, _video_thumb_bytes(source))
 
     def refresh_video_thumb(self, url) -> tuple[str | None, str | None]:
-        """(old, new) hashes of the original images, None when unknown"""
         thumb_path = self.vid_thumb_path(absolute=True, create_folder=True)
         old_bytes = _read_file(thumb_path)
         old_source = _video_thumb_source(old_bytes)
         source = self.fetch_bytes(url)
         if source is None:
             if not old_bytes:
-                self.download_video_thumb(url)
+                self._write_fallback_thumb(thumb_path)
 
             return old_source, old_source
 
@@ -262,6 +256,9 @@ class ThumbManager(ThumbManagerBase):
             _write_atomic(thumb_path, _video_thumb_bytes(source))
 
         return old_source or new_source, new_source
+
+    def _write_fallback_thumb(self, thumb_path: str) -> None:
+        _crop_video_thumb(self.get_fallback()).save(thumb_path)
 
     def vid_thumb_path(self, absolute=False, create_folder=False):
         """build expected path for video thumbnail from youtube_id"""

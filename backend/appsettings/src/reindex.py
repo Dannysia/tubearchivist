@@ -88,7 +88,6 @@ class ReindexPopulate(ReindexBase):
         self.recent_days = self.RECENT_DAYS_DEFAULT
 
     def get_config(self) -> None:
-        """read days and recent_days from the check_reindex task"""
         try:
             task = CustomPeriodicTask.objects.get(name="check_reindex")
         except CustomPeriodicTask.DoesNotExist:
