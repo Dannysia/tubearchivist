@@ -101,7 +101,7 @@ class ScheduleBuilder:
 
 class ScheduleValidator:
     CONFIG = {
-        "check_reindex": ["days"],
+        "check_reindex": ["days", "recent_days"],
         "run_backup": ["rotate"],
     }
 
@@ -131,3 +131,11 @@ class ScheduleValidator:
         for key in schedule_config:
             if key not in config_keys:
                 raise ValueError(f"invalid config key for task '{task_name}'")
+
+        if "recent_days" in schedule_config:
+            self._validate_recent_days(schedule_config["recent_days"])
+
+    @staticmethod
+    def _validate_recent_days(value) -> None:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError("recent_days must be a whole number, 0 or more")

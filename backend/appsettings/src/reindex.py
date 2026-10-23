@@ -63,7 +63,6 @@ class ReindexBase:
     }
 
     MULTIPLY = 1.2
-    DAYS3 = 60 * 60 * 24 * 3
 
     def __init__(self):
         self.config = AppConfig().config
@@ -81,13 +80,15 @@ class ReindexPopulate(ReindexBase):
     """add outdated and recent documents to reindex queue"""
 
     INTERVAL_DEFAIULT: int = 90
+    RECENT_DAYS_DEFAULT: int = 7
 
     def __init__(self):
         super().__init__()
         self.interval = self.INTERVAL_DEFAIULT
+        self.recent_days = self.RECENT_DAYS_DEFAULT
 
-    def get_interval(self) -> None:
-        """get reindex days interval from task"""
+    def get_config(self) -> None:
+        """read days and recent_days from the check_reindex task"""
         try:
             task = CustomPeriodicTask.objects.get(name="check_reindex")
         except CustomPeriodicTask.DoesNotExist:
@@ -97,9 +98,16 @@ class ReindexPopulate(ReindexBase):
         if task_config.get("days"):
             self.interval = task_config.get("days")
 
+        if task_config.get("recent_days") is not None:
+            self.recent_days = task_config["recent_days"]
+
     def add_recent(self) -> None:
-        """add recent videos to refresh"""
-        gte = datetime.fromtimestamp(self.now - self.DAYS3).date().isoformat()
+        """add videos published in the last recent_days to refresh"""
+        if not self.recent_days:
+            return
+
+        since = self.now - self.recent_days * 24 * 60 * 60
+        gte = datetime.fromtimestamp(since).date().isoformat()
         must_list = [
             {"term": {"active": {"value": True}}},
             {"range": {"published": {"gte": gte}}},

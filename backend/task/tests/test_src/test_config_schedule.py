@@ -131,3 +131,18 @@ def test_api_kill_defaults_to_api_stop():
             continue
 
         assert "api_kill" not in config, f"{name} should not need to opt out"
+
+
+@pytest.mark.parametrize("value", [0, 7, 30])
+def test_config_accepts_recent_days(value):
+    ScheduleValidator().validate_config(
+        "check_reindex", {"recent_days": value}
+    )
+
+
+@pytest.mark.parametrize("value", [-1, "7", 1.5, True, None])
+def test_config_rejects_bad_recent_days(value):
+    with pytest.raises(ValueError, match="recent_days"):
+        ScheduleValidator().validate_config(
+            "check_reindex", {"recent_days": value}
+        )

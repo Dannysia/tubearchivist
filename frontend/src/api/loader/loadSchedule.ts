@@ -7,6 +7,7 @@ type ScheduleType = {
   last_run_at: string;
   config: {
     days?: number;
+    recent_days?: number;
     rotate?: number;
   };
 };

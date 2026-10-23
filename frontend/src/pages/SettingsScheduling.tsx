@@ -43,6 +43,8 @@ const getGroupedSchedule = (
   };
 };
 
+const RECENT_DAYS_DEFAULT = 7;
+
 const SettingsScheduling = () => {
   const [refresh, setRefresh] = useState(false);
 
@@ -54,6 +56,8 @@ const SettingsScheduling = () => {
   const [downloadPending, setDownloadPending] = useState<number | undefined>();
   const [checkReindex, setCheckReindex] = useState<number | undefined>();
   const [checkReindexDays, setCheckReindexDays] = useState<number | undefined>();
+  const [checkReindexRecentDays, setCheckReindexRecentDays] = useState<number | undefined>();
+  const [checkReindexRecentError, setCheckReindexRecentError] = useState<string | null>(null);
   const [thumbnailCheck, setThumbnailCheck] = useState<number | undefined>();
   const [zipBackup, setZipBackup] = useState<number | undefined>();
   const [zipBackupDays, setZipBackupDays] = useState<number | undefined>();
@@ -92,6 +96,7 @@ const SettingsScheduling = () => {
         setDownloadPending(Number(downloadPendingSchedule?.schedule) || undefined);
         setCheckReindex(Number(checkReindexSchedule?.schedule) || undefined);
         setCheckReindexDays(checkReindexSchedule?.config?.days || 0);
+        setCheckReindexRecentDays(checkReindexSchedule?.config?.recent_days ?? RECENT_DAYS_DEFAULT);
         setThumbnailCheck(Number(thumbnailCheckSchedule?.schedule) || undefined);
         setZipBackup(Number(runBackup?.schedule) || undefined);
         setZipBackupDays(runBackup?.config?.rotate || 0);
@@ -361,6 +366,47 @@ const SettingsScheduling = () => {
                 setRefresh(true);
               }}
             />
+          </div>
+          <div className="settings-item">
+            <p>
+              Current refresh of recent videos, days after publish:{' '}
+              <span className="settings-current">
+                {checkReindexSchedule?.config?.recent_days ?? `${RECENT_DAYS_DEFAULT} (default)`}
+              </span>
+            </p>
+            <p>Refresh every run for x days after publish, 0 to disable:</p>
+
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={checkReindexRecentDays ?? ''}
+              onChange={e => {
+                setCheckReindexRecentDays(Number(e.currentTarget.value));
+              }}
+            />
+            <Button
+              label="Save"
+              onClick={async () => {
+                try {
+                  await createTaskSchedule('check_reindex', {
+                    config: {
+                      recent_days: checkReindexRecentDays,
+                    },
+                  });
+                  setCheckReindexRecentError('');
+                } catch (error) {
+                  const apiError = error as ApiError;
+                  if (apiError.status && apiError.message) {
+                    setCheckReindexRecentError(`Error ${apiError.status}: ${apiError.message}`);
+                  } else {
+                    setCheckReindexRecentError('An unexpected error occurred.');
+                  }
+                }
+                setRefresh(true);
+              }}
+            />
+            {checkReindexRecentError && <p className="danger-zone">{checkReindexRecentError}</p>}
           </div>
         </div>
 

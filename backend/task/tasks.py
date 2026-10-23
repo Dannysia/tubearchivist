@@ -255,7 +255,7 @@ def check_reindex(self, data=False, extract_videos=False):
         populate = ReindexPopulate()
         print(f"[task][{self.name}] reindex outdated documents")
         self.send_progress(["Add recent documents to the reindex Queue."])
-        populate.get_interval()
+        populate.get_config()
         populate.add_recent()
         self.send_progress(["Add outdated documents to the reindex Queue."])
         populate.add_outdated()

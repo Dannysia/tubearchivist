@@ -14,6 +14,7 @@ type ScheduleConfigType = {
   schedule?: string;
   config?: {
     days?: number;
+    recent_days?: number;
     rotate?: number;
   };
 };
