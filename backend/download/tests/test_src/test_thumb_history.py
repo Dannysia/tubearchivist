@@ -5,18 +5,15 @@ import pytest
 from common.src.env_settings import EnvironmentSettings
 from download.src import thumbnails
 from download.src.thumbnails import ThumbManager, ThumbManagerBase
-from PIL import Image, ImageDraw
+from PIL import Image
 
 VIDEO_ID = "abc123xyz00"
 
 
-def _picture(color, quality=75, mark=None):
-    img = Image.new("RGB", (1280, 720), color)
-    if mark:
-        ImageDraw.Draw(img).rectangle(mark, fill="white")
+def _source(color, image_format="JPEG", size=(1280, 720)):
     buffer = io.BytesIO()
-    img.save(buffer, format="JPEG", quality=quality)
-    return Image.open(io.BytesIO(buffer.getvalue()))
+    Image.new("RGB", size, color).save(buffer, format=image_format)
+    return buffer.getvalue()
 
 
 @pytest.fixture(name="cache")
@@ -29,15 +26,33 @@ def fixture_cache(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _refresh(monkeypatch, img):
+def _manager(monkeypatch, source):
     manager = ThumbManager(VIDEO_ID)
-    monkeypatch.setattr(manager, "fetch", lambda url: img)
+    monkeypatch.setattr(manager, "fetch_bytes", lambda url: source)
+    return manager
+
+
+def _refresh(monkeypatch, source):
+    manager = _manager(monkeypatch, source)
     return manager.refresh_video_thumb("https://i.ytimg.com/vi/x/maxres.jpg")
 
 
+def _download(monkeypatch, source):
+    manager = _manager(monkeypatch, source)
+    manager.download_video_thumb("https://i.ytimg.com/vi/x/maxres.jpg")
+
+
+def _cached_path(cache):
+    return cache / "videos" / "a" / f"{VIDEO_ID}.jpg"
+
+
 def _cached(cache):
-    with open(cache / "videos" / "a" / f"{VIDEO_ID}.jpg", "rb") as handle:
-        return handle.read()
+    return _cached_path(cache).read_bytes()
+
+
+def _write_cached(cache, data):
+    _cached_path(cache).parent.mkdir(parents=True, exist_ok=True)
+    _cached_path(cache).write_bytes(data)
 
 
 def _archived(cache):
@@ -48,82 +63,140 @@ def _archived(cache):
     return sorted(p.name for p in folder.rglob("*.jpg"))
 
 
-def test_a_first_thumbnail_is_saved_without_history(cache, monkeypatch):
-    old, new = _refresh(monkeypatch, _picture("red"))
+def _original(digest):
+    with open(
+        thumbnails.archived_image_path(digest, absolute=True), "rb"
+    ) as f:
+        return f.read()
 
-    assert old == new
-    assert thumbnails.image_hash(_cached(cache)) == new
+
+def test_a_downloaded_thumbnail_keeps_the_original(cache, monkeypatch):
+    red = _source("red")
+
+    _download(monkeypatch, red)
+
+    digest = thumbnails.image_hash(red)
+    assert _original(digest) == red
+    assert thumbnails._video_thumb_source(_cached(cache)) == digest
+
+
+def test_a_failed_download_writes_the_fallback_without_an_original(
+    cache, monkeypatch
+):
+    _download(monkeypatch, None)
+
+    assert Image.open(_cached_path(cache)).size[0] > 0
+    assert thumbnails._video_thumb_source(_cached(cache)) is None
     assert _archived(cache) == []
 
 
-def test_an_unchanged_thumbnail_records_nothing(cache, monkeypatch):
-    _refresh(monkeypatch, _picture("red"))
+def test_the_cached_thumbnail_is_a_cropped_jpeg_of_a_webp_original(
+    cache, monkeypatch
+):
+    webp = _source("red", image_format="WEBP", size=(480, 360))
 
-    old, new = _refresh(monkeypatch, _picture("red"))
+    _download(monkeypatch, webp)
+
+    cached = Image.open(_cached_path(cache))
+    assert cached.format == "JPEG"
+    assert cached.size == (480, 270)
+    assert _original(thumbnails.image_hash(webp)) == webp
+
+
+def test_a_first_refresh_saves_the_thumbnail_without_history(
+    cache, monkeypatch
+):
+    red = _source("red")
+
+    old, new = _refresh(monkeypatch, red)
+
+    assert old == new == thumbnails.image_hash(red)
+    assert _original(new) == red
+
+
+def test_an_unchanged_original_records_nothing(cache, monkeypatch):
+    _download(monkeypatch, _source("red"))
+
+    old, new = _refresh(monkeypatch, _source("red"))
 
     assert old == new
-    assert _archived(cache) == []
+    assert _archived(cache) == [f"{new}.jpg"]
 
 
-def test_a_new_thumbnail_archives_the_old_one(cache, monkeypatch):
-    _refresh(monkeypatch, _picture("red"))
-    red = _cached(cache)
+def test_an_unchanged_original_is_not_rewritten(cache, monkeypatch):
+    _download(monkeypatch, _source("red"))
+    written = []
+    monkeypatch.setattr(
+        thumbnails, "_write_atomic", lambda path, data: written.append(path)
+    )
 
-    old, new = _refresh(monkeypatch, _picture("blue"))
+    _refresh(monkeypatch, _source("red"))
+
+    assert written == []
+
+
+def test_a_new_original_is_a_change_and_both_are_kept(cache, monkeypatch):
+    red, blue = _source("red"), _source("blue")
+    _download(monkeypatch, red)
+
+    old, new = _refresh(monkeypatch, blue)
 
     assert old == thumbnails.image_hash(red)
-    assert new == thumbnails.image_hash(_cached(cache))
-    assert old != new
-    path = thumbnails.archived_image_path(old, absolute=True)
-    with open(path, "rb") as handle:
-        assert handle.read() == red
+    assert new == thumbnails.image_hash(blue)
+    assert _original(old) == red
+    assert _original(new) == blue
+    assert thumbnails._video_thumb_source(_cached(cache)) == new
 
 
 def test_a_thumbnail_flipping_back_and_forth_is_stored_once_each(
     cache, monkeypatch
 ):
-    _refresh(monkeypatch, _picture("red"))
+    _download(monkeypatch, _source("red"))
     for _ in range(10):
-        _refresh(monkeypatch, _picture("blue"))
-        _refresh(monkeypatch, _picture("red"))
+        _refresh(monkeypatch, _source("blue"))
+        _refresh(monkeypatch, _source("red"))
 
     assert len(_archived(cache)) == 2
 
 
-def test_a_reencode_of_the_same_picture_is_not_a_change(cache, monkeypatch):
-    _refresh(
-        monkeypatch, _picture("red", quality=95, mark=(100, 100, 400, 300))
-    )
+def test_a_missing_original_is_stored_again(cache, monkeypatch):
+    red = _source("red")
+    _download(monkeypatch, red)
+    os.remove(thumbnails.archived_image_path(thumbnails.image_hash(red), True))
 
-    old, new = _refresh(
-        monkeypatch, _picture("red", quality=60, mark=(100, 100, 400, 300))
-    )
+    _refresh(monkeypatch, red)
 
-    assert old == new
-    assert _archived(cache) == []
+    assert _original(thumbnails.image_hash(red)) == red
 
 
-def test_a_small_edit_to_the_picture_is_a_change(cache, monkeypatch):
-    _refresh(monkeypatch, _picture("red"))
+@pytest.mark.parametrize(
+    "cached",
+    [b"", b"not a jpeg at all", _source("blue")],
+    ids=["empty", "corrupt", "without original"],
+)
+def test_an_unknown_cached_thumbnail_starts_history_fresh(
+    cache, monkeypatch, cached
+):
+    _write_cached(cache, cached)
+    red = _source("red")
 
-    old, new = _refresh(monkeypatch, _picture("red", mark=(0, 0, 640, 360)))
+    old, new = _refresh(monkeypatch, red)
 
-    assert old != new
-    assert len(_archived(cache)) == 1
+    assert old == new == thumbnails.image_hash(red)
+    assert thumbnails._video_thumb_source(_cached(cache)) == new
 
 
-def test_a_failed_download_keeps_the_current_thumbnail(cache, monkeypatch):
-    _refresh(monkeypatch, _picture("red"))
-    red = _cached(cache)
+def test_a_failed_refresh_keeps_the_current_thumbnail(cache, monkeypatch):
+    _download(monkeypatch, _source("red"))
+    current = _cached(cache)
 
     old, new = _refresh(monkeypatch, None)
 
-    assert old == new == thumbnails.image_hash(red)
-    assert _cached(cache) == red
-    assert _archived(cache) == []
+    assert old == new == thumbnails.image_hash(_source("red"))
+    assert _cached(cache) == current
 
 
-def test_a_failed_first_download_still_writes_the_fallback(cache, monkeypatch):
+def test_a_failed_first_refresh_still_writes_the_fallback(cache, monkeypatch):
     written = []
     monkeypatch.setattr(
         ThumbManager,
@@ -141,54 +214,24 @@ class _Response:
         self.headers = headers
 
 
-def _jpeg():
-    buffer = io.BytesIO()
-    Image.new("RGB", (16, 9), "red").save(buffer, format="JPEG")
-    return buffer.getvalue()
-
-
 def test_a_truncated_download_is_rejected():
-    data = _jpeg()
+    data = _source("red", size=(16, 9))
     response = _Response(data[:-10], {"Content-Length": str(len(data))})
 
-    assert thumbnails._open_image(response, "url") is None
+    assert thumbnails._response_bytes(response, "url") is None
 
 
-def test_a_complete_download_opens():
-    data = _jpeg()
+def test_a_download_that_is_not_an_image_is_rejected():
+    response = _Response(b"<html>", {})
+
+    assert thumbnails._response_bytes(response, "url") is None
+
+
+def test_a_complete_download_is_returned_as_is():
+    data = _source("red", size=(16, 9))
     response = _Response(data, {"Content-Length": str(len(data))})
 
-    assert thumbnails._open_image(response, "url").size == (16, 9)
-
-
-def _write_cached(cache, data):
-    folder = cache / "videos" / "a"
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / f"{VIDEO_ID}.jpg").write_bytes(data)
-
-
-@pytest.mark.parametrize("broken", [b"", b"not a jpeg at all"])
-def test_a_broken_cached_thumbnail_is_replaced_without_history(
-    cache, monkeypatch, broken
-):
-    _write_cached(cache, broken)
-
-    old, new = _refresh(monkeypatch, _picture("red"))
-
-    assert old == new == thumbnails.image_hash(_cached(cache))
-    assert _archived(cache) == []
-
-
-def test_an_unchanged_thumbnail_is_not_rewritten(cache, monkeypatch):
-    _refresh(monkeypatch, _picture("red"))
-    written = []
-    monkeypatch.setattr(
-        thumbnails, "_write_atomic", lambda path, data: written.append(path)
-    )
-
-    _refresh(monkeypatch, _picture("red"))
-
-    assert written == []
+    assert thumbnails._response_bytes(response, "url") == data
 
 
 def test_overlapping_writes_to_one_thumbnail_both_land(tmp_path, monkeypatch):

@@ -1,5 +1,6 @@
 # flake8: noqa: E402
 
+import io
 import os
 from types import SimpleNamespace
 
@@ -8,6 +9,7 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 django.setup()
 
+from common.src.env_settings import EnvironmentSettings
 from download.src import queue
 from download.src.queue import PendingList
 from download.src.thumbnails import ThumbManagerBase
@@ -18,10 +20,11 @@ META = {"id": VIDEO_ID, "title": "t", "channel": "c", "channel_id": "UC1"}
 
 
 def _extract(monkeypatch, cache, fetched):
+    monkeypatch.setattr(EnvironmentSettings, "CACHE_DIR", str(cache))
     monkeypatch.setattr(ThumbManagerBase, "CACHE_DIR", str(cache))
     monkeypatch.setattr(ThumbManagerBase, "VIDEO_DIR", str(cache / "videos"))
     monkeypatch.setattr(
-        ThumbManagerBase, "download_raw", lambda self, url: fetched(url)
+        ThumbManagerBase, "fetch_bytes", lambda self, url: fetched(url)
     )
     monkeypatch.setattr(
         queue,
@@ -55,6 +58,9 @@ def test_queueing_an_indexed_video_keeps_its_cached_thumbnail(
 
 
 def test_queueing_a_new_video_downloads_its_thumbnail(tmp_path, monkeypatch):
-    _extract(monkeypatch, tmp_path, lambda url: Image.new("RGB", (1280, 720)))
+    buffer = io.BytesIO()
+    Image.new("RGB", (1280, 720)).save(buffer, format="JPEG")
+
+    _extract(monkeypatch, tmp_path, lambda url: buffer.getvalue())
 
     assert (tmp_path / "videos" / "a" / f"{VIDEO_ID}.jpg").exists()

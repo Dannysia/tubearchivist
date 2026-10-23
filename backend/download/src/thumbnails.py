@@ -7,6 +7,7 @@ functionality:
 import hashlib
 import io
 import os
+import re
 import tempfile
 from time import sleep
 
@@ -18,9 +19,6 @@ from mutagen.mp4 import MP4, MP4Cover
 from PIL import Image, ImageFile, UnidentifiedImageError
 
 ImageFile.LOAD_TRUNCATED_IMAGES = True
-
-
-SAME_IMAGE_MAX_MEAN_DIFF = 2.0
 
 
 def image_hash(data: bytes) -> str:
@@ -45,20 +43,18 @@ def archive_image(data: bytes) -> str:
     return digest
 
 
-def _open_image(response: requests.Response, url: str) -> Image.Image | None:
+def _response_bytes(response: requests.Response, url: str) -> bytes | None:
     expected = response.headers.get("Content-Length")
     encoded = response.headers.get("Content-Encoding")
     if expected and not encoded and int(expected) != len(response.content):
         print(f"thumbnail truncated: {url}")
         return None
 
-    try:
-        img = Image.open(io.BytesIO(response.content))
-    except (UnidentifiedImageError, OSError):
+    if not _is_image(response.content):
         print(f"failed to open thumbnail: {url}")
         return None
 
-    return img if isinstance(img, Image.Image) else None
+    return response.content
 
 
 def _crop_video_thumb(img: Image.Image) -> Image.Image:
@@ -71,10 +67,29 @@ def _crop_video_thumb(img: Image.Image) -> Image.Image:
     return img.convert("RGB")
 
 
-def _jpeg_bytes(img: Image.Image) -> bytes:
+def _video_thumb_bytes(source: bytes) -> bytes:
+    with Image.open(io.BytesIO(source)) as img:
+        cropped = _crop_video_thumb(img)
+
     buffer = io.BytesIO()
-    img.save(buffer, format="JPEG")
+    cropped.save(buffer, format="JPEG", comment=image_hash(source))
     return buffer.getvalue()
+
+
+def _video_thumb_source(data: bytes | None) -> str | None:
+    if not data:
+        return None
+
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            comment = img.info.get("comment", b"")
+    except (UnidentifiedImageError, OSError):
+        return None
+
+    if isinstance(comment, bytes):
+        comment = comment.decode("ascii", errors="replace")
+
+    return comment if re.fullmatch(r"[0-9a-f]{64}", comment) else None
 
 
 def _is_image(data: bytes) -> bool:
@@ -85,18 +100,6 @@ def _is_image(data: bytes) -> bool:
         return False
 
     return True
-
-
-def _looks_same(first: bytes, second: bytes) -> bool:
-    small = (32, 18)
-    with Image.open(io.BytesIO(first)) as img_a, Image.open(
-        io.BytesIO(second)
-    ) as img_b:
-        pixels_a = img_a.convert("L").resize(small).tobytes()
-        pixels_b = img_b.convert("L").resize(small).tobytes()
-
-    diff = sum(abs(a - b) for a, b in zip(pixels_a, pixels_b))
-    return diff / len(pixels_a) <= SAME_IMAGE_MAX_MEAN_DIFF
 
 
 def _read_file(path: str) -> bytes | None:
@@ -144,6 +147,11 @@ class ThumbManagerBase:
 
     def fetch(self, url) -> Image.Image | None:
         """None when the image could not be downloaded"""
+        data = self.fetch_bytes(url)
+        return Image.open(io.BytesIO(data)) if data else None
+
+    def fetch_bytes(self, url) -> bytes | None:
+        """None when the image could not be downloaded"""
         if not url:
             return None
 
@@ -159,7 +167,7 @@ class ThumbManagerBase:
                 continue
 
             if response.ok:
-                return _open_image(response, url)
+                return _response_bytes(response, url)
 
             if response.status_code == 404:
                 return None
@@ -225,42 +233,35 @@ class ThumbManager(ThumbManagerBase):
 
     def download_video_thumb(self, url, skip_existing=False):
         """pass url for video thumbnail"""
-        folder_path = os.path.join(self.VIDEO_DIR, self.item_id[0].lower())
-        thumb_path = self.vid_thumb_path(absolute=True)
-
+        thumb_path = self.vid_thumb_path(absolute=True, create_folder=True)
         if skip_existing and os.path.exists(thumb_path):
             return
 
-        os.makedirs(folder_path, exist_ok=True)
-        _crop_video_thumb(self.download_raw(url)).save(thumb_path)
+        source = self.fetch_bytes(url)
+        if source is None:
+            _crop_video_thumb(self.get_fallback()).save(thumb_path)
+            return
+
+        archive_image(source)
+        _write_atomic(thumb_path, _video_thumb_bytes(source))
 
     def refresh_video_thumb(self, url) -> tuple[str | None, str | None]:
-        """(old, new) image hashes, archiving the old image if it changed"""
+        """(old, new) hashes of the original images, None when unknown"""
         thumb_path = self.vid_thumb_path(absolute=True, create_folder=True)
         old_bytes = _read_file(thumb_path)
-        old_hash = image_hash(old_bytes) if old_bytes else None
-        img = self.fetch(url)
-        if img is None:
+        old_source = _video_thumb_source(old_bytes)
+        source = self.fetch_bytes(url)
+        if source is None:
             if not old_bytes:
                 self.download_video_thumb(url)
 
-            return old_hash, old_hash
+            return old_source, old_source
 
-        new_bytes = _jpeg_bytes(_crop_video_thumb(img))
-        new_hash = image_hash(new_bytes)
-        if old_hash == new_hash:
-            return new_hash, new_hash
+        new_source = archive_image(source)
+        if new_source != old_source:
+            _write_atomic(thumb_path, _video_thumb_bytes(source))
 
-        changed = (
-            old_bytes
-            and _is_image(old_bytes)
-            and not _looks_same(old_bytes, new_bytes)
-        )
-        if changed:
-            archive_image(old_bytes)
-
-        _write_atomic(thumb_path, new_bytes)
-        return (old_hash if changed else new_hash), new_hash
+        return old_source or new_source, new_source
 
     def vid_thumb_path(self, absolute=False, create_folder=False):
         """build expected path for video thumbnail from youtube_id"""
