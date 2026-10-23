@@ -83,6 +83,12 @@ def test_a_downloaded_thumbnail_keeps_the_original(cache, monkeypatch):
 def test_a_failed_download_writes_the_fallback_without_an_original(
     cache, monkeypatch
 ):
+    monkeypatch.setattr(
+        ThumbManager,
+        "get_fallback",
+        lambda self: Image.new("RGB", (1280, 720), "grey"),
+    )
+
     _download(monkeypatch, None)
 
     assert Image.open(_cached_path(cache)).size[0] > 0
