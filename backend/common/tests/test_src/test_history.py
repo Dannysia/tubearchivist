@@ -9,6 +9,7 @@ from common.src.history import (
     decode_value,
     encode_value,
     field_versions,
+    numeric_series,
     track_changes,
     track_deactivation,
 )
@@ -368,3 +369,35 @@ def test_a_thumbnail_image_change_is_tracked(video_doc):
 
     assert [i["field"] for i in changes] == ["vid_thumb_image"]
     assert changes[0]["old_value"] == "aaa"
+
+
+def test_numeric_series_starts_with_the_value_at_download():
+    rows = [
+        {"timestamp": 200, "old_num": 10.0, "new_num": 25.0},
+        {"timestamp": 300, "old_num": 25.0, "new_num": 40.0},
+    ]
+    with mock.patch.object(
+        HistoryQuery, "get_field_series", return_value=rows
+    ):
+        series = numeric_series("vid1", "stats.view_count", first_seen=100)
+
+    assert series == [
+        {"timestamp": 100, "value": 10.0},
+        {"timestamp": 200, "value": 25.0},
+        {"timestamp": 300, "value": 40.0},
+    ]
+
+
+def test_numeric_series_skips_an_unknown_starting_value():
+    rows = [{"timestamp": 200, "new_num": 25.0}]
+    with mock.patch.object(
+        HistoryQuery, "get_field_series", return_value=rows
+    ):
+        series = numeric_series("vid1", "stats.view_count", first_seen=100)
+
+    assert series == [{"timestamp": 200, "value": 25.0}]
+
+
+def test_numeric_series_is_empty_without_history():
+    with mock.patch.object(HistoryQuery, "get_field_series", return_value=[]):
+        assert numeric_series("vid1", "stats.view_count", first_seen=100) == []

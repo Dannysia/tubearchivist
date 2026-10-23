@@ -526,3 +526,24 @@ def _version(value: Any, first_seen: int | None, replaced: int | None):
         "first_seen": first_seen,
         "replaced": replaced,
     }
+
+
+def numeric_series(
+    item_id: str, field: str, first_seen: int | None = None
+) -> list[dict]:
+    """every recorded value of a numeric field, oldest first"""
+    rows = HistoryQuery(item_id=item_id).get_field_series(field)
+    if not rows:
+        return []
+
+    series = []
+    if first_seen and rows[0].get("old_num") is not None:
+        if first_seen < rows[0]["timestamp"]:
+            series.append(
+                {"timestamp": first_seen, "value": rows[0]["old_num"]}
+            )
+
+    for row in rows:
+        series.append({"timestamp": row["timestamp"], "value": row["new_num"]})
+
+    return series

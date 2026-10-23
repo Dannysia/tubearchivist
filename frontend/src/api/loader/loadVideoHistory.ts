@@ -7,10 +7,17 @@ export type HistoryVersionType = {
   replaced: number | null;
 };
 
+export type HistoryPointType = {
+  timestamp: number;
+  value: number;
+};
+
 export type VideoHistoryType = {
   title: HistoryVersionType[];
   description: HistoryVersionType[];
   thumbnail: HistoryVersionType[];
+  views: HistoryPointType[];
+  likes: HistoryPointType[];
 };
 
 const loadVideoHistory = async (youtubeVideoId: string) => {

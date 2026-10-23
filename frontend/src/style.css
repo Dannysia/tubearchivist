@@ -1892,3 +1892,97 @@ video:-webkit-full-screen {
   max-width: 320px;
   width: 100%;
 }
+
+.stat-history {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+.stat-history-plot {
+  position: relative;
+  width: 100%;
+}
+
+.stat-history-plot svg {
+  display: block;
+}
+
+.stat-history-plot svg text,
+.stat-history-tooltip {
+  font-family: Sen-Regular, sans-serif;
+}
+
+.stat-history-plot svg:focus-visible {
+  outline: 1px solid var(--accent-font-light);
+}
+
+.stat-history-grid,
+.stat-history-crosshair {
+  stroke: var(--main-font);
+  stroke-width: 1;
+  opacity: 0.15;
+}
+
+.stat-history-crosshair {
+  opacity: 0.5;
+}
+
+.stat-history-axis {
+  fill: var(--main-font);
+  opacity: 0.7;
+  font-size: 12px;
+}
+
+.stat-history-end {
+  fill: var(--main-font);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.stat-history-line {
+  fill: none;
+  stroke: var(--chart-series, var(--accent-font-light));
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.stat-history-marker {
+  fill: var(--chart-series, var(--accent-font-light));
+  stroke: var(--highlight-bg);
+  stroke-width: 2;
+}
+
+.stat-history-tooltip {
+  position: absolute;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 10px;
+  background-color: var(--main-bg);
+  border: 1px solid var(--accent-font-dark);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.stat-history-tooltip strong {
+  color: var(--main-font);
+}
+
+.stat-history-tooltip span {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.stat-history-table {
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-history-table th,
+.stat-history-table td {
+  padding: 2px 16px 2px 0;
+  text-align: left;
+}

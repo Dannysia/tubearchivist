@@ -45,6 +45,7 @@ import getApiUrl from '../configuration/getApiUrl';
 import loadVideoNav, { VideoNavResponseType } from '../api/loader/loadVideoNav';
 import loadVideoHistory, { VideoHistoryType } from '../api/loader/loadVideoHistory';
 import FieldHistory from '../components/FieldHistory';
+import StatHistoryChart from '../components/StatHistoryChart';
 import useIsAdmin from '../functions/useIsAdmin';
 import ToggleConfig from '../components/ToggleConfig';
 import { PlaylistType } from '../api/loader/loadPlaylistById';
@@ -133,6 +134,7 @@ const Video = () => {
   );
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
   const [videoHistory, setVideoHistory] = useState<VideoHistoryType>();
+  const [showStatHistory, setShowStatHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showRedownloadConfirm, setShowRedownloadConfirm] = useState(false);
   const [redownloadQueued, setRedownloadQueued] = useState(false);
@@ -175,6 +177,7 @@ const Video = () => {
       if (refreshVideoList || videoId !== videoResponseData?.youtube_id) {
         if (videoId !== videoResponseData?.youtube_id) {
           setVideoHistory(undefined);
+          setShowStatHistory(false);
         }
 
         const videoByIdResponse = await loadVideoById(videoId);
@@ -405,6 +408,13 @@ const Video = () => {
                   {formatNumbers(video.stats.dislike_count)}
                 </p>
               )}
+              {((videoHistory?.views.length ?? 0) > 1 || (videoHistory?.likes.length ?? 0) > 1) && (
+                <Button
+                  className="field-history-toggle"
+                  label={showStatHistory ? 'Hide view & like history' : 'View & like history'}
+                  onClick={() => setShowStatHistory(!showStatHistory)}
+                />
+              )}
               {video?.stats && starRating && (
                 <div className="rating-stars">
                   {starRating?.map?.((star, index) => {
@@ -423,6 +433,16 @@ const Video = () => {
             </div>
           </div>
         </div>
+        {showStatHistory && videoHistory && (
+          <div className="description-box stat-history">
+            {videoHistory.views.length > 1 && (
+              <StatHistoryChart title="Views" points={videoHistory.views} />
+            )}
+            {videoHistory.likes.length > 1 && (
+              <StatHistoryChart title="Likes" points={videoHistory.likes} />
+            )}
+          </div>
+        )}
         <div className="info-box info-box-2">
           <div className="info-box-item">
             <div className="button-box">

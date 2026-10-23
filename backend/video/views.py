@@ -5,7 +5,11 @@ import os
 from common.serializers import ErrorResponseSerializer
 from common.src.env_settings import EnvironmentSettings
 from common.src.helper import calc_is_watched
-from common.src.history import VIDEO_THUMB_IMAGE, field_versions
+from common.src.history import (
+    VIDEO_THUMB_IMAGE,
+    field_versions,
+    numeric_series,
+)
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
@@ -406,7 +410,7 @@ class VideoSimilarView(ApiBaseView):
 
 class VideoHistoryView(ApiBaseView):
     """resolves to /api/video/<video-id>/history/
-    GET: every title, description and thumbnail a video has had
+    GET: every title, description, thumbnail, view and like count recorded
     """
 
     @extend_schema(
@@ -431,6 +435,8 @@ class VideoHistoryView(ApiBaseView):
             "title": field_versions(video_id, "title", first_seen),
             "description": field_versions(video_id, "description", first_seen),
             "thumbnail": _thumbnail_versions(video_id, first_seen),
+            "views": numeric_series(video_id, "stats.view_count", first_seen),
+            "likes": numeric_series(video_id, "stats.like_count", first_seen),
         }
 
         return Response(VideoHistorySerializer(history).data)

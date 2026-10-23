@@ -271,9 +271,18 @@ class VideoHistoryImageSerializer(serializers.Serializer):
     replaced = serializers.IntegerField(allow_null=True)
 
 
+class VideoHistoryPointSerializer(serializers.Serializer):
+    """serialize one recorded value of a video stat"""
+
+    timestamp = serializers.IntegerField()
+    value = serializers.FloatField()
+
+
 class VideoHistorySerializer(serializers.Serializer):
-    """serialize the title, description and thumbnail history of a video"""
+    """serialize the metadata history of a video"""
 
     title = VideoHistoryTextSerializer(many=True)
     description = VideoHistoryTextSerializer(many=True)
     thumbnail = VideoHistoryImageSerializer(many=True)
+    views = VideoHistoryPointSerializer(many=True)
+    likes = VideoHistoryPointSerializer(many=True)
