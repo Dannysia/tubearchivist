@@ -42,7 +42,8 @@ ENV VIRTUAL_ENV=/opt/venv \
 
 RUN python -m venv "$VIRTUAL_ENV" \
     && pip install --no-cache-dir --upgrade 'pip>=26.2.2' \
-    && pip install --no-cache-dir -r /requirements.txt
+    && pip install --no-cache-dir -r /requirements.txt \
+    && python -c "import kombu.transport.redis"
 
 # build ffmpeg
 FROM python-base AS ffmpeg-builder
