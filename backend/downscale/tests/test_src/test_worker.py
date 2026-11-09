@@ -105,7 +105,7 @@ def test_claim_skips_invalid_candidates_and_claims_the_next_valid_one():
         "youtube_id": "video-good",
         "title": "good",
         "target_height": 480,
-        "source_url": "/youtube/video-good.mp4",
+        "source_url": "/media/stream/video-good.mp4",
     }
 
 

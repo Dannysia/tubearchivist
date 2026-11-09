@@ -154,14 +154,17 @@ class AppConfig:
             print(response)
 
         self.config = new_config
+        self.post_process_updated(data)
 
         return new_config
 
     def post_process_updated(self, data: dict) -> None:
         """apply hooks for some config keys"""
-        for config_value, updated_value in data:
-            if config_value == "application.enable_snapshot" and updated_value:
-                ElasticSnapshot().setup()
+        snapshot_conf = data.get("application", {}).get("enable_snapshot")
+        if snapshot_conf is True:
+            ElasticSnapshot().setup()
+        elif snapshot_conf is False:
+            ElasticSnapshot().teardown()
 
     @staticmethod
     def _fail_message(message_line):
@@ -262,7 +265,9 @@ class ReleaseVersion:
     def get_remote_version(self) -> None:
         """read version from remote"""
         sleep(randint(0, 60))
-        response = requests.get(self.REMOTE_URL, timeout=20).json()
+        response = requests.get(
+            self.REMOTE_URL, timeout=20, headers=settings.TA_USERAGENT
+        ).json()
         self.remote_version = response["release_version"]
         self.is_breaking = response["breaking_changes"]
 

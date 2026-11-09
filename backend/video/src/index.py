@@ -178,7 +178,12 @@ class YoutubeVideo(YouTubeItem, YoutubeSubtitle):
             # without this yt-dlp aborts when there are no streams
             obs_overwrite = {"ignore_no_formats_error": True}
 
-        self.get_from_youtube(obs_overwrite)
+        try:
+            self.get_from_youtube(obs_overwrite)
+        except Exception:  # pylint: disable=broad-except
+            if not youtube_meta_overwrite:
+                raise
+
         if not self.youtube_meta and not youtube_meta_overwrite:
             return
 

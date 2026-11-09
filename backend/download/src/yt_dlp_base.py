@@ -16,6 +16,7 @@ from common.src.helper import countdown_sleep, deep_merge
 from common.src.ta_redis import RedisArchivist
 from django.conf import settings
 from download.src.exit_node import clear_budget, rotate_on_bot_block
+from yt_dlp.networking.exceptions import RequestError
 
 
 class YtWrap:
@@ -111,6 +112,25 @@ class YtWrap:
         clear_budget(self.config)
 
         return True, True
+
+    def fetch_text(self, url: str) -> tuple[str | None, str | None]:
+        """fetch a URL as UTF-8 text in memory, returning text and error"""
+        try:
+            with yt_dlp.YoutubeDL(self.obs) as ydl:
+                with ydl.urlopen(url) as response:
+                    text = response.read().decode("utf-8")
+        except (
+            RequestError,
+            cookiejar.LoadError,
+            yt_dlp.utils.DownloadError,
+            UnicodeDecodeError,
+        ) as err:
+            print(f"{url}: failed to fetch text: {err}")
+            return None, str(err)
+
+        self._validate_cookie()
+
+        return text, None
 
     def extract(self, url) -> tuple[dict | None, str | None]:
         """

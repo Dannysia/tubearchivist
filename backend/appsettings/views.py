@@ -1,7 +1,8 @@
 """all app settings API views"""
 
+import mimetypes
 import os
-from urllib.parse import quote
+from pathlib import Path
 
 from appsettings.serializers import (
     AppConfigSerializer,
@@ -33,10 +34,10 @@ from common.serializers import (
     AsyncTaskResponseSerializer,
     ErrorResponseSerializer,
 )
+from common.src.streaming import RangedFileResponse
 from common.src.ta_redis import RedisArchivist
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
 from django.conf import settings
-from django.http import HttpResponse
 from django.utils.http import content_disposition_header
 from download.src.yt_dlp_base import CookieHandler
 from downscale.src.downscale import dispatch_pending_downscales
@@ -585,10 +586,6 @@ class ImportFileMetadataLookupView(ApiBaseView):
         return Response(ArchiveMetadataSerializer(metadata).data)
 
 
-# nginx serves the file from an internal location
-IMPORT_INTERNAL_PREFIX = "/internal/import/"
-
-
 class ImportFileItemView(ApiBaseView):
     """resolves to /api/appsettings/import-file/<filename>/
     GET: download a single file from the import folder
@@ -625,17 +622,15 @@ class ImportFileItemView(ApiBaseView):
             error = ErrorResponseSerializer({"error": message})
             return Response(error.data, status=404)
 
-        clean_name = os.path.basename(file_path)
-        response = HttpResponse()
-        # safe="": no separator may reach the internal uri
-        response["X-Accel-Redirect"] = IMPORT_INTERNAL_PREFIX + quote(
-            clean_name, safe=""
+        content_type, _ = mimetypes.guess_type(file_path)
+        response = RangedFileResponse(
+            request=request,
+            path=Path(file_path),
+            content_type=content_type or "application/octet-stream",
         )
         response["Content-Disposition"] = content_disposition_header(
-            as_attachment=True, filename=clean_name
+            as_attachment=True, filename=os.path.basename(file_path)
         )
-        # nginx sets it from the file it serves
-        del response["Content-Type"]
 
         return response
 

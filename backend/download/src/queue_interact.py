@@ -1,6 +1,6 @@
 """interact with queue items"""
 
-from common.src.es_connect import ElasticWrap, IndexWriteError
+from common.src.es_connect import IndexWriteError
 from common.src.queue_interact import BaseQueueInteract
 
 
@@ -72,23 +72,3 @@ class PendingInteract(BaseQueueInteract):
             self.update(status="pending", auto_start=True, message=None)
         else:
             self.update(status=self.status)
-
-    def get_channel(self):
-        """
-        get channel metadata from queue to not depend on channel to be indexed
-        """
-        data = {
-            "size": 1,
-            "query": {"term": {"channel_id": {"value": self.doc_id}}},
-        }
-        response, _ = ElasticWrap("ta_download/_search").get(data=data)
-        hits = response["hits"]["hits"]
-        if not hits:
-            channel_name = "NA"
-        else:
-            channel_name = hits[0]["_source"].get("channel_name", "NA")
-
-        return {
-            "channel_id": self.doc_id,
-            "channel_name": channel_name,
-        }

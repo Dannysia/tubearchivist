@@ -52,7 +52,7 @@ job travels from `queued` to `pending_review`.
  ┌───────────────────────────┐              ┌──────────────────────────┐
  │ ES: ta_downscale queue    │   claim      │ worker script (WSL or    │
  │ celery: local encoder     │◄─────────────│ native Windows Python)   │
- │ nginx + django API        │   source ───►│                          │
+ │ django API                │   source ───►│                          │
  │                           │◄─── progress │ HandBrakeCLI (nvenc_av1) │
  │ review UI (unchanged)     │◄─── result   │                          │
  └───────────────────────────┘              └──────────────────────────┘

@@ -456,6 +456,7 @@ const VideoPlayer = ({
             width="100%"
             playsInline
             id="video-item"
+            crossOrigin="use-credentials"
           >
             <source
               src={`${getApiUrl()}${videoUrl}#t=${videoSrcProgress}`}

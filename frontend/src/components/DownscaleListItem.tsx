@@ -123,14 +123,14 @@ const DownscaleListItem = ({
             controls
             autoPlay
             width="100%"
-            src={`${getApiUrl()}${preview === 'original' ? job.media_url : job.tmp_file_path}`}
+            src={`${getApiUrl()}${preview === 'original' ? job.media_url : job.new_media_url}`}
           />
         )}
 
         {preview === 'split' && (
           <VideoCompareSlider
             originalSrc={`${getApiUrl()}${job.media_url}`}
-            newSrc={`${getApiUrl()}${job.tmp_file_path}`}
+            newSrc={`${getApiUrl()}${job.new_media_url}`}
           />
         )}
 

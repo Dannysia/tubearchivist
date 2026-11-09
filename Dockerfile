@@ -1,11 +1,11 @@
 # multi stage to build tube archivist
 # build python wheel, download and extract ffmpeg, copy into final image
 
-FROM node:24.14.1-alpine AS npm-builder
+FROM node:24.22.1-alpine AS npm-builder
 COPY frontend/package.json frontend/package-lock.json /
 RUN npm i
 
-FROM node:24.14.1-alpine AS node-builder
+FROM node:24.22.1-alpine AS node-builder
 
 # RUN npm config set registry https://registry.npmjs.org/
 
@@ -17,18 +17,35 @@ RUN npm run build:deploy
 
 WORKDIR /
 
-# First stage to build python wheel
-FROM python:3.13.11-slim-trixie AS builder
+# Update pip's bundled trust store for all Python stages
+FROM python:3.14.8-slim-trixie AS python-base
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential gcc libldap2-dev libsasl2-dev libssl-dev git
+RUN pip install --no-cache-dir --upgrade 'pip>=26.2.2'
+
+# First stage to build python wheel
+FROM python-base AS builder
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        git \
+        libldap2-dev \
+        libsasl2-dev \
+        libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 # install requirements
 COPY ./backend/requirements.txt /requirements.txt
-RUN pip install --user -r requirements.txt
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN python -m venv "$VIRTUAL_ENV" \
+    && pip install --no-cache-dir --upgrade 'pip>=26.2.2' \
+    && pip install --no-cache-dir -r /requirements.txt
 
 # build ffmpeg
-FROM python:3.13.11-slim-trixie AS ffmpeg-builder
+FROM python-base AS ffmpeg-builder
 
 ARG TARGETPLATFORM
 
@@ -36,28 +53,31 @@ COPY docker_assets/ffmpeg_download.py ffmpeg_download.py
 RUN python ffmpeg_download.py $TARGETPLATFORM
 
 # build final image
-FROM python:3.13.11-slim-trixie AS tubearchivist
+FROM python-base AS tubearchivist
 
-ARG INSTALL_DEBUG
-
-ENV PYTHONUNBUFFERED=1
+ENV PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
 
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 
 # copy build requirements
-COPY --from=builder /root/.local /root/.local
-ENV PATH=/root/.local/bin:$PATH
+COPY --from=builder /opt/venv /opt/venv
 
 # copy ffmpeg
-COPY --from=ffmpeg-builder ./ffmpeg/ffmpeg /usr/bin/ffmpeg
-COPY --from=ffmpeg-builder ./ffprobe/ffprobe /usr/bin/ffprobe
+COPY --from=ffmpeg-builder \
+    ./ffmpeg/ffmpeg \
+    ./ffprobe/ffprobe \
+    /usr/bin/
 
 # install distro packages needed
-RUN apt-get clean && apt-get -y update && apt-get -y install --no-install-recommends \
-    nginx \
-    atomicparsley \
-    tini \
-    curl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        atomicparsley \
+        tini \
+        curl \
+    && mkdir -p /cache /youtube \
+    && rm -rf /var/lib/apt/lists/*
 
 ARG TARGETARCH
 
@@ -69,27 +89,17 @@ RUN if [ "$TARGETARCH" = "amd64" ]; then \
     && rm -rf /var/lib/apt/lists/* ; \
     fi
 
-# install debug tools for testing environment
-RUN if [ "$INSTALL_DEBUG" ] ; then \
-    apt-get -y update && apt-get -y install --no-install-recommends \
-    vim htop bmon net-tools iputils-ping procps lsof \
-    && pip install --user ipython pytest pytest-django \
-    ; fi
-
-# make folders
-RUN mkdir /cache /youtube /app
-
-# copy config files
-COPY docker_assets/nginx.conf /etc/nginx/sites-available/default
-RUN sed -i 's/^user www\-data\;$/user root\;/' /etc/nginx/nginx.conf
-
 # copy application into container
 COPY ./backend /app
-COPY ./docker_assets/run.sh /app
-COPY ./docker_assets/backend_start.py /app
-COPY ./docker_assets/beat_auto_spawn.sh /app
+COPY --chmod=755 \
+    ./docker_assets/run.sh \
+    ./docker_assets/backend_start.py \
+    ./docker_assets/beat_auto_spawn.sh \
+    /app/
 
 COPY --from=node-builder ./frontend/dist /app/static
+
+RUN python /app/manage.py collectstatic --noinput -c
 
 # build stamp, read back by settings.TA_BUILD_*, empty without the args
 ARG TA_BUILD_SHA=""
@@ -98,14 +108,11 @@ ENV TA_BUILD_SHA=$TA_BUILD_SHA
 ENV TA_BUILD_DATE=$TA_BUILD_DATE
 
 # volumes
-VOLUME /cache
-VOLUME /youtube
+VOLUME ["/cache", "/youtube"]
 
 # start
 WORKDIR /app
 EXPOSE 8000
-
-RUN chmod +x ./run.sh
 
 ENTRYPOINT ["/bin/tini", "--"]
 CMD ["./run.sh"]

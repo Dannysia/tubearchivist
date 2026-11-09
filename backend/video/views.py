@@ -3,7 +3,6 @@
 import os
 
 from common.serializers import ErrorResponseSerializer
-from common.src.env_settings import EnvironmentSettings
 from common.src.helper import calc_is_watched
 from common.src.history import (
     VIDEO_THUMB_IMAGE,
@@ -13,7 +12,7 @@ from common.src.history import (
 from common.src.ta_redis import RedisArchivist
 from common.src.watched import WatchState
 from common.views_base import AdminOnly, AdminWriteOnly, ApiBaseView
-from download.src.thumbnails import ThumbManager, archived_image_path
+from download.src.thumbnails import archived_image_path
 from downscale.src.downscale import dispatch_pending_downscales
 from downscale.src.queue_interact import (
     ALREADY_ACTIVE,
@@ -443,19 +442,15 @@ class VideoHistoryView(ApiBaseView):
 
 
 def _thumbnail_versions(video_id: str, first_seen: int | None) -> list[dict]:
-    cache_root = EnvironmentSettings().get_cache_root()
     versions = field_versions(video_id, VIDEO_THUMB_IMAGE, first_seen)
     for version in versions:
         digest = version.pop("value")
         if version["replaced"] is None:
-            relative = ThumbManager(video_id).vid_thumb_path()
-            version["image_url"] = f"{cache_root}/{relative}"
+            version["image_url"] = f"/media/thumb/video/{video_id}.jpg"
         elif digest and os.path.exists(
             archived_image_path(digest, absolute=True)
         ):
-            version["image_url"] = (
-                f"{cache_root}/{archived_image_path(digest)}"
-            )
+            version["image_url"] = f"/media/history/{digest[:2]}/{digest}.jpg"
         else:
             version["image_url"] = None
 

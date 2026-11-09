@@ -34,17 +34,16 @@ def test_thumbnail_versions_point_at_the_archive_and_the_live_thumb(
 
     versions = views._thumbnail_versions(VIDEO_ID, 100)
 
-    root = EnvironmentSettings().get_cache_root()
     assert versions == [
         {
             "first_seen": 300,
             "replaced": None,
-            "image_url": f"{root}/videos/a/{VIDEO_ID}.jpg",
+            "image_url": f"/media/thumb/video/{VIDEO_ID}.jpg",
         },
         {
             "first_seen": 200,
             "replaced": 300,
-            "image_url": f"{root}/history/{archived[:2]}/{archived}.jpg",
+            "image_url": f"/media/history/{archived[:2]}/{archived}.jpg",
         },
         {"first_seen": 100, "replaced": 200, "image_url": None},
     ]

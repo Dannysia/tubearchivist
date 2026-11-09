@@ -54,10 +54,10 @@ class Command(BaseCommand):
         self._index_setup()
         self._clear_downscale_leftovers()
         self._resume_extraction_queue()
+        self._init_app_config()
         self._snapshot_check()
         self._create_default_schedules()
         self._update_schedule_tz()
-        self._init_app_config()
         self._set_ta_startup_time()
 
     def _make_folders(self):
@@ -227,11 +227,13 @@ class Command(BaseCommand):
 
     def _snapshot_check(self):
         """migration setup snapshots"""
-        self.stdout.write("[7] setup snapshots")
-        ElasticSnapshot().setup()
+        self.stdout.write("[8] setup snapshots")
+        is_enabled = AppConfig().config["application"]["enable_snapshot"]
+        if is_enabled:
+            ElasticSnapshot().setup()
 
     def _create_default_schedules(self) -> None:
-        self.stdout.write("[8] create initial schedules")
+        self.stdout.write("[9] create initial schedules")
         self._clear_orphaned_schedules()
         builder = ScheduleBuilder()
 
@@ -310,7 +312,7 @@ class Command(BaseCommand):
 
     def _update_schedule_tz(self) -> None:
         """update timezone for Schedule instances"""
-        self.stdout.write("[9] validate schedules TZ")
+        self.stdout.write("[10] validate schedules TZ")
         tz = EnvironmentSettings.TZ
         to_update = CrontabSchedule.objects.exclude(timezone=tz)
 
@@ -328,7 +330,7 @@ class Command(BaseCommand):
 
     def _init_app_config(self) -> None:
         """init default app config to ES"""
-        self.stdout.write("[10] Check AppConfig")
+        self.stdout.write("[7] Check AppConfig")
         response, status_code = ElasticWrap("ta_config/_doc/appsettings").get()
         if status_code in [200, 201]:
             self.stdout.write(

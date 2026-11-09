@@ -1,5 +1,6 @@
 import os
 import shutil
+from urllib.parse import quote
 
 from common.src.es_connect import IndexWriteError
 from downscale.src.downscale import (
@@ -97,13 +98,13 @@ def _try_claim_candidate(job: dict, worker: str) -> dict | None:
         updated=_now(),
     )
 
+    media_url = quote(source["json_data"]["media_url"])
     return {
         "id": doc_id,
         "youtube_id": youtube_id,
         "title": job["title"],
         "target_height": target_height,
-        # nginx's /youtube/ alias, not a django endpoint
-        "source_url": f"/youtube/{source['json_data']['media_url']}",
+        "source_url": f"/media/stream/{media_url}",
     }
 
 

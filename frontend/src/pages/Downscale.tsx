@@ -47,6 +47,7 @@ export type DownscaleJob = {
   original_size: number;
   new_size: number;
   tmp_file_path: string;
+  new_media_url: string;
   task_id: string;
   worker?: string;
   timestamp: number;

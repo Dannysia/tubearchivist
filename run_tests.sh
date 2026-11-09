@@ -28,10 +28,10 @@ REDIS="ta-test-redis"
 
 PYTEST_VERSION="9.1.1"
 PYTEST_DJANGO_VERSION="4.14.0"
-BLACK_VERSION="26.3.1"
-ISORT_VERSION="8.0.1"
-FLAKE8_VERSION="7.3.0"
-CODESPELL_VERSION="2.4.2"
+BLACK_VERSION="26.10.1"
+ISORT_VERSION="9.0.2"
+FLAKE8_VERSION="7.4.1"
+CODESPELL_VERSION="2.4.3"
 
 
 function require_image {
@@ -91,10 +91,11 @@ function run_format {
         -e HOME=/tmp \
         -e PYTHONDONTWRITEBYTECODE=1 \
         -v "$REPO_DIR":/src -w /src "$IMAGE" sh -c "
-        pip install --quiet --no-input --user \
+        pip install --quiet --no-input --target /tmp/fmt \
             'black==$BLACK_VERSION' \
             'isort==$ISORT_VERSION' >/dev/null 2>&1
         set -e
+        export PYTHONPATH=/tmp/fmt
         python -m black --line-length=79 \
             --extend-exclude '/migrations/' backend
         python -m isort --profile black -l 79 \

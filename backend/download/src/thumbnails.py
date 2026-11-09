@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 from time import sleep
+from typing import Literal
 
 import requests
 from common.src.env_settings import EnvironmentSettings
@@ -274,6 +275,27 @@ class ThumbManager(ThumbManagerBase):
 
         return thumb_path
 
+    def channel_art_path(
+        self,
+        art_type: Literal["thumb", "banner", "tvart"],
+        item_id: str | None = None,
+    ) -> str:
+        """get channel art path"""
+        channel_id = item_id if item_id else self.item_id
+        channel_path = os.path.join(
+            self.CHANNEL_DIR, f"{channel_id}_{art_type}.jpg"
+        )
+
+        return channel_path
+
+    def playlist_art_path(
+        self,
+        item_id: str | None = None,
+    ):
+        """playlist art path building"""
+        playlist_id = item_id if item_id else self.item_id
+        return os.path.join(self.PLAYLIST_DIR, f"{playlist_id}.jpg")
+
     def download_channel_art(self, urls, skip_existing=False):
         """pass tuple of channel thumbnails"""
         channel_thumb, channel_banner, channel_tv = urls
@@ -283,10 +305,7 @@ class ThumbManager(ThumbManagerBase):
 
     def _download_channel_thumb(self, channel_thumb, skip_existing):
         """download channel thumbnail"""
-
-        thumb_path = os.path.join(
-            self.CHANNEL_DIR, f"{self.item_id}_thumb.jpg"
-        )
+        thumb_path = self.channel_art_path(art_type="thumb")
         self.item_type = "icon"
 
         if skip_existing and os.path.exists(thumb_path):
@@ -297,10 +316,7 @@ class ThumbManager(ThumbManagerBase):
 
     def _download_channel_banner(self, channel_banner, skip_existing):
         """download channel banner"""
-
-        banner_path = os.path.join(
-            self.CHANNEL_DIR, self.item_id + "_banner.jpg"
-        )
+        banner_path = self.channel_art_path(art_type="banner")
         self.item_type = "banner"
         if skip_existing and os.path.exists(banner_path):
             return
@@ -310,7 +326,7 @@ class ThumbManager(ThumbManagerBase):
 
     def _download_channel_tv(self, channel_tv, skip_existing):
         """download channel tv art"""
-        art_path = os.path.join(self.CHANNEL_DIR, self.item_id + "_tvart.jpg")
+        art_path = self.channel_art_path(art_type="tvart")
         self.item_type = "tvart"
         if skip_existing and os.path.exists(art_path):
             return
@@ -320,7 +336,7 @@ class ThumbManager(ThumbManagerBase):
 
     def download_playlist_thumb(self, url, skip_existing=False):
         """pass thumbnail url"""
-        thumb_path = os.path.join(self.PLAYLIST_DIR, f"{self.item_id}.jpg")
+        thumb_path = self.playlist_art_path()
         if skip_existing and os.path.exists(thumb_path):
             return
 
@@ -357,28 +373,20 @@ class ThumbManager(ThumbManagerBase):
             ]
 
         channel_id = json_data["channel"]["channel_id"]
-        banner_path = os.path.join(
-            self.CHANNEL_DIR, f"{channel_id}_banner.jpg"
-        )
+        banner_path = self.channel_art_path("banner", item_id=channel_id)
         self._embed_art_item(video, "channel_banner", art_path=banner_path)
 
-        channel_icon_path = os.path.join(
-            self.CHANNEL_DIR, f"{channel_id}_thumb.jpg"
-        )
+        channel_icon_path = self.channel_art_path("thumb", item_id=channel_id)
         self._embed_art_item(video, "channel_icon", art_path=channel_icon_path)
 
-        channel_tv_path = os.path.join(
-            self.CHANNEL_DIR, f"{channel_id}_tvart.jpg"
-        )
+        channel_tv_path = self.channel_art_path("tvart", item_id=channel_id)
         self._embed_art_item(video, "channel_tv", art_path=channel_tv_path)
 
         playlist_ids = json_data.get("playlist", [])
         for plalyist_id in playlist_ids:
-            playlist_path = os.path.join(
-                self.PLAYLIST_DIR, f"{plalyist_id}.jpg"
-            )
+            art_path = self.playlist_art_path(item_id=plalyist_id)
             self._embed_art_item(
-                video, f"playlist_{plalyist_id}", art_path=playlist_path
+                video, f"playlist_{plalyist_id}", art_path=art_path
             )
 
         video.save()
@@ -404,19 +412,20 @@ class ThumbManager(ThumbManagerBase):
 
     def delete_channel_thumb(self):
         """delete all artwork of channel"""
-        thumb = os.path.join(self.CHANNEL_DIR, f"{self.item_id}_thumb.jpg")
-        banner = os.path.join(self.CHANNEL_DIR, f"{self.item_id}_banner.jpg")
-        tv = os.path.join(self.CHANNEL_DIR, f"{self.item_id}_tvart.jpg")
+        thumb = self.channel_art_path(art_type="thumb")
+        banner = self.channel_art_path(art_type="banner")
+        tvart = self.channel_art_path(art_type="tvart")
+
         if os.path.exists(thumb):
             os.remove(thumb)
         if os.path.exists(banner):
             os.remove(banner)
-        if os.path.exists(tv):
-            os.remove(tv)
+        if os.path.exists(tvart):
+            os.remove(tvart)
 
     def delete_playlist_thumb(self):
         """delete playlist thumbnail"""
-        thumb_path = os.path.join(self.PLAYLIST_DIR, f"{self.item_id}.jpg")
+        thumb_path = self.playlist_art_path()
         if os.path.exists(thumb_path):
             os.remove(thumb_path)
 
@@ -611,52 +620,3 @@ class ThumbValidator:
         response, _ = ElasticWrap(path).get()
 
         return response.get("count")
-
-
-class ThumbFilesystem:
-    """sync thumbnail files to media files"""
-
-    INDEX_NAME = "ta_video"
-
-    def __init__(self, task=False):
-        self.task = task
-
-    def embed(self):
-        """entry point"""
-        data = {
-            "query": {"match_all": {}},
-            "_source": ["media_url", "youtube_id", "channel.channel_id"],
-        }
-        paginate = IndexPaginate(
-            index_name=self.INDEX_NAME,
-            data=data,
-            size=100,
-            callback=EmbedCallback,
-            task=self.task,
-            total=self._get_total(),
-        )
-        _ = paginate.get_results()
-
-    def _get_total(self):
-        """get total documents in index"""
-        path = f"{self.INDEX_NAME}/_count"
-        response, _ = ElasticWrap(path).get()
-
-        return response.get("count")
-
-
-class EmbedCallback:
-    """callback class to embed thumbnails"""
-
-    MEDIA_DIR = EnvironmentSettings.MEDIA_DIR
-
-    def __init__(self, source, index_name, counter=0):
-        self.source = source
-        self.index_name = index_name
-        self.counter = counter
-
-    def run(self):
-        """run embed"""
-        for video in self.source:
-            video_id = video["_source"]["youtube_id"]
-            ThumbManager(video_id).embed_video_art(video["_source"])

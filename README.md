@@ -76,8 +76,7 @@ every environment variable below behaves as upstream documents it. Around
 | ELASTIC_PASSWORD              | Password for ElasticSearch | Required |
 | REDIS_CON                     | Connection string to Redis | Required |
 | TZ                            | Set your timezone for the scheduler | Required |
-| TA_PORT                       | Overwrite Nginx port | Optional |
-| TA_BACKEND_PORT               | Overwrite container internal backend server port | Optional |
+| TA_PORT                       | Overwrite the container port | Optional |
 | TA_ENABLE_AUTH_PROXY          | Enables support for forwarding auth in reverse proxies | [Read more](https://docs.tubearchivist.com/configuration/forward-auth/) |
 | TA_AUTH_PROXY_USERNAME_HEADER | Header containing username to log in | Optional |
 | TA_AUTH_PROXY_LOGOUT_URL      | Logout URL for forwarded auth | Optional |

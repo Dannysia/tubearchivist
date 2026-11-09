@@ -188,7 +188,6 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.2/howto/static-files/
 
 STATIC_URL = "/static/"
-STATICFILES_DIRS = (str(BASE_DIR.joinpath("static")),)
 STATIC_ROOT = str(BASE_DIR.joinpath("staticfiles"))
 
 
@@ -223,7 +222,8 @@ CORS_EXPOSE_HEADERS = ["X-Start-Timestamp"]
 # TA application settings
 TA_UPSTREAM = "https://github.com/tubearchivist/tubearchivist"
 # upstream's release number, not the fork's
-TA_VERSION = "v0.5.12"
+TA_VERSION = "v0.6.0"
+TA_USERAGENT = {"User-Agent": f"{TA_UPSTREAM} {TA_VERSION}"}
 # empty for an image built without the build args
 TA_BUILD_SHA = environ.get("TA_BUILD_SHA", "")
 TA_BUILD_DATE = environ.get("TA_BUILD_DATE", "")

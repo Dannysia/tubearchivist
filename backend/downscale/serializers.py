@@ -38,6 +38,7 @@ class DownscaleItemSerializer(serializers.Serializer):
     original_size = serializers.IntegerField()
     new_size = serializers.IntegerField()
     tmp_file_path = serializers.CharField()
+    new_media_url = serializers.CharField()
     task_id = serializers.CharField()
     worker = serializers.CharField(required=False, allow_blank=True)
     timestamp = serializers.IntegerField()

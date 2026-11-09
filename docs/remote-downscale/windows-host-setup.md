@@ -217,7 +217,7 @@ Expected on an empty queue:
 | What you see | What it means |
 |---|---|
 | `claim failed: 401 …` | bad or non-admin token |
-| `claim failed: 404 …` | wrong `url`, or nginx not routing `/api/downscale/worker/` |
+| `claim failed: 404 …` | wrong `url` |
 | `claim failed: … Connection refused` | TA unreachable from this box; check firewall/DNS |
 | immediate exit re: `quality` | §3 — fractional value |
 | immediate exit re: missing key | a required `worker.toml` field is absent |

@@ -85,7 +85,7 @@ Response `200`:
   "youtube_id": "abc123",
   "title": "…",
   "target_height": 720,
-  "source_url": "/youtube/<channel_id>/<youtube_id>.mp4"
+  "source_url": "/media/stream/<channel_id>/<youtube_id>.mp4"
 }
 ```
 
@@ -93,22 +93,19 @@ No quality is sent: the worker encodes with the settings in its own config
 (see README "Key decisions"), and TA's `downscale_crf` applies only to jobs
 encoded on the server. Response `204` when nothing is claimable.
 
-`source_url` is TA's plain nginx-served static path (the same one a normal
-browser download uses), not a job-scoped API endpoint - a real earlier
-implementation streamed it through Django `FileResponse`, and on
-production hardware that measurably hurt: each ASGI worker process (see
-`docker_assets/backend_start.py`'s `uvicorn.run(..., workers=4)`) that
-served a source file retained memory equal to roughly the full file size
-for as long as that worker process ran - confirmed via `malloc_trim`
-against a live process that it was genuinely live/referenced memory, not
-just reclaimable heap fragmentation, and confirmed absent when the same
-bytes were served by nginx's `/youtube/` alias directly instead. Ownership
-isn't checked on this path the way every other job-scoped endpoint checks
-it - that's an accepted tradeoff, not an oversight: the same file is
-already reachable by any authenticated user through the normal download
-path regardless of job state, so a per-job check here was never a real
-access boundary. `auth_request /api/ping/` (nginx.conf) still requires the
-same `Authorization: Token …` the worker already sends.
+`source_url` is TA's plain media stream route (the same one the browser
+player uses), not a job-scoped API endpoint. It is served by
+`RangedFileResponse`, which reads the file in async chunks: an earlier
+implementation streamed it through Django `FileResponse`, which under ASGI
+is consumed into a list first, and each uvicorn worker that served a
+source kept memory equal to roughly the full file size. Four 2 GB
+transfers through `RangedFileResponse` left worker RSS unchanged.
+Ownership isn't checked on this path the way every other job-scoped
+endpoint checks it - that's an accepted tradeoff, not an oversight: the
+same file is already reachable by any authenticated user through the
+normal stream route regardless of job state, so a per-job check here was
+never a real access boundary. The route still requires the same
+`Authorization: Token …` the worker already sends.
 
 ### `POST /api/downscale/worker/jobs/<id>/heartbeat/`
 
@@ -129,9 +126,8 @@ server, see reaper).
 Raw video bytes in the request body, streamed to
 `<tmp_file_path>.part` and renamed into place on completion. Upload and
 finish are split so a connection drop mid-upload leaves no half-file that
-looks complete. Requires an nginx `client_max_body_size` bump for the API
-location (results can be multiple GB) — set on the `/api` block in
-`docker_assets/nginx.conf`.
+looks complete. uvicorn sets no body size limit, so multi-GB results need
+no extra configuration.
 
 `tmp_file_path` is deterministic (same video + target height reuse the
 same path across claims), so ownership is re-checked a second time

@@ -8,6 +8,7 @@ services:
     volumes:
       - media:/youtube
       - cache:/cache
+    # user: "1000:1000" # optionally run container under arbitrary user
     environment:
       - ES_URL=http://archivist-es:9200     # needs protocol e.g. http and port
       - REDIS_CON=redis://archivist-redis:6379
@@ -41,7 +42,7 @@ services:
     depends_on:
       - archivist-es
   archivist-es:
-    image: bbilly1/tubearchivist-es         # only for amd64, or use official es 8.19.0
+    image: bbilly1/tubearchivist-es         # only for amd64, or use official es 9.5.5
     container_name: archivist-es
     restart: unless-stopped
     environment:
