@@ -48,17 +48,6 @@ class ElasticSnapshot:
         if is_outdated:
             _ = self.take_snapshot_now()
 
-    def teardown(self):
-        """delete policy and snapshots"""
-        success = self.delete_policy()
-        if not success:
-            return
-
-        snap_dicts = self._get_all_snapshots()
-        if snap_dicts:
-            for snapshot in snap_dicts:
-                self.delete_single_snapshot(snapshot_id=snapshot["id"])
-
     def _check_repo_exists(self):
         """check if expected repo already exists"""
         path = f"_snapshot/{self.REPO}"

@@ -231,6 +231,8 @@ class Command(BaseCommand):
         is_enabled = AppConfig().config["application"]["enable_snapshot"]
         if is_enabled:
             ElasticSnapshot().setup()
+        else:
+            ElasticSnapshot().delete_policy()
 
     def _create_default_schedules(self) -> None:
         self.stdout.write("[9] create initial schedules")

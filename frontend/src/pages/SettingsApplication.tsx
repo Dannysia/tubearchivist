@@ -1292,7 +1292,7 @@ const SettingsApplication = () => {
                   <p>
                     Automatically create daily deduplicated snapshots of the index, stored in
                     Elasticsearch. Restoring from snapshot replaced your current index with the
-                    index from the snapshot. Disabling snapshots deletes existing snapshots.
+                    index from the snapshot.
                   </p>
                 </div>
               )}

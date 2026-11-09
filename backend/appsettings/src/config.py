@@ -164,7 +164,7 @@ class AppConfig:
         if snapshot_conf is True:
             ElasticSnapshot().setup()
         elif snapshot_conf is False:
-            ElasticSnapshot().teardown()
+            ElasticSnapshot().delete_policy()
 
     @staticmethod
     def _fail_message(message_line):
